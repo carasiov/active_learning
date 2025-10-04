@@ -1,0 +1,19 @@
+data/labels/labels.csv
+data/processed/input_ml.csv
+data/output/latent_space_tsne_embedding_2.csv
+data/output/latent_space_tsne_embedding_sscvae.csv
+data/output/latent_space_tsne_embedding.csv
+data/processed/input_ml_2.csv
+data/raw/input_raw_avanto.csv
+data/raw/input_raw.csv
+domain/__pycache__/vae_model_copy.cpython-311.pyc
+domain/__pycache__/vae_model.cpython-311.pyc
+models/cvae.weights.h5
+models/scalers.pkl
+models/sscvae.weights.h5
+models/ssvae.weights copy.h5
+models/ssvae.weights.h5
+models/vae.weights.h5
+models/progress/ssvae_loss_plot.png
+models/progress/vae_loss_plot.png
+data/*.npz
