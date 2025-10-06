@@ -35,7 +35,7 @@ latent, reconstruted, pred_classes, pred_certainty = vae.predict(x_train_scaled)
 # tsne_output = tsne.fit_transform(latent)
 tsne_output=latent
 
-np.savez_compressed('./data/output.npz', 
+np.savez_compressed('./data/output_test1.npz', 
                     input=x_train_scaled, 
                     tsne = tsne_output,
                     labels=y_train, 

@@ -7,7 +7,7 @@ from matplotlib.widgets import RadioButtons
 
 
 
-data = np.load('./data/output.npz')
+data = np.load('./data/output_test1.npz')
 
 
 

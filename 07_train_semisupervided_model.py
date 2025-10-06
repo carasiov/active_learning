@@ -30,5 +30,5 @@ user_labels = pd.read_csv(path_labels, header=0, index_col=0).dropna()
 labels = pd.DataFrame(x_train_scaled.reshape(-1,28*28))[[]].join(user_labels).values
 
 vae = SSVAE(input_dim=(28,28))
-vae.load_model_weights(weights_path='./models/ssvae_2d.weights.h5')
-history = vae.fit(x_train_scaled, labels, weights_path='./models/ssvae_2d.weights.h5')
+#vae.load_model_weights(weights_path='./models/ssvae_2d.weights.h5')
+history = vae.fit(x_train_scaled, labels, weights_path='./models/ssvae_test1.weights.h5')

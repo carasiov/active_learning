@@ -17,3 +17,17 @@ models/vae.weights.h5
 models/progress/ssvae_loss_plot.png
 models/progress/vae_loss_plot.png
 data/*.npz
+
+
+# Data
+data/labels.csv
+data/*.npz
+# Models and training artifacts
+models/*.h5
+models/scalers.pkl
+models/progress/*.png
+# Python cache
+domain/__pycache__/*
+*.pyc
+# Virtual env
+.venv/
