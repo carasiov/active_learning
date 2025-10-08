@@ -1,16 +1,18 @@
 from pathlib import Path
+import sys
+
+BASE_DIR = Path(__file__).resolve().parents[1]
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
 
 import numpy as np
 import sklearn.manifold
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.datasets import mnist
 
-from src_tf.vae_model_tf import SSVAE, SSCVAE
-
-
-BASE_DIR = Path(__file__).resolve().parents[1]
-WEIGHTS_PATH = BASE_DIR / "models" / "ssvae_2d.weights.h5"
-OUTPUT_PATH = BASE_DIR / "data" / "output_test3.npz"
+from src_tf.vae_model_jax import SSVAE, SSCVAE
+WEIGHTS_PATH = BASE_DIR / "models" / "ssvae_test_jax8.weights.h5"
+OUTPUT_PATH = BASE_DIR / "data" / "output_jax_2.npz"
 
 (x_train, y_train), (x_test, y_test) = mnist.load_data()
 

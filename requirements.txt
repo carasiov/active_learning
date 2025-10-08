@@ -4,3 +4,7 @@ scikit-learn
 tensorflow
 tf-keras
 tensorflow-probability
+jax
+jaxlib
+flax
+optax

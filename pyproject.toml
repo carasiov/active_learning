@@ -9,4 +9,9 @@ description = "Active learning utilities"
 requires-python = ">=3.9"
 
 [tool.setuptools]
-packages = ["src_tf"]
+packages = [
+    "src_tf",
+    "configs",
+    "models",
+    "training",
+]

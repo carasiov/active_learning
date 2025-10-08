@@ -31,3 +31,11 @@ domain/__pycache__/*
 *.pyc
 # Virtual env
 .venv/
+
+# --- Ignore specific files ---
+AGENTS.md
+
+# --- Ignore data/text files ---
+*.csv
+*.txt
+
