@@ -22,6 +22,10 @@ class SSVAEConfig:
         grad_clip_norm: Global norm threshold for gradient clipping; disabled when ``None``.
         weight_decay: L2-style weight decay applied through the optimizer.
         label_weight: (Unused today) scaling factor for the classification loss term.
+        input_hw: Optional (height, width) tuple for decoder output; defaults to the model input.
+        encoder_type: Identifier for the encoder family to instantiate (currently only ``"dense"``).
+        decoder_type: Identifier for the decoder family to instantiate (currently only ``"dense"``).
+        classifier_type: Identifier for the classifier family (currently only ``"dense"``).
     """
 
     latent_dim: int = 2
@@ -37,4 +41,9 @@ class SSVAEConfig:
     grad_clip_norm: float | None = 1.0
     weight_decay: float = 0.0
     label_weight: float = 1000.0
-
+    input_hw: Tuple[int, int] | None = None
+    encoder_type: str = "dense"
+    decoder_type: str = "dense"
+    classifier_type: str = "dense"
+    use_contrastive: bool = False
+    contrastive_weight: float = 0.0

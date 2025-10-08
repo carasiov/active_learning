@@ -9,6 +9,7 @@ from configs.base import SSVAEConfig
 from models.classifier import Classifier
 from models.decoders import DenseDecoder as Decoder
 from models.encoders import DenseEncoder as Encoder
+from models.factory import build_ssvae_network
 from training.losses import compute_loss_and_metrics
 from training.train_state import SSVAETrainState
 from training.trainer import Trainer
@@ -84,19 +85,10 @@ class SSVAE:
 
         self._out_hw = (input_dim[0], input_dim[1])
 
-        flat = self._out_hw[0] * self._out_hw[1]
-        encoder_hidden_dims = self.config.hidden_dims or (flat,)
-        decoder_hidden_dims = tuple(reversed(encoder_hidden_dims)) or (self.latent_dim,)
-        last_hidden = encoder_hidden_dims[-1] if encoder_hidden_dims else self.latent_dim
-        classifier_hidden_dims = (last_hidden, last_hidden)  # mirrors TF classifier (two hidden layers)
+        if self.config.input_hw is None:
+            self.config.input_hw = self._out_hw
 
-        self.model = SSVAENetwork(
-            encoder_hidden_dims=encoder_hidden_dims,
-            decoder_hidden_dims=decoder_hidden_dims,
-            classifier_hidden_dims=classifier_hidden_dims,
-            latent_dim=self.latent_dim,
-            output_hw=self._out_hw,
-        )
+        self.model = build_ssvae_network(self.config, input_hw=self._out_hw)
         self._rng = random.PRNGKey(self.config.random_seed)
         params_key, sample_key, self._rng = random.split(self._rng, 3)
         dummy_input = jnp.zeros((1, *self._out_hw), dtype=jnp.float32)

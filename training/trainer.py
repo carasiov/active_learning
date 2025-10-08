@@ -53,6 +53,8 @@ class Trainer:
         log_fn: LogFn,
         save_fn: SaveFn,
         export_history_fn: ExportHistoryFn,
+        num_epochs: int | None = None,
+        patience: int | None = None,
     ) -> Tuple[SSVAETrainState, jax.Array, HistoryDict]:
         x_np = np.asarray(data, dtype=np.float32)
         y_np = np.asarray(labels, dtype=np.float32).reshape((-1,))
@@ -83,8 +85,13 @@ class Trainer:
         best_val = np.inf
         wait = 0
         batch_size = self.config.batch_size
-        max_epochs = self.config.max_epochs
-        patience = self.config.patience
+        max_epochs = num_epochs if num_epochs is not None else self.config.max_epochs
+        used_patience = patience if patience is not None else self.config.patience
+
+        if max_epochs <= 0:
+            state = state.replace(rng=state_rng)
+            export_history_fn(history)
+            return state, shuffle_rng, history
 
         for epoch in range(max_epochs):
             if train_size > 0:
@@ -135,7 +142,7 @@ class Trainer:
                     save_fn(weights_path)
             else:
                 wait += 1
-                if wait >= patience:
+                if wait >= used_patience:
                     break
 
         state = state.replace(rng=state_rng)

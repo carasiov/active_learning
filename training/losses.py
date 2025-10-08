@@ -45,6 +45,11 @@ def classification_loss(logits: jnp.ndarray, labels: jnp.ndarray, weight: float)
     return weight * mean_ce
 
 
+def _contrastive_loss_stub(z: jnp.ndarray, weight: float) -> jnp.ndarray:
+    """Placeholder contrastive loss; returns a zero-valued array compatible with ``weight``."""
+    return jnp.array(0.0, dtype=z.dtype) * weight
+
+
 def compute_loss_and_metrics(
     params: Dict[str, Dict[str, jnp.ndarray]],
     batch_x: jnp.ndarray,
@@ -67,7 +72,11 @@ def compute_loss_and_metrics(
     rec_loss = reconstruction_loss(batch_x, recon, config.recon_weight)
     kl_loss = kl_divergence(z_mean, z_log, config.kl_weight)
     cls_loss = classification_loss(logits, batch_y, 1.0)
-    contrastive = jnp.array(0.0, dtype=rec_loss.dtype)
+
+    if config.use_contrastive:
+        contrastive = _contrastive_loss_stub(z, config.contrastive_weight)
+    else:
+        contrastive = jnp.array(0.0, dtype=rec_loss.dtype)
 
     total = rec_loss + kl_loss + cls_loss + contrastive
     metrics = {
