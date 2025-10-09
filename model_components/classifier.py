@@ -20,3 +20,4 @@ class Classifier(nn.Module):
             x = nn.leaky_relu(x)
         # Return raw logits; downstream code applies softmax where probabilities are needed.
         return nn.Dense(self.num_classes, name="logits")(x)
+

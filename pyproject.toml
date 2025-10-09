@@ -10,8 +10,8 @@ requires-python = ">=3.9"
 
 [tool.setuptools]
 packages = [
-    "src_tf",
+    "ssvae",
     "configs",
-    "models",
+    "model_components",
     "training",
 ]

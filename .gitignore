@@ -38,4 +38,6 @@ AGENTS.md
 # --- Ignore data/text files ---
 *.csv
 *.txt
+*.ckpt
 
+ROOT

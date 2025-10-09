@@ -1,4 +1,5 @@
 from __future__ import annotations
+"""SSVAE models module (JAX)."""
 
 from pathlib import Path
 from typing import Dict, Tuple
@@ -6,10 +7,10 @@ from typing import Dict, Tuple
 import numpy as np
 
 from configs.base import SSVAEConfig
-from models.classifier import Classifier
-from models.decoders import DenseDecoder as Decoder
-from models.encoders import DenseEncoder as Encoder
-from models.factory import build_ssvae_network
+from model_components.classifier import Classifier
+from model_components.decoders import DenseDecoder as Decoder
+from model_components.encoders import DenseEncoder as Encoder
+from model_components.factory import get_architecture_dims
 from training.losses import compute_loss_and_metrics
 from training.train_state import SSVAETrainState
 from training.trainer import Trainer
@@ -24,14 +25,13 @@ try:
     from flax import traverse_util
     from flax.core import freeze
     from flax.serialization import from_bytes, to_bytes
-except Exception as e:  # pragma: no cover - import-time guard for environments without JAX/Flax
+except Exception as e:  # pragma: no cover
     raise ImportError(
-        "vae_model_jax requires JAX, Flax, and Optax. Please install jax/jaxlib, flax, and optax to use this backend."
+        "ssvae requires JAX, Flax, and Optax. Please install jax/jaxlib, flax, and optax."
     ) from e
 
 
 def _make_weight_decay_mask(params: Dict[str, Dict[str, jnp.ndarray]]) -> Dict[str, Dict[str, bool]]:
-    """Create a mask to exclude bias/scale parameters from weight decay."""
     flat_params = traverse_util.flatten_dict(params)
     mask = {}
     for key in flat_params:
@@ -65,16 +65,13 @@ class SSVAENetwork(nn.Module):
 
 class SSVAE:
     """
-    JAX implementation of the TF SSVAE with an API compatible with scripts/train_tf.py and scripts/infer_tf.py.
+    Modular JAX SSVAE with a stable public API used by scripts/train.py and scripts/infer.py.
 
-    Methods kept compatible:
-    - prepare_data_for_keras_model(data) -> np.ndarray
-    - load_model_weights(weights_path)
-    - predict(data) -> (latent, recon, pred_class, pred_certainty)
+    Methods:
+    - prepare_data_for_keras_model(data)
+    - load_model_weights(path)
+    - predict(data)
     - fit(data, labels, weights_path)
-
-    Hyperparameters are configurable via SSVAEConfig while preserving defaults that
-    match the TensorFlow reference implementation.
     """
 
     def __init__(self, input_dim: Tuple[int, int], config: SSVAEConfig | None = None):
@@ -84,11 +81,17 @@ class SSVAE:
         self.weights_path: str | None = None
 
         self._out_hw = (input_dim[0], input_dim[1])
-
         if self.config.input_hw is None:
             self.config.input_hw = self._out_hw
 
-        self.model = build_ssvae_network(self.config, input_hw=self._out_hw)
+        enc_dims, dec_dims, clf_dims = get_architecture_dims(self.config, input_hw=self._out_hw)
+        self.model = SSVAENetwork(
+            encoder_hidden_dims=enc_dims,
+            decoder_hidden_dims=dec_dims,
+            classifier_hidden_dims=clf_dims,
+            latent_dim=self.latent_dim,
+            output_hw=self._out_hw,
+        )
         self._rng = random.PRNGKey(self.config.random_seed)
         params_key, sample_key, self._rng = random.split(self._rng, 3)
         dummy_input = jnp.zeros((1, *self._out_hw), dtype=jnp.float32)
@@ -154,22 +157,7 @@ class SSVAE:
                 training=training,
             )
 
-        def _train_loss_fn(
-            params: Dict[str, Dict[str, jnp.ndarray]],
-            batch_x: jnp.ndarray,
-            batch_y: jnp.ndarray,
-            key: jax.Array,
-        ) -> Tuple[jnp.ndarray, Dict[str, jnp.ndarray]]:
-            return _loss_and_metrics(params, batch_x, batch_y, key, training=True)
-
-        def _eval_metrics_fn(
-            params: Dict[str, Dict[str, jnp.ndarray]],
-            batch_x: jnp.ndarray,
-            batch_y: jnp.ndarray,
-        ) -> Dict[str, jnp.ndarray]:
-            return _loss_and_metrics(params, batch_x, batch_y, None, training=False)[1]
-
-        train_loss_and_grad = jax.value_and_grad(_train_loss_fn, argnums=0, has_aux=True)
+        train_loss_and_grad = jax.value_and_grad(_train_loss_fn := (lambda p, x, y, k: _loss_and_metrics(p, x, y, k, True)), argnums=0, has_aux=True)
 
         @jax.jit
         def train_step(
@@ -183,16 +171,11 @@ class SSVAE:
             return new_state, metrics
 
         self._train_step = train_step
-        self._eval_metrics = jax.jit(_eval_metrics_fn)
+        self._eval_metrics = jax.jit(lambda p, x, y: _loss_and_metrics(p, x, y, None, False)[1])
 
-    # Data prep kept for compatibility
     def prepare_data_for_keras_model(self, data: np.ndarray) -> np.ndarray:
-        """Binarize the inputs (0/1) to mirror the TensorFlow preprocessing."""
         return np.where(data == 0, 0.0, 1.0)
 
-    # ------------
-    # IO helpers
-    # ------------
     def _save_weights(self, path: str):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         payload = {
@@ -241,7 +224,7 @@ class SSVAE:
     def _export_history(self, history: Dict[str, list[float]]):
         try:
             PROGRESS_DIR.mkdir(parents=True, exist_ok=True)
-            csv_path = PROGRESS_DIR / "ssvae_jax_history.csv"
+            csv_path = PROGRESS_DIR / "ssvae_history.csv"
             headers = [
                 "epoch",
                 "loss",
@@ -295,12 +278,8 @@ class SSVAE:
                 fig.savefig(PROGRESS_PLOT_PATH)
                 plt.close(fig)
         except Exception:
-            # Non-fatal: keep training if plotting/filesystem fail
             pass
 
-    # --------
-    # Inference
-    # --------
     def predict(
         self,
         data: np.ndarray,
@@ -308,12 +287,6 @@ class SSVAE:
         sample: bool = False,
         num_samples: int = 1,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """
-        Predict latent codes, reconstructions, and classifier outputs.
-
-        By default this mirrors the TensorFlow implementation and uses the latent
-        mean deterministically. Set `sample=True` to draw from the latent posterior.
-        """
         x = jnp.array(data, dtype=jnp.float32)
         if sample:
             num_samples = max(1, int(num_samples))
@@ -322,8 +295,6 @@ class SSVAE:
             logits_samples = []
             for _ in range(num_samples):
                 self._rng, subkey = random.split(self._rng)
-                # Sampling path mirrors training-time reparameterization instead of the TF
-                # public inference path, which always uses the posterior mean.
                 z_mean, _, z, recon, logits = self._apply_fn(
                     self.state.params,
                     x,
@@ -350,7 +321,6 @@ class SSVAE:
                 np.array(pred_certainty),
             )
         else:
-            # Deterministic inference that matches TensorFlow's default behavior.
             z_mean, _, _, recon, logits = self._apply_fn(self.state.params, x, training=False)
             probs = softmax(logits, axis=1)
             pred_class = jnp.argmax(probs, axis=1)
@@ -362,11 +332,7 @@ class SSVAE:
                 np.array(pred_certainty),
             )
 
-    # -----
-    # Train
-    # -----
     def fit(self, data: np.ndarray, labels: np.ndarray, weights_path: str):
-        """Train the model with TensorFlow-parity loss aggregation (classification averaged over labeled examples only)."""
         self.weights_path = str(weights_path)
         trainer = Trainer(self.config)
         self.state, self._shuffle_rng, history = trainer.train(
@@ -386,19 +352,12 @@ class SSVAE:
 
 
 class SSCVAE(SSVAE):
-    """
-    Placeholder SSCVAE (convolutional variant) implemented as a fallback to the dense SSVAE
-    to keep the API surface identical. For MNIST training/inference in this repo, `SSVAE` is used.
-
-    If you need true conv/transpose-conv in JAX, we can extend this in a follow-up.
-    """
-
     def __init__(self, input_dim: Tuple[int, int, int] = (28, 28, 1), config: SSVAEConfig | None = None):
         super().__init__(input_dim=input_dim[:2], config=config)
 
 
 BASE_DIR = Path(__file__).resolve().parents[1]
-PROGRESS_DIR = BASE_DIR / "models" / "progress"
+PROGRESS_DIR = BASE_DIR / "artifacts" / "progress"
 PROGRESS_PLOT_PATH = PROGRESS_DIR / "ssvae_loss_plot.png"
 
 try:  # optional plotting

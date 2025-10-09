@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import Tuple
 
 from configs.base import SSVAEConfig
-from models.classifier import Classifier
-from models.decoders import DenseDecoder
-from models.encoders import DenseEncoder
+from .classifier import Classifier
+from .decoders import DenseDecoder
+from .encoders import DenseEncoder
 
 
 def _resolve_input_hw(config: SSVAEConfig, input_hw: Tuple[int, int] | None) -> Tuple[int, int]:
@@ -24,7 +24,6 @@ def _resolve_encoder_hidden_dims(config: SSVAEConfig, input_hw: Tuple[int, int])
 
 
 def build_encoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = None) -> DenseEncoder:
-    """Return an encoder module according to ``config``."""
     resolved_hw = _resolve_input_hw(config, input_hw)
     hidden_dims = _resolve_encoder_hidden_dims(config, resolved_hw)
     if config.encoder_type == "dense":
@@ -35,7 +34,6 @@ def build_encoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = Non
 
 
 def build_decoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = None) -> DenseDecoder:
-    """Return a decoder module according to ``config``."""
     resolved_hw = _resolve_input_hw(config, input_hw)
     hidden_dims = _resolve_encoder_hidden_dims(config, resolved_hw)
     decoder_hidden_dims = tuple(reversed(hidden_dims)) or (config.latent_dim,)
@@ -47,7 +45,6 @@ def build_decoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = Non
 
 
 def build_classifier(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = None) -> Classifier:
-    """Return a classifier module according to ``config``."""
     if config.classifier_type == "dense":
         resolved_hw = _resolve_input_hw(config, input_hw)
         hidden_dims = _resolve_encoder_hidden_dims(config, resolved_hw)
@@ -59,18 +56,9 @@ def build_classifier(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = 
     raise ValueError(f"Unknown classifier type: {config.classifier_type}")
 
 
-def build_ssvae_network(config: SSVAEConfig, *, input_hw: Tuple[int, int]) -> "SSVAENetwork":
-    """Construct an ``SSVAENetwork`` wired according to ``config``."""
+def get_architecture_dims(config: SSVAEConfig, *, input_hw: Tuple[int, int]) -> Tuple[Tuple[int, ...], Tuple[int, ...], Tuple[int, ...]]:
     encoder = build_encoder(config, input_hw=input_hw)
     decoder = build_decoder(config, input_hw=input_hw)
     classifier = build_classifier(config, input_hw=input_hw)
+    return encoder.hidden_dims, decoder.hidden_dims, classifier.hidden_dims
 
-    from src_tf.vae_model_jax import SSVAENetwork  # Deferred to avoid circular import
-
-    return SSVAENetwork(
-        encoder_hidden_dims=encoder.hidden_dims,
-        decoder_hidden_dims=decoder.hidden_dims,
-        classifier_hidden_dims=classifier.hidden_dims,
-        latent_dim=config.latent_dim,
-        output_hw=input_hw,
-    )
