@@ -8,8 +8,8 @@ import numpy as np
 
 from configs.base import SSVAEConfig
 from model_components.classifier import Classifier
-from model_components.decoders import DenseDecoder as Decoder
-from model_components.encoders import DenseEncoder as Encoder
+from model_components.decoders import ConvDecoder, DenseDecoder
+from model_components.encoders import ConvEncoder, DenseEncoder
 from model_components.factory import get_architecture_dims
 from training.losses import compute_loss_and_metrics
 from training.train_state import SSVAETrainState
@@ -46,6 +46,9 @@ class SSVAENetwork(nn.Module):
     classifier_hidden_dims: Tuple[int, ...]
     latent_dim: int
     output_hw: Tuple[int, int]
+    encoder_type: str
+    decoder_type: str
+    classifier_type: str
 
     @nn.compact
     def __call__(
@@ -54,9 +57,25 @@ class SSVAENetwork(nn.Module):
         *,
         training: bool,
     ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-        encoder = Encoder(self.encoder_hidden_dims, self.latent_dim)
-        decoder = Decoder(self.decoder_hidden_dims, self.output_hw)
-        classifier = Classifier(self.classifier_hidden_dims)
+        if self.encoder_type == "dense":
+            encoder = DenseEncoder(hidden_dims=self.encoder_hidden_dims, latent_dim=self.latent_dim)
+        elif self.encoder_type == "conv":
+            encoder = ConvEncoder(latent_dim=self.latent_dim)
+        else:
+            raise ValueError(f"Unsupported encoder_type: {self.encoder_type}")
+
+        if self.decoder_type == "dense":
+            decoder = DenseDecoder(hidden_dims=self.decoder_hidden_dims, output_hw=self.output_hw)
+        elif self.decoder_type == "conv":
+            decoder = ConvDecoder(latent_dim=self.latent_dim, output_hw=self.output_hw)
+        else:
+            raise ValueError(f"Unsupported decoder_type: {self.decoder_type}")
+
+        if self.classifier_type == "dense":
+            classifier = Classifier(self.classifier_hidden_dims)
+        else:
+            raise ValueError(f"Unsupported classifier_type: {self.classifier_type}")
+
         z_mean, z_log, z = encoder(x, training=training)
         recon = decoder(z)
         logits = classifier(z)
@@ -91,6 +110,9 @@ class SSVAE:
             classifier_hidden_dims=clf_dims,
             latent_dim=self.latent_dim,
             output_hw=self._out_hw,
+            encoder_type=self.config.encoder_type,
+            decoder_type=self.config.decoder_type,
+            classifier_type=self.config.classifier_type,
         )
         self._rng = random.PRNGKey(self.config.random_seed)
         params_key, sample_key, self._rng = random.split(self._rng, 3)
