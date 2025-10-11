@@ -30,23 +30,6 @@ Programmatic usage
   vae.fit(x, labels, weights_path)
 """
 
-ARCHITECTURE_DEFAULTS = {
-    "dense": dict(
-        batch_size=2048,
-        learning_rate=1e-3,
-        recon_weight=1000.0,
-        label_weight=1000.0,
-        xla_flags=None,
-    ),
-    "conv": dict(
-        batch_size=512,
-        learning_rate=5e-4,
-        recon_weight=350.0,
-        label_weight=500.0,
-        xla_flags="--xla_gpu_strict_conv_algorithm_picker=false",
-    ),
-}
-
 INFORMATIVE_HPARAMETERS = (
     "encoder_type",
     "decoder_type",
