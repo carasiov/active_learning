@@ -55,6 +55,63 @@ pip install -r requirements.txt
 
 ---
 
+Development Setup
+-----------------
+
+### Option 1: Using Devcontainer (Recommended)
+
+The project includes a devcontainer configuration for reproducible GPU-accelerated development.
+
+**Prerequisites:**
+- VS Code with "Remote - SSH" and "Dev Containers" extensions
+- Access to a machine with Docker and NVIDIA GPUs (e.g., the cluster)
+
+**Setup:**
+
+1. Connect to cluster via VS Code Remote SSH
+2. Open project folder
+3. Click "Reopen in Container" when prompted
+4. Wait for initial build (~5-10 minutes first time)
+5. Verify GPU: `python -c "import jax; print(jax.devices())"`
+
+See `.devcontainer/README.md` for detailed instructions and troubleshooting.
+
+**Benefits:**
+- Automatic dependency installation via Poetry
+- GPU access configured out of the box
+- Consistent environment across team members
+- Isolated from system Python
+
+### Option 2: Manual Setup with Poetry
+
+If you prefer not to use devcontainers:
+
+```bash
+# Install Poetry (if not already installed)
+curl -sSL https://install.python-poetry.org | python3 -
+
+# Install dependencies
+poetry install
+
+# For GPU support, ensure you have CUDA 12 installed
+# JAX will automatically detect GPU if available
+
+# Run code
+poetry run python scripts/train.py
+```
+
+### Option 3: Legacy (requirements.txt)
+
+**Note:** This is deprecated. Use Poetry for new setups.
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+---
+
 Configuration
 -------------
 
@@ -214,4 +271,3 @@ Suggested next steps:
 - Integrate the interactive trainer into a UI (Streamlit/Panel) for rapid human-in-the-loop labeling.
 - Add automated tests for loss functions, trainer loops, and component shapes.
 - Migrate legacy `.h5` weights from `models/` into an archival directory or convert them if needed.
-

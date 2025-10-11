@@ -1,0 +1,38 @@
+{
+	"name": "SSVAE Active Learning (CUDA 12)",
+	"image": "nvidia/cuda:12.1.0-cudnn8-devel-ubuntu22.04",
+	"features": {
+		"ghcr.io/devcontainers/features/python:1": {
+			"version": "3.11"
+		},
+		"ghcr.io/devcontainers/features/common-utils:2": {
+			"installZsh": true,
+			"installOhMyZsh": true,
+			"upgradePackages": true
+		}
+	},
+	"runArgs": [
+		"--gpus=all",
+		"--shm-size=8g"
+	],
+	"containerEnv": {
+		"JAX_PLATFORMS": "cuda"
+	},
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-python.python",
+				"ms-python.vscode-pylance",
+				"ms-toolsai.jupyter",
+				"ms-toolsai.jupyter-keymap",
+				"ms-toolsai.jupyter-renderers"
+			],
+			"settings": {
+				"python.defaultInterpreterPath": "/usr/local/bin/python",
+				"python.terminal.activateEnvironment": true
+			}
+		}
+	},
+	"postCreateCommand": "pip install poetry && poetry config virtualenvs.in-project true && poetry install",
+	"remoteUser": "root"
+}

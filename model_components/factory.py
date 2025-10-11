@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from typing import Tuple
 
+from flax import linen as nn
+
 from configs.base import SSVAEConfig
 from .classifier import Classifier
-from .decoders import DenseDecoder
-from .encoders import DenseEncoder
+from .decoders import ConvDecoder, DenseDecoder
+from .encoders import ConvEncoder, DenseEncoder
 
 
 def _resolve_input_hw(config: SSVAEConfig, input_hw: Tuple[int, int] | None) -> Tuple[int, int]:
@@ -23,24 +25,24 @@ def _resolve_encoder_hidden_dims(config: SSVAEConfig, input_hw: Tuple[int, int])
     return (flat,)
 
 
-def build_encoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = None) -> DenseEncoder:
+def build_encoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = None) -> nn.Module:
     resolved_hw = _resolve_input_hw(config, input_hw)
-    hidden_dims = _resolve_encoder_hidden_dims(config, resolved_hw)
     if config.encoder_type == "dense":
+        hidden_dims = _resolve_encoder_hidden_dims(config, resolved_hw)
         return DenseEncoder(hidden_dims=hidden_dims, latent_dim=config.latent_dim)
     if config.encoder_type == "conv":
-        raise NotImplementedError("ConvEncoder not yet implemented")
+        return ConvEncoder(latent_dim=config.latent_dim)
     raise ValueError(f"Unknown encoder type: {config.encoder_type}")
 
 
-def build_decoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = None) -> DenseDecoder:
+def build_decoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = None) -> nn.Module:
     resolved_hw = _resolve_input_hw(config, input_hw)
-    hidden_dims = _resolve_encoder_hidden_dims(config, resolved_hw)
-    decoder_hidden_dims = tuple(reversed(hidden_dims)) or (config.latent_dim,)
     if config.decoder_type == "dense":
+        hidden_dims = _resolve_encoder_hidden_dims(config, resolved_hw)
+        decoder_hidden_dims = tuple(reversed(hidden_dims)) or (config.latent_dim,)
         return DenseDecoder(hidden_dims=decoder_hidden_dims, output_hw=resolved_hw)
     if config.decoder_type == "conv":
-        raise NotImplementedError("ConvDecoder not yet implemented")
+        return ConvDecoder(latent_dim=config.latent_dim, output_hw=resolved_hw)
     raise ValueError(f"Unknown decoder type: {config.decoder_type}")
 
 
@@ -60,5 +62,7 @@ def get_architecture_dims(config: SSVAEConfig, *, input_hw: Tuple[int, int]) -> 
     encoder = build_encoder(config, input_hw=input_hw)
     decoder = build_decoder(config, input_hw=input_hw)
     classifier = build_classifier(config, input_hw=input_hw)
-    return encoder.hidden_dims, decoder.hidden_dims, classifier.hidden_dims
-
+    encoder_dims = getattr(encoder, "hidden_dims", ())
+    decoder_dims = getattr(decoder, "hidden_dims", ())
+    classifier_dims = getattr(classifier, "hidden_dims", ())
+    return encoder_dims, decoder_dims, classifier_dims

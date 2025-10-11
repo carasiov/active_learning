@@ -55,7 +55,7 @@ class Trainer:
         export_history_fn: ExportHistoryFn,
         num_epochs: int | None = None,
         patience: int | None = None,
-    ) -> Tuple[SSVAETrainState, jax.Array, HistoryDict]:
+    ) -> Tuple[SSVAETrainState, jax.Array, HistoryDict]:  # returns (state, updated_shuffle_rng, history)
         x_np = np.asarray(data, dtype=np.float32)
         y_np = np.asarray(labels, dtype=np.float32).reshape((-1,))
 
@@ -87,6 +87,31 @@ class Trainer:
         batch_size = self.config.batch_size
         max_epochs = num_epochs if num_epochs is not None else self.config.max_epochs
         used_patience = patience if patience is not None else self.config.patience
+
+        eval_batch_size = min(batch_size, 1024)
+
+        def _run_eval(params, ex, ey):
+            """Evaluate metrics in smaller chunks to avoid large temporary buffers on GPU."""
+            total = ex.shape[0]
+            if total == 0:
+                return eval_metrics_fn(params, ex, ey)
+
+            metrics_sum: Dict[str, jnp.ndarray] | None = None
+            processed = 0
+            for start in range(0, total, eval_batch_size):
+                end = min(start + eval_batch_size, total)
+                bx = jnp.asarray(ex[start:end])
+                by = jnp.asarray(ey[start:end])
+                batch_metrics = eval_metrics_fn(params, bx, by)
+                weight = end - start
+                if metrics_sum is None:
+                    metrics_sum = {k: batch_metrics[k] * weight for k in batch_metrics}
+                else:
+                    for key in metrics_sum:
+                        metrics_sum[key] = metrics_sum[key] + batch_metrics[key] * weight
+                processed += weight
+
+            return {k: metrics_sum[k] / processed for k in metrics_sum}
 
         if max_epochs <= 0:
             state = state.replace(rng=state_rng)
@@ -121,11 +146,11 @@ class Trainer:
                         state, _ = train_step_fn(state, bx, by, batch_key)
 
             if train_size > 0:
-                train_metrics = eval_metrics_fn(state.params, x_train, y_train)
+                train_metrics = _run_eval(state.params, x_train, y_train)
             else:
-                train_metrics = eval_metrics_fn(state.params, x_val, y_val)
+                train_metrics = _run_eval(state.params, x_val, y_val)
 
-            val_metrics = eval_metrics_fn(state.params, x_val, y_val) if val_size > 0 else train_metrics
+            val_metrics = _run_eval(state.params, x_val, y_val) if val_size > 0 else train_metrics
 
             for key in ("loss", "reconstruction_loss", "kl_loss", "classification_loss", "contrastive_loss"):
                 history[key].append(float(train_metrics[key]))
@@ -148,4 +173,3 @@ class Trainer:
         state = state.replace(rng=state_rng)
         export_history_fn(history)
         return state, shuffle_rng, history
-
