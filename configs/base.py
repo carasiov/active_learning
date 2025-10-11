@@ -30,6 +30,23 @@ Programmatic usage
   vae.fit(x, labels, weights_path)
 """
 
+ARCHITECTURE_DEFAULTS = {
+    "dense": dict(
+        batch_size=2048,
+        learning_rate=1e-3,
+        recon_weight=1000.0,
+        label_weight=1000.0,
+        xla_flags=None,
+    ),
+    "conv": dict(
+        batch_size=512,
+        learning_rate=5e-4,
+        recon_weight=350.0,
+        label_weight=500.0,
+        xla_flags="--xla_gpu_strict_conv_algorithm_picker=false",
+    ),
+}
+
 
 @dataclass
 class SSVAEConfig:
@@ -58,7 +75,7 @@ class SSVAEConfig:
     """
 
     latent_dim: int = 2
-    hidden_dims: Tuple[int, ...] = (128, 64, 32, 16)
+    hidden_dims: Tuple[int, ...] = (256, 128, 64)
     recon_weight: float = 1000.0
     kl_weight: float = 0.1
     learning_rate: float = 1e-3
@@ -70,9 +87,17 @@ class SSVAEConfig:
     grad_clip_norm: float | None = 1.0
     weight_decay: float = 0.0
     label_weight: float = 1000.0
+    xla_flags: str | None = None
     input_hw: Tuple[int, int] | None = None
     encoder_type: str = "dense"
     decoder_type: str = "dense"
     classifier_type: str = "dense"
     use_contrastive: bool = False
     contrastive_weight: float = 0.0
+
+
+def get_architecture_defaults(encoder_type: str) -> dict:
+    try:
+        return ARCHITECTURE_DEFAULTS[encoder_type]
+    except KeyError as exc:
+        raise ValueError(f"No defaults registered for encoder_type '{encoder_type}'") from exc

@@ -8,7 +8,8 @@ packages = [{include = "ssvae"}, {include = "configs"}, {include = "model_compon
 
 [tool.poetry.dependencies]
 python = "^3.11"
-jax = {extras = ["cuda12"], version = ">=0.4.20,<0.4.34"}
+jax = "0.4.27"
+jaxlib = {url = "https://storage.googleapis.com/jax-releases/cuda12/jaxlib-0.4.27+cuda12.cudnn89-cp311-cp311-manylinux2014_x86_64.whl"}
 flax = "^0.8.0"
 optax = "^0.1.9"
 numpy = "^1.26.0"

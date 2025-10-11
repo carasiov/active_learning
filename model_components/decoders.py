@@ -34,10 +34,12 @@ class ConvDecoder(nn.Module):
         if self.output_hw != (28, 28):
             raise ValueError(f"ConvDecoder expects output_hw of (28, 28) but received {self.output_hw!r}")
 
-        x = nn.Dense(7 * 7 * 64, name="projection")(z)
-        x = x.reshape((-1, 7, 7, 64))
-        x = nn.ConvTranspose(features=32, kernel_size=(3, 3), strides=(2, 2), padding="SAME", name="deconv_0")(x)
+        x = nn.Dense(7 * 7 * 128, name="projection")(z)
+        x = x.reshape((-1, 7, 7, 128))
+        x = nn.ConvTranspose(features=64, kernel_size=(3, 3), strides=(2, 2), padding="SAME", name="deconv_0")(x)
         x = nn.leaky_relu(x, negative_slope=0.2)
-        x = nn.ConvTranspose(features=1, kernel_size=(3, 3), strides=(2, 2), padding="SAME", name="deconv_1")(x)
+        x = nn.ConvTranspose(features=32, kernel_size=(3, 3), strides=(2, 2), padding="SAME", name="deconv_1")(x)
+        x = nn.leaky_relu(x, negative_slope=0.2)
+        x = nn.Conv(features=1, kernel_size=(3, 3), strides=(1, 1), padding="SAME", name="recon")(x)
         x = x.squeeze(axis=-1)
         return x

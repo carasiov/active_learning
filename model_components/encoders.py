@@ -43,6 +43,8 @@ class ConvEncoder(nn.Module):
         x = nn.leaky_relu(x, negative_slope=0.2)
         x = nn.Conv(features=64, kernel_size=(3, 3), strides=(2, 2), padding="SAME", name="conv_1")(x)
         x = nn.leaky_relu(x, negative_slope=0.2)
+        x = nn.Conv(features=128, kernel_size=(3, 3), strides=(1, 1), padding="SAME", name="conv_2")(x)
+        x = nn.leaky_relu(x, negative_slope=0.2)
         x = x.reshape((x.shape[0], -1))
 
         z_mean = nn.Dense(self.latent_dim, name="z_mean")(x)
