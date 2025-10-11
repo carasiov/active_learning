@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Dict, Tuple
 
 """Base configuration for the SSVAE models.
 
@@ -47,6 +47,20 @@ ARCHITECTURE_DEFAULTS = {
     ),
 }
 
+INFORMATIVE_HPARAMETERS = (
+    "encoder_type",
+    "decoder_type",
+    "classifier_type",
+    "latent_dim",
+    "hidden_dims",
+    "learning_rate",
+    "batch_size",
+    "recon_weight",
+    "kl_weight",
+    "weight_decay",
+    "use_contrastive",
+    "contrastive_weight",
+)
 
 @dataclass
 class SSVAEConfig:
@@ -94,6 +108,9 @@ class SSVAEConfig:
     classifier_type: str = "dense"
     use_contrastive: bool = False
     contrastive_weight: float = 0.0
+
+    def get_informative_hyperparameters(self) -> Dict[str, object]:
+        return {name: getattr(self, name) for name in INFORMATIVE_HPARAMETERS}
 
 
 def get_architecture_defaults(encoder_type: str) -> dict:

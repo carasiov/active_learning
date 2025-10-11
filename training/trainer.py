@@ -40,6 +40,16 @@ class Trainer:
             "val_contrastive_loss": [],
         }
 
+    def _log_session_hyperparameters(self, *, max_epochs: int, patience: int) -> None:
+        summary = self.config.get_informative_hyperparameters()
+        summary["max_epochs"] = max_epochs
+        summary["patience"] = patience
+        lines = ["Starting training session with hyperparameters:"]
+        padding = max(len(name) for name in summary)
+        for key, value in summary.items():
+            lines.append(f"  - {key.ljust(padding)} : {value}")
+        print("\n".join(lines), flush=True)
+
     def train(
         self,
         state: SSVAETrainState,
@@ -87,6 +97,7 @@ class Trainer:
         batch_size = self.config.batch_size
         max_epochs = num_epochs if num_epochs is not None else self.config.max_epochs
         used_patience = patience if patience is not None else self.config.patience
+        self._log_session_hyperparameters(max_epochs=max_epochs, patience=used_patience)
 
         eval_batch_size = min(batch_size, 1024)
 

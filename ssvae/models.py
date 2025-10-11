@@ -230,14 +230,37 @@ class SSVAE:
         val_metrics: Dict[str, jnp.ndarray],
         history: Dict[str, list[float]],
     ) -> None:
-        print(
-            f"Epoch {epoch+1:03d} "
-            f"loss={float(train_metrics['loss']):.4f} val_loss={float(val_metrics['loss']):.4f} "
-            f"rec={float(train_metrics['reconstruction_loss']):.4f} "
-            f"kl={float(train_metrics['kl_loss']):.4f} "
-            f"cls={float(train_metrics['classification_loss']):.4f}",
-            flush=True,
-        )
+        metric_columns = [
+            ("Train.loss", train_metrics, "loss"),
+            ("Val.loss", val_metrics, "loss"),
+            ("Train.rec", train_metrics, "reconstruction_loss"),
+            ("Val.rec", val_metrics, "reconstruction_loss"),
+            ("Train.kl", train_metrics, "kl_loss"),
+            ("Val.kl", val_metrics, "kl_loss"),
+            ("Train.cls", train_metrics, "classification_loss"),
+            ("Val.cls", val_metrics, "classification_loss"),
+        ]
+        if "contrastive_loss" in train_metrics and "contrastive_loss" in val_metrics:
+            metric_columns.extend(
+                [
+                    ("Train.con", train_metrics, "contrastive_loss"),
+                    ("Val.con", val_metrics, "contrastive_loss"),
+                ]
+            )
+
+        header_parts = [f"{'Epoch':>5}"]
+        row_parts = [f"{epoch+1:>5d}"]
+        for label, source, key in metric_columns:
+            header_parts.append(f"{label:>12}")
+            row_parts.append(f"{float(source[key]):>12.4f}")
+
+        if epoch == 0:
+            header_line = " | ".join(header_parts)
+            divider = "-" * len(header_line)
+            print(header_line, flush=True)
+            print(divider, flush=True)
+
+        print(" | ".join(row_parts), flush=True)
 
     def load_model_weights(self, weights_path: str):
         self.weights_path = str(weights_path)
