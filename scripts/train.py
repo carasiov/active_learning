@@ -32,6 +32,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--recon-weight", type=float, default=None, help="Override reconstruction loss weight")
     parser.add_argument("--kl-weight", type=float, default=None, help="Override KL loss weight")
     parser.add_argument("--label-weight", type=float, default=None, help="Override classification loss weight")
+    parser.add_argument("--weight-decay", type=float, default=None, help="Override weight decay")
+    parser.add_argument("--dropout-rate", type=float, default=None, help="Override dropout rate in classifier")
+    parser.add_argument(
+        "--monitor-metric",
+        type=str,
+        default=None,
+        choices=["auto", "loss", "classification_loss"],
+        help="Metric to monitor for early stopping",
+    )
     parser.add_argument("--xla-flags", type=str, default=None, help="Override XLA_FLAGS value")
     return parser.parse_args()
 
@@ -73,6 +82,12 @@ def build_config(args: argparse.Namespace) -> SSVAEConfig:
         config_kwargs["kl_weight"] = args.kl_weight
     if args.label_weight is not None:
         config_kwargs["label_weight"] = args.label_weight
+    if args.weight_decay is not None:
+        config_kwargs["weight_decay"] = args.weight_decay
+    if args.dropout_rate is not None:
+        config_kwargs["dropout_rate"] = args.dropout_rate
+    if args.monitor_metric is not None:
+        config_kwargs["monitor_metric"] = args.monitor_metric
     if args.xla_flags is not None:
         config_kwargs["xla_flags"] = args.xla_flags
     return SSVAEConfig(**config_kwargs)

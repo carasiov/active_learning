@@ -41,6 +41,8 @@ INFORMATIVE_HPARAMETERS = (
     "recon_weight",
     "kl_weight",
     "weight_decay",
+    "dropout_rate",
+    "monitor_metric",
     "use_contrastive",
     "contrastive_weight",
 )
@@ -62,11 +64,13 @@ class SSVAEConfig:
         random_seed: Base random seed used for parameter initialization and shuffling.
         grad_clip_norm: Global norm threshold for gradient clipping; disabled when ``None``.
         weight_decay: L2-style weight decay applied through the optimizer.
+        dropout_rate: Dropout applied inside the classifier network.
         label_weight: (Unused today) scaling factor for the classification loss term.
         input_hw: Optional (height, width) tuple for decoder output; defaults to the model input.
         encoder_type: Identifier for the encoder family ("dense" or "conv").
         decoder_type: Identifier for the decoder family ("dense" or "conv").
         classifier_type: Identifier for the classifier family ("dense").
+        monitor_metric: Validation metric name used for early stopping.
         use_contrastive: Whether to include the contrastive loss term.
         contrastive_weight: Scaling factor for the contrastive loss when enabled.
     """
@@ -75,20 +79,22 @@ class SSVAEConfig:
     hidden_dims: Tuple[int, ...] = (256, 128, 64)
     recon_weight: float = 1000.0
     kl_weight: float = 0.1
-    learning_rate: float = 1e-3
-    batch_size: int = 4 * 1024
-    max_epochs: int = 200
-    patience: int = 20
+    learning_rate: float = 3e-4
+    batch_size: int = 1024
+    max_epochs: int = 50
+    patience: int = 8
     val_split: float = 0.1
     random_seed: int = 42
     grad_clip_norm: float | None = 1.0
-    weight_decay: float = 0.0
-    label_weight: float = 1000.0
+    weight_decay: float = 1e-4
+    dropout_rate: float = 0.0
+    label_weight: float = 1.0
     xla_flags: str | None = None
     input_hw: Tuple[int, int] | None = None
     encoder_type: str = "dense"
     decoder_type: str = "dense"
     classifier_type: str = "dense"
+    monitor_metric: str = "auto"
     use_contrastive: bool = False
     contrastive_weight: float = 0.0
 
