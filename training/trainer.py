@@ -55,7 +55,7 @@ class Trainer:
         export_history_fn: ExportHistoryFn,
         num_epochs: int | None = None,
         patience: int | None = None,
-    ) -> Tuple[SSVAETrainState, jax.Array, HistoryDict]:
+    ) -> Tuple[SSVAETrainState, jax.Array, HistoryDict]:  # returns (state, updated_shuffle_rng, history)
         x_np = np.asarray(data, dtype=np.float32)
         y_np = np.asarray(labels, dtype=np.float32).reshape((-1,))
 

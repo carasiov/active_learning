@@ -48,3 +48,7 @@ AGENTS.md
 
 ROOT
 artifacts
+
+# Devcontainer
+.devcontainer/.env
+.devcontainer/*.log
