@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
-"""Quick test that convolutional encoder/decoder work."""
+"""Quick test that convolutional encoder/decoder work.
+
+For local CPU-only runs, force JAX to use the CPU backend even if
+CUDA plugins are installed via Poetry extras.
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import sys
 
 import numpy as np
 from sklearn.datasets import fetch_openml
 from sklearn.preprocessing import MinMaxScaler
 
+os.environ.setdefault("JAX_PLATFORMS", "cpu")
 BASE_DIR = Path(__file__).resolve().parents[1]
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
