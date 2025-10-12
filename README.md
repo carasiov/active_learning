@@ -6,7 +6,7 @@ This repository delivers a modular Semi-Supervised Variational Autoencoder (SSVA
 Highlights
 ---------
 - **Canonical JAX/Flax implementation:** `src/ssvae/` exposes the public API.
-- **Composable architecture:** encoder/decoder/classifier components live under `src/model_components/`, enabling easy swaps via config.
+- **Composable architecture:** encoder/decoder/classifier components live under `src/ssvae/components/`, enabling easy swaps via config.
 - **Modular observability:** `src/callbacks/` provides training callbacks for console logging, CSV export, and loss plotting.
 - **Pure training loop:** `src/training/` houses loss functions, the trainer, train state wrapper, and an interactive trainer for incremental labeling sessions.
 - **Use-case bundles:** CLI entry points under `use_cases/scripts/` feed generated outputs into `artifacts/` (checkpoints, run histories, showcase figures).
@@ -22,11 +22,12 @@ active_learning/
 ├── artifacts/              # Generated outputs (checkpoints, per-run history, legacy TF weights)
 ├── data/                   # Labels.csv and generated inference outputs
 ├── docs/                   # Structure documentation, cleanup notes
-├── src/                    # Installable packages (configs, ssvae, model_components, training)
+├── src/                    # Installable packages (ssvae, callbacks, training)
 │   ├── callbacks/
-│   ├── configs/
-│   ├── model_components/
 │   ├── ssvae/
+│   │   ├── components/
+│   │   ├── config.py
+│   │   └── models.py
 │   └── training/
 └─── use_cases/              # Reproducible workflows built on the library
     ├── experiments/        # Experiment runners and their artifacts
@@ -84,7 +85,7 @@ poetry run python use_cases/scripts/train.py
 Configuration
 -------------
 
-`src/configs/base.py` defines `SSVAEConfig`, covering:
+`src/ssvae/config.py` defines `SSVAEConfig`, covering:
 
 - Architecture: `latent_dim`, `hidden_dims`, `encoder_type`, `decoder_type`, `classifier_type`.
 - Loss weights: `recon_weight`, `kl_weight`, `label_weight`, optional `use_contrastive`, `contrastive_weight`.
@@ -93,8 +94,7 @@ Configuration
 Example:
 
 ```python
-from configs.base import SSVAEConfig
-from ssvae import SSVAE
+from ssvae import SSVAE, SSVAEConfig
 
 config = SSVAEConfig(
     latent_dim=2,
@@ -106,6 +106,7 @@ vae = SSVAE(input_dim=(28, 28), config=config)
 ```
 
 The refactored training loop honors `patience` and checkpoint paths exactly once per improvement, ensuring weight formats stay consistent.
+
 
 ---
 

@@ -13,7 +13,7 @@ if str(SRC_DIR) not in sys.path:
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from configs.base import SSVAEConfig
+from ssvae.config import SSVAEConfig
 from data.mnist import load_train_images_for_ssvae
 
 DEFAULT_LABELS = ROOT_DIR / "data" / "mnist" / "labels.csv"

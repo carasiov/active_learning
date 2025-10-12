@@ -7,7 +7,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from configs.base import SSVAEConfig
+from ssvae.config import SSVAEConfig
 from callbacks import TrainingCallback
 from training.train_state import SSVAETrainState
 

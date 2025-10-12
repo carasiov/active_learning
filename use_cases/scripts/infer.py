@@ -13,7 +13,7 @@ import numpy as np
 import sklearn.manifold
 from data.mnist import load_mnist_splits
 
-from ssvae import SSVAE, SSCVAE
+from ssvae import SSVAE
 
 DEFAULT_WEIGHTS = ROOT_DIR / "artifacts" / "checkpoints" / "ssvae.ckpt"
 DEFAULT_OUTPUT = ROOT_DIR / "data" / "output_latent.npz"

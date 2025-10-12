@@ -1,5 +1,6 @@
 """Canonical package for the JAX SSVAE implementation."""
 
-from .models import SSVAE, SSCVAE
+from .config import SSVAEConfig
+from .models import SSVAE
 
-__all__ = ["SSVAE", "SSCVAE"]
+__all__ = ["SSVAE", "SSVAEConfig"]

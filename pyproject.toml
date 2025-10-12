@@ -6,8 +6,6 @@ authors = ["Andreas Carasiov"]
 readme = "README.md"
 packages = [
     { include = "ssvae", from = "src" },
-    { include = "configs", from = "src" },
-    { include = "model_components", from = "src" },
     { include = "callbacks", from = "src" },
     { include = "training", from = "src" },
 ]

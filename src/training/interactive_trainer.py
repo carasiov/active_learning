@@ -1,17 +1,14 @@
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Sequence, Tuple, TYPE_CHECKING
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 
-from configs.base import SSVAEConfig
+from ssvae.config import SSVAEConfig
 from callbacks import TrainingCallback
 from training.trainer import Trainer
-
-if TYPE_CHECKING:  # pragma: no cover
-    from src_tf.vae_model_jax import SSVAE
 
 HistoryDict = Dict[str, List[float]]
 
@@ -21,7 +18,7 @@ class InteractiveTrainer:
 
     def __init__(
         self,
-        model: "SSVAE",
+        model,
         *,
         export_history: bool = False,
         callbacks: Sequence[TrainingCallback] | None = None,

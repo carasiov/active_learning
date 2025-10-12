@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 import optax
 
-from configs.base import SSVAEConfig
+from ssvae.config import SSVAEConfig
 
 def reconstruction_loss(x: jnp.ndarray, recon: jnp.ndarray, weight: float) -> jnp.ndarray:
     """Return the reconstruction loss (MSE) scaled by ``weight``."""

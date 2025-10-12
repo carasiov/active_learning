@@ -4,7 +4,7 @@ from typing import Tuple
 
 from flax import linen as nn
 
-from configs.base import SSVAEConfig
+from ssvae.config import SSVAEConfig
 from .classifier import Classifier
 from .decoders import ConvDecoder, DenseDecoder
 from .encoders import ConvEncoder, DenseEncoder

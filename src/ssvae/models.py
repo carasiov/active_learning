@@ -6,11 +6,8 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 
-from configs.base import SSVAEConfig
-from model_components.classifier import Classifier
-from model_components.decoders import ConvDecoder, DenseDecoder
-from model_components.encoders import ConvEncoder, DenseEncoder
-from model_components.factory import get_architecture_dims
+from ssvae.config import SSVAEConfig
+from ssvae.components.factory import build_classifier, build_decoder, build_encoder, get_architecture_dims
 from callbacks import CSVExporter, ConsoleLogger, LossCurvePlotter, TrainingCallback
 from training.losses import compute_loss_and_metrics
 from training.train_state import SSVAETrainState
@@ -51,6 +48,8 @@ def _make_weight_decay_mask(params: Dict[str, Dict[str, jnp.ndarray]]):
 
 
 class SSVAENetwork(nn.Module):
+    config: SSVAEConfig
+    input_hw: Tuple[int, int]
     encoder_hidden_dims: Tuple[int, ...]
     decoder_hidden_dims: Tuple[int, ...]
     classifier_hidden_dims: Tuple[int, ...]
@@ -61,39 +60,20 @@ class SSVAENetwork(nn.Module):
     decoder_type: str
     classifier_type: str
 
-    @nn.compact
+    def setup(self):
+        self.encoder = build_encoder(self.config, input_hw=self.input_hw)
+        self.decoder = build_decoder(self.config, input_hw=self.input_hw)
+        self.classifier = build_classifier(self.config, input_hw=self.input_hw)
+
     def __call__(
         self,
         x: jnp.ndarray,
         *,
         training: bool,
     ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-        if self.encoder_type == "dense":
-            encoder = DenseEncoder(hidden_dims=self.encoder_hidden_dims, latent_dim=self.latent_dim)
-        elif self.encoder_type == "conv":
-            encoder = ConvEncoder(latent_dim=self.latent_dim)
-        else:
-            raise ValueError(f"Unsupported encoder_type: {self.encoder_type}")
-
-        if self.decoder_type == "dense":
-            decoder = DenseDecoder(hidden_dims=self.decoder_hidden_dims, output_hw=self.output_hw)
-        elif self.decoder_type == "conv":
-            decoder = ConvDecoder(latent_dim=self.latent_dim, output_hw=self.output_hw)
-        else:
-            raise ValueError(f"Unsupported decoder_type: {self.decoder_type}")
-
-        if self.classifier_type == "dense":
-            classifier = Classifier(
-                hidden_dims=self.classifier_hidden_dims,
-                num_classes=10,
-                dropout_rate=self.classifier_dropout_rate,
-            )
-        else:
-            raise ValueError(f"Unsupported classifier_type: {self.classifier_type}")
-
-        z_mean, z_log, z = encoder(x, training=training)
-        recon = decoder(z)
-        logits = classifier(z, training=training)
+        z_mean, z_log, z = self.encoder(x, training=training)
+        recon = self.decoder(z)
+        logits = self.classifier(z, training=training)
         return z_mean, z_log, z, recon, logits
 
 
@@ -120,6 +100,8 @@ class SSVAE:
 
         enc_dims, dec_dims, clf_dims = get_architecture_dims(self.config, input_hw=self._out_hw)
         self.model = SSVAENetwork(
+            config=self.config,
+            input_hw=self._out_hw,
             encoder_hidden_dims=enc_dims,
             decoder_hidden_dims=dec_dims,
             classifier_hidden_dims=clf_dims,
@@ -334,11 +316,6 @@ class SSVAE:
         )
         self._rng = self.state.rng
         return history
-
-
-class SSCVAE(SSVAE):
-    def __init__(self, input_dim: Tuple[int, int, int] = (28, 28, 1), config: SSVAEConfig | None = None):
-        super().__init__(input_dim=input_dim[:2], config=config)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
