@@ -2,7 +2,7 @@ from __future__ import annotations
 """SSVAE models module (JAX)."""
 
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 
@@ -11,6 +11,7 @@ from model_components.classifier import Classifier
 from model_components.decoders import ConvDecoder, DenseDecoder
 from model_components.encoders import ConvEncoder, DenseEncoder
 from model_components.factory import get_architecture_dims
+from callbacks import CSVExporter, ConsoleLogger, LossCurvePlotter, TrainingCallback
 from training.losses import compute_loss_and_metrics
 from training.train_state import SSVAETrainState
 from training.trainer import Trainer
@@ -248,110 +249,21 @@ class SSVAE:
             step=payload["step"],
         )
 
-    def _log_epoch_metrics(
-        self,
-        epoch: int,
-        train_metrics: Dict[str, jnp.ndarray],
-        val_metrics: Dict[str, jnp.ndarray],
-        history: Dict[str, list[float]],
-    ) -> None:
-        metric_columns = [
-            ("Train.loss", train_metrics, "loss"),
-            ("Val.loss", val_metrics, "loss"),
-            ("Train.rec", train_metrics, "reconstruction_loss"),
-            ("Val.rec", val_metrics, "reconstruction_loss"),
-            ("Train.kl", train_metrics, "kl_loss"),
-            ("Val.kl", val_metrics, "kl_loss"),
-            ("Train.cls", train_metrics, "classification_loss"),
-            ("Val.cls", val_metrics, "classification_loss"),
-        ]
-        if "contrastive_loss" in train_metrics and "contrastive_loss" in val_metrics:
-            metric_columns.extend(
-                [
-                    ("Train.con", train_metrics, "contrastive_loss"),
-                    ("Val.con", val_metrics, "contrastive_loss"),
-                ]
-            )
-
-        header_parts = [f"{'Epoch':>5}"]
-        row_parts = [f"{epoch+1:>5d}"]
-        for label, source, key in metric_columns:
-            header_parts.append(f"{label:>12}")
-            row_parts.append(f"{float(source[key]):>12.4f}")
-
-        if epoch == 0:
-            header_line = " | ".join(header_parts)
-            divider = "-" * len(header_line)
-            print(header_line, flush=True)
-            print(divider, flush=True)
-
-        print(" | ".join(row_parts), flush=True)
-
     def load_model_weights(self, weights_path: str):
         self.weights_path = str(weights_path)
         self._load_weights(self.weights_path)
 
-    def _export_history(self, history: Dict[str, list[float]]):
-        try:
-            base_path = Path(self.weights_path) if self.weights_path else DEFAULT_CHECKPOINT_PATH
-            history_path = base_path.with_name(f"{base_path.stem}_history.csv")
-            plot_path = base_path.with_name(f"{base_path.stem}_loss.png")
-            history_path.parent.mkdir(parents=True, exist_ok=True)
+    def _build_callbacks(self, *, weights_path: str | None, export_history: bool) -> List[TrainingCallback]:
+        callbacks: List[TrainingCallback] = [ConsoleLogger()]
+        if not export_history:
+            return callbacks
 
-            headers = [
-                "epoch",
-                "loss",
-                "val_loss",
-                "reconstruction_loss",
-                "val_reconstruction_loss",
-                "kl_loss",
-                "val_kl_loss",
-                "classification_loss",
-                "val_classification_loss",
-            ]
-            with open(history_path, "w", encoding="utf-8") as f:
-                f.write(",".join(headers) + "\n")
-                epochs = len(history["loss"])
-                for i in range(epochs):
-                    row = [
-                        str(i + 1),
-                        f"{history['loss'][i]:.8f}",
-                        f"{history['val_loss'][i]:.8f}",
-                        f"{history['reconstruction_loss'][i]:.8f}",
-                        f"{history['val_reconstruction_loss'][i]:.8f}",
-                        f"{history['kl_loss'][i]:.8f}",
-                        f"{history['val_kl_loss'][i]:.8f}",
-                        f"{history['classification_loss'][i]:.8f}",
-                        f"{history['val_classification_loss'][i]:.8f}",
-                    ]
-                    f.write(",".join(row) + "\n")
-
-            if _HAS_PLT:
-                fig, axes = plt.subplots(2, 1, figsize=(10, 8))
-                axes[0].plot(history["loss"], label="Training Loss")
-                axes[0].plot(history["val_loss"], label="Validation Loss")
-                axes[0].set_xlabel("Epochs")
-                axes[0].set_ylabel("Loss")
-                axes[0].set_title("Loss and Validation Loss")
-                axes[0].legend()
-                axes[0].grid(True)
-
-                axes[1].plot(history["reconstruction_loss"], label="Reconstruction", color="blue")
-                axes[1].plot(history["val_reconstruction_loss"], label="Val Reconstruction", color="cyan")
-                axes[1].plot(history["kl_loss"], label="KL", color="red")
-                axes[1].plot(history["val_kl_loss"], label="Val KL", color="orange")
-                axes[1].plot(history["classification_loss"], label="Classification", color="green")
-                axes[1].plot(history["val_classification_loss"], label="Val Classification", color="lime")
-                axes[1].set_xlabel("Epochs")
-                axes[1].set_ylabel("Loss")
-                axes[1].set_title("Component Losses")
-                axes[1].legend()
-                axes[1].grid(True)
-                fig.tight_layout()
-                fig.savefig(plot_path)
-                plt.close(fig)
-        except Exception:
-            pass
+        base_path = Path(weights_path) if weights_path else DEFAULT_CHECKPOINT_PATH
+        history_path = base_path.with_name(f"{base_path.stem}_history.csv")
+        plot_path = base_path.with_name(f"{base_path.stem}_loss.png")
+        callbacks.append(CSVExporter(history_path))
+        callbacks.append(LossCurvePlotter(plot_path))
+        return callbacks
 
     def predict(
         self,
@@ -407,6 +319,7 @@ class SSVAE:
 
     def fit(self, data: np.ndarray, labels: np.ndarray, weights_path: str):
         self.weights_path = str(weights_path)
+        callbacks = self._build_callbacks(weights_path=self.weights_path, export_history=True)
         trainer = Trainer(self.config)
         self.state, self._shuffle_rng, history = trainer.train(
             self.state,
@@ -416,9 +329,8 @@ class SSVAE:
             shuffle_rng=self._shuffle_rng,
             train_step_fn=self._train_step,
             eval_metrics_fn=self._eval_metrics,
-            log_fn=self._log_epoch_metrics,
             save_fn=self._save_weights,
-            export_history_fn=self._export_history,
+            callbacks=callbacks,
         )
         self._rng = self.state.rng
         return history
@@ -431,9 +343,3 @@ class SSCVAE(SSVAE):
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CHECKPOINT_PATH = REPO_ROOT / "artifacts" / "checkpoints" / "ssvae.ckpt"
-
-try:  # optional plotting
-    import matplotlib.pyplot as plt  # type: ignore
-    _HAS_PLT = True
-except Exception:  # pragma: no cover
-    _HAS_PLT = False

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Dict, List, Optional, Sequence, Tuple, TYPE_CHECKING
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 
 from configs.base import SSVAEConfig
+from callbacks import TrainingCallback
 from training.trainer import Trainer
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -18,11 +19,18 @@ HistoryDict = Dict[str, List[float]]
 class InteractiveTrainer:
     """Stateful trainer for incremental/interactive SSVAE sessions."""
 
-    def __init__(self, model: "SSVAE", *, export_history: bool = False):
+    def __init__(
+        self,
+        model: "SSVAE",
+        *,
+        export_history: bool = False,
+        callbacks: Sequence[TrainingCallback] | None = None,
+    ):
         self.model = model
         self.config: SSVAEConfig = model.config
         self._trainer = Trainer(self.config)
         self._export_history = export_history
+        self._callbacks = list(callbacks) if callbacks is not None else None
         self._state = model.state
         self._shuffle_rng = model._shuffle_rng
         self._weights_path: Optional[str] = model.weights_path
@@ -45,7 +53,13 @@ class InteractiveTrainer:
         elif self.model.weights_path is not None:
             self._weights_path = self.model.weights_path
 
-        export_fn = self.model._export_history if self._export_history else lambda _: None
+        if self._callbacks is not None:
+            callbacks = self._callbacks
+        else:
+            callbacks = self.model._build_callbacks(
+                weights_path=self._weights_path,
+                export_history=self._export_history,
+            )
 
         self._state, self._shuffle_rng, history = self._trainer.train(
             self._state,
@@ -55,9 +69,8 @@ class InteractiveTrainer:
             shuffle_rng=self._shuffle_rng,
             train_step_fn=self.model._train_step,
             eval_metrics_fn=self.model._eval_metrics,
-            log_fn=self.model._log_epoch_metrics,
             save_fn=self.model._save_weights,
-            export_history_fn=export_fn,
+            callbacks=callbacks,
             num_epochs=num_epochs,
             patience=patience,
         )
@@ -95,4 +108,3 @@ class InteractiveTrainer:
         self._state = self.model.state
         self._shuffle_rng = self.model._shuffle_rng
         self._weights_path = path
-

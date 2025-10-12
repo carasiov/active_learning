@@ -1,22 +1,21 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable, Dict, Tuple
+from typing import Callable, Dict, Sequence, Tuple
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 
 from configs.base import SSVAEConfig
+from callbacks import TrainingCallback
 from training.train_state import SSVAETrainState
 
 MetricsDict = Dict[str, jnp.ndarray]
 HistoryDict = Dict[str, list[float]]
 TrainStepFn = Callable[[SSVAETrainState, jnp.ndarray, jnp.ndarray, jax.Array], Tuple[SSVAETrainState, MetricsDict]]
 EvalMetricsFn = Callable[[Dict[str, Dict[str, jnp.ndarray]], jnp.ndarray, jnp.ndarray], MetricsDict]
-LogFn = Callable[[int, MetricsDict, MetricsDict, HistoryDict], None]
 SaveFn = Callable[[str], None]
-ExportHistoryFn = Callable[[HistoryDict], None]
 
 
 class Trainer:
@@ -65,9 +64,8 @@ class Trainer:
         shuffle_rng: jax.Array,
         train_step_fn: TrainStepFn,
         eval_metrics_fn: EvalMetricsFn,
-        log_fn: LogFn,
         save_fn: SaveFn,
-        export_history_fn: ExportHistoryFn,
+        callbacks: Sequence[TrainingCallback] | None = None,
         num_epochs: int | None = None,
         patience: int | None = None,
     ) -> Tuple[SSVAETrainState, jax.Array, HistoryDict]:  # returns (state, updated_shuffle_rng, history)
@@ -118,6 +116,7 @@ class Trainer:
         self._log_session_hyperparameters(max_epochs=max_epochs, patience=used_patience)
 
         eval_batch_size = min(batch_size, 1024)
+        callback_list = list(callbacks) if callbacks is not None else []
 
         def _run_eval(params, ex, ey):
             """Evaluate metrics in smaller chunks to avoid large temporary buffers on GPU."""
@@ -142,9 +141,13 @@ class Trainer:
 
             return {k: metrics_sum[k] / processed for k in metrics_sum}
 
+        for callback in callback_list:
+            callback.on_train_start(self)
+
         if max_epochs <= 0:
             state = state.replace(rng=state_rng)
-            export_history_fn(history)
+            for callback in callback_list:
+                callback.on_train_end(history, self)
             return state, shuffle_rng, history
 
         halted_early = False
@@ -190,7 +193,9 @@ class Trainer:
                 history[key].append(float(train_metrics[key]))
                 history["val_" + key].append(float(val_metrics[key]))
 
-            log_fn(epoch, train_metrics, val_metrics, history)
+            metrics_bundle = {"train": train_metrics, "val": val_metrics}
+            for callback in callback_list:
+                callback.on_epoch_end(epoch, metrics_bundle, history, self)
 
             current_val = float(val_metrics[monitor_metric])
             if current_val < best_val:
@@ -217,5 +222,6 @@ class Trainer:
             )
 
         state = state.replace(rng=state_rng)
-        export_history_fn(history)
+        for callback in callback_list:
+            callback.on_train_end(history, self)
         return state, shuffle_rng, history
