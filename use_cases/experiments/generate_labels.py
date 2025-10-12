@@ -5,12 +5,20 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import sys
 
 import numpy as np
 import pandas as pd
-from sklearn.datasets import fetch_openml
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
+SRC_DIR = ROOT_DIR / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from data.mnist import load_mnist_splits
+
 DEFAULT_LABEL_DIR = ROOT_DIR / "use_cases" / "experiments" / "label_sets"
 
 
@@ -40,8 +48,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_mnist_labels() -> np.ndarray:
-    _, y = fetch_openml("mnist_784", version=1, return_X_y=True, as_frame=False)
-    return y[:60000].astype(np.int32)
+    (_, y_train), _ = load_mnist_splits(normalize=True, reshape=False)
+    return y_train
 
 
 def sample_balanced_indices(labels: np.ndarray, num_labels: int, seed: int) -> np.ndarray:

@@ -5,17 +5,18 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sklearn.datasets import fetch_openml
-from sklearn.preprocessing import MinMaxScaler
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 SRC_DIR = ROOT_DIR / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 from configs.base import SSVAEConfig
+from data.mnist import load_train_images_for_ssvae
 
-DEFAULT_LABELS = ROOT_DIR / "data" / "labels.csv"
+DEFAULT_LABELS = ROOT_DIR / "data" / "mnist" / "labels.csv"
 DEFAULT_WEIGHTS = ROOT_DIR / "artifacts" / "checkpoints" / "ssvae.ckpt"
 
 
@@ -47,12 +48,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_training_images() -> np.ndarray:
-    data, _ = fetch_openml("mnist_784", version=1, return_X_y=True, as_frame=False)
-    data = data.astype(np.float32) / 255.0
-    train_flat = data[:60000]
-    scaler = MinMaxScaler()
-    train_scaled = scaler.fit_transform(train_flat)
-    return train_scaled.reshape(-1, 28, 28)
+    return load_train_images_for_ssvae()
 
 
 def load_label_array(path: Path, num_samples: int) -> np.ndarray:

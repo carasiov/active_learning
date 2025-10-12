@@ -1,4 +1,4 @@
-data/labels/labels.csv
+data/mnist/labels_*.csv
 data/processed/input_ml.csv
 data/output/latent_space_tsne_embedding_2.csv
 data/output/latent_space_tsne_embedding_sscvae.csv
@@ -12,7 +12,6 @@ data/*.npz
 
 
 # Data
-data/labels.csv
 data/*.npz
 # Legacy TensorFlow weights (relocated under artifacts/legacy/tf_weights)
 models
@@ -33,6 +32,7 @@ AGENTS.md
 
 # --- Ignore data/text files ---
 *.csv
+!data/mnist/labels.csv
 *.txt
 *.ckpt
 

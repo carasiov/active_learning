@@ -9,7 +9,7 @@ from matplotlib.widgets import RadioButtons
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 DATA_PATH = ROOT_DIR / "data" / "output_latent.npz"
-LABELS_PATH = ROOT_DIR / "data" / "labels.csv"
+LABELS_PATH = ROOT_DIR / "data" / "mnist" / "labels.csv"
 
 
 data = np.load(DATA_PATH)

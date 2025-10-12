@@ -6,27 +6,19 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 SRC_DIR = ROOT_DIR / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 import numpy as np
 import sklearn.manifold
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.datasets import fetch_openml
+from data.mnist import load_mnist_splits
 
 from ssvae import SSVAE, SSCVAE
 
 DEFAULT_WEIGHTS = ROOT_DIR / "artifacts" / "checkpoints" / "ssvae.ckpt"
 DEFAULT_OUTPUT = ROOT_DIR / "data" / "output_latent.npz"
 
-X, y = fetch_openml('mnist_784', version=1, return_X_y=True, as_frame=False)
-X = X.astype(np.float32) / 255.0
-y = y.astype(np.int32)
-
-# Reshape to image format (28x28)
-X = X.reshape((-1, 28, 28))
-
-# Split into train and test
-x_train_scaled, x_test_scaled = X[:60000], X[60000:]
-y_train, y_test = y[:60000], y[60000:]
+(x_train_scaled, y_train), (x_test_scaled, y_test) = load_mnist_splits(normalize=True, reshape=True)
 
 parser = argparse.ArgumentParser(description="Infer latent space and save outputs")
 parser.add_argument("--weights", type=str, default=str(DEFAULT_WEIGHTS), help="Path to model weights")

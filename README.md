@@ -113,13 +113,13 @@ Training & Inference Scripts
 
 ### 1. Prepare Labels
 
-Labels live in `data/labels.csv` with columns `Serial` and `label`. Unlabeled data can either be absent or marked as NaN. The interactive viewer updates this CSV directly.
+Labels live in `data/mnist/labels.csv` with columns `Serial` and `label`. Unlabeled data can either be absent or marked as NaN. The interactive viewer updates this CSV directly.
 
 ### 2. Train
 
 ```bash
 python use_cases/scripts/train.py \
-  --labels data/labels.csv \
+  --labels data/mnist/labels.csv \
   --weights artifacts/checkpoints/ssvae.ckpt
 ```
 
@@ -159,7 +159,7 @@ Features:
 - Click to select a point; view original and reconstruction.
 - Press `0`–`9` to label, `d` to remove label.
 - Color by user labels, predicted classes, true classes, or certainty.
-- Updates `data/labels.csv` immediately.
+- Updates `data/mnist/labels.csv` immediately.
 
 ### 5. Incremental Training (Optional)
 
