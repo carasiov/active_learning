@@ -7,6 +7,7 @@ Highlights
 ---------
 - **Canonical JAX/Flax implementation:** `src/ssvae/` exposes the public API.
 - **Composable architecture:** encoder/decoder/classifier components live under `src/model_components/`, enabling easy swaps via config.
+- **Modular observability:** `src/callbacks/` provides training callbacks for console logging, CSV export, and loss plotting.
 - **Pure training loop:** `src/training/` houses loss functions, the trainer, train state wrapper, and an interactive trainer for incremental labeling sessions.
 - **Use-case bundles:** CLI entry points under `use_cases/scripts/` feed generated outputs into `artifacts/` (checkpoints, run histories, showcase figures).
 - **End-to-end showcase notebook:** `use_cases/notebooks/showcase_ssvae.ipynb` walks through the three stages of semi-supervised learning.
@@ -22,15 +23,15 @@ active_learning/
 ├── data/                   # Labels.csv and generated inference outputs
 ├── docs/                   # Structure documentation, cleanup notes
 ├── src/                    # Installable packages (configs, ssvae, model_components, training)
+│   ├── callbacks/
 │   ├── configs/
 │   ├── model_components/
 │   ├── ssvae/
 │   └── training/
-├── use_cases/              # Reproducible workflows built on the library
-│   ├── experiments/        # Experiment runners and their artifacts
-│   ├── notebooks/          # Showcase and exploratory notebooks
-│   └── scripts/            # CLI entry points (train, infer, viewers)
-└── ROOT/                   # Refactor spec and progress tracker
+└─── use_cases/              # Reproducible workflows built on the library
+    ├── experiments/        # Experiment runners and their artifacts
+    ├── notebooks/          # Showcase and exploratory notebooks
+    └── scripts/            # CLI entry points (train, infer, viewers)
 ```
 
 
@@ -173,6 +174,31 @@ latent = trainer.get_latent_space(x_train)
 ```
 
 This is ideal for dashboards or manual labeling sessions where you add labels iteratively.
+
+When you need custom observability (e.g., streaming to dashboards), pass a list of callbacks to `InteractiveTrainer` or directly to `Trainer.train()`. The default stack (console logging + CSV + plotting) is built in `SSVAE._build_callbacks`.
+
+---
+
+Callback System
+---------------
+
+Training observability is handled by the callback package (`src/callbacks/`):
+
+- `TrainingCallback` (base class) defines the hook surface: `on_train_start`, `on_epoch_end`, and `on_train_end`.
+- `ConsoleLogger` mirrors the legacy console table, including optional contrastive columns.
+- `CSVExporter` writes run history with the same schema consumed by experiment collectors.
+- `LossCurvePlotter` renders loss curves when Matplotlib is available (otherwise it no-ops).
+
+Callbacks are instantiated in `SSVAE._build_callbacks`, so CLI scripts and notebooks automatically receive the default behavior without additional wiring.
+
+### Extending Callbacks
+
+1. Create a new callback in `src/callbacks/` (either a new module or alongside the existing ones) that subclasses `TrainingCallback`.
+2. Override only the hooks you need; remember to convert JAX arrays to Python scalars (`float(...)`) before logging or serializing values.
+3. Export the callback from `src/callbacks/__init__.py` if you want downstream code to import it via `from callbacks import YourCallback`.
+4. Inject it by passing a callback list to `Trainer.train(..., callbacks=[...])`, to `InteractiveTrainer(..., callbacks=[...])`, or by extending `SSVAE._build_callbacks` in your own wrapper.
+
+This architecture keeps the training loop free of I/O concerns while making it straightforward to add integrations like streaming loggers, experiment trackers, or custom visualizations.
 
 ---
 
