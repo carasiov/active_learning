@@ -10,8 +10,8 @@ import numpy as np
 import pandas as pd
 from sklearn.datasets import fetch_openml
 
-BASE_DIR = Path(__file__).resolve().parents[1]
-DEFAULT_LABEL_DIR = BASE_DIR / "experiments" / "label_sets"
+ROOT_DIR = Path(__file__).resolve().parents[2]
+DEFAULT_LABEL_DIR = ROOT_DIR / "use_cases" / "experiments" / "label_sets"
 
 
 def parse_args() -> argparse.Namespace:
@@ -28,7 +28,7 @@ def parse_args() -> argparse.Namespace:
         "--output",
         type=str,
         default=None,
-        help="Destination CSV path (defaults to experiments/label_sets/labels_<num>.csv).",
+        help="Destination CSV path (defaults to use_cases/experiments/label_sets/labels_<num>.csv).",
     )
     parser.add_argument(
         "--seed",

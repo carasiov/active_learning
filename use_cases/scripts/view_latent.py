@@ -7,9 +7,9 @@ import pandas as pd
 from matplotlib.widgets import RadioButtons
 
 
-BASE_DIR = Path(__file__).resolve().parents[1]
-DATA_PATH = BASE_DIR / "data" / "output_latent.npz"
-LABELS_PATH = BASE_DIR / "data" / "labels.csv"
+ROOT_DIR = Path(__file__).resolve().parents[2]
+DATA_PATH = ROOT_DIR / "data" / "output_latent.npz"
+LABELS_PATH = ROOT_DIR / "data" / "labels.csv"
 
 
 data = np.load(DATA_PATH)

@@ -10,8 +10,8 @@ from typing import List
 
 import pandas as pd
 
-BASE_DIR = Path(__file__).resolve().parents[1]
-DEFAULT_EXPERIMENT_DIR = BASE_DIR / "experiments" / "artifacts" / "label_efficiency"
+ROOT_DIR = Path(__file__).resolve().parents[2]
+DEFAULT_EXPERIMENT_DIR = ROOT_DIR / "use_cases" / "experiments" / "artifacts" / "label_efficiency"
 
 HISTORY_SUFFIX = "_history.csv"
 FILENAME_PATTERN = re.compile(r"labels-(\d+)_history$")

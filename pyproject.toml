@@ -4,7 +4,12 @@ version = "0.1.0"
 description = "Semi-Supervised Variational Autoencoder for Active Learning"
 authors = ["Andreas Carasiov"]
 readme = "README.md"
-packages = [{include = "ssvae"}, {include = "configs"}, {include = "model_components"}, {include = "training"}]
+packages = [
+    { include = "ssvae", from = "src" },
+    { include = "configs", from = "src" },
+    { include = "model_components", from = "src" },
+    { include = "training", from = "src" },
+]
 
 [tool.poetry.dependencies]
 python = "^3.11"

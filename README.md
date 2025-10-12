@@ -1,59 +1,38 @@
 Active Learning – Semi-Supervised VAE (JAX/Flax)
 ================================================
 
-This repository delivers a modular Semi-Supervised Variational Autoencoder (SSVAE) built on JAX, Flax, and Optax. It demonstrates how to learn useful latent structure from predominantly unlabeled data and fine-tune a classifier with only a handful of labels. The codebase evolved through a four-phase /ROOT refactor mission and now serves as an experimentation platform for active learning and interactive training workflows.
+This repository delivers a modular Semi-Supervised Variational Autoencoder (SSVAE) built on JAX, Flax, and Optax. It demonstrates how to learn useful latent structure from predominantly unlabeled data and fine-tune a classifier with only a handful of labels. 
 
 Highlights
 ---------
-- **Canonical JAX/Flax implementation:** `ssvae/` exposes the public API; TensorFlow code and shims have been removed.
-- **Composable architecture:** encoder/decoder/classifier components live under `model_components/`, enabling easy swaps via config.
-- **Pure training loop:** `training/` houses loss functions, the trainer, train state wrapper, and an interactive trainer for incremental labeling sessions.
-- **Scripts and artifacts:** CLI entry points under `scripts/` feed generated outputs into `artifacts/` (checkpoints, progress plots/CSVs, showcase figures).
-- **End-to-end showcase notebook:** `notebooks/showcase_ssvae.ipynb` walks through the three stages of semi-supervised learning.
+- **Canonical JAX/Flax implementation:** `src/ssvae/` exposes the public API.
+- **Composable architecture:** encoder/decoder/classifier components live under `src/model_components/`, enabling easy swaps via config.
+- **Pure training loop:** `src/training/` houses loss functions, the trainer, train state wrapper, and an interactive trainer for incremental labeling sessions.
+- **Use-case bundles:** CLI entry points under `use_cases/scripts/` feed generated outputs into `artifacts/` (checkpoints, run histories, showcase figures).
+- **End-to-end showcase notebook:** `use_cases/notebooks/showcase_ssvae.ipynb` walks through the three stages of semi-supervised learning.
 
-The repository is ready for experimentation, presentation, and further research extensions.
 
----
 
 Repository Structure
 --------------------
 
 ```
 active_learning/
-├── artifacts/              # Generated outputs (checkpoints, progress, showcase)
-├── configs/                # Configuration dataclasses (SSVAEConfig)
+├── artifacts/              # Generated outputs (checkpoints, per-run history, legacy TF weights)
 ├── data/                   # Labels.csv and generated inference outputs
 ├── docs/                   # Structure documentation, cleanup notes
-├── model_components/       # Flax encoders/decoders/classifier + factory helpers
-├── notebooks/              # Showcase and experimental notebooks
-├── scripts/                # CLI entry points (train, infer, view, utilities)
-├── ssvae/                  # Public JAX SSVAE models
-├── training/               # Losses, trainer, train state, interactive trainer
+├── src/                    # Installable packages (configs, ssvae, model_components, training)
+│   ├── configs/
+│   ├── model_components/
+│   ├── ssvae/
+│   └── training/
+├── use_cases/              # Reproducible workflows built on the library
+│   ├── experiments/        # Experiment runners and their artifacts
+│   ├── notebooks/          # Showcase and exploratory notebooks
+│   └── scripts/            # CLI entry points (train, infer, viewers)
 └── ROOT/                   # Refactor spec and progress tracker
 ```
 
-- `model_components/` replaced the old `models/` directory to avoid confusion with saved artifacts.
-- `artifacts/` is the canonical location for generated checkpoints (`artifacts/checkpoints/`) and training curves (`artifacts/progress/`).
-- Legacy TensorFlow weights remain under `models/` only for archival purposes and are ignored by `.gitignore`.
-- `docs/STRUCTURE.md` and `docs/CLEANUP_NOTES.md` contain additional structure notes and follow-up suggestions.
-
----
-
-Environment & Dependencies
----------------------------
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-```
-
-- Requires Python 3.9+.
-- Depends on CPU-compatible JAX/Flax/Optax builds (GPU optional).
-- Downloads MNIST via `sklearn.datasets.fetch_openml`; the first run fetches the dataset to the OpenML cache.
-
----
 
 Development Setup
 -----------------
@@ -97,25 +76,14 @@ poetry install
 # JAX will automatically detect GPU if available
 
 # Run code
-poetry run python scripts/train.py
+poetry run python use_cases/scripts/train.py
 ```
 
-### Option 3: Legacy (requirements.txt)
-
-**Note:** This is deprecated. Use Poetry for new setups.
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
----
 
 Configuration
 -------------
 
-`configs/base.py` defines `SSVAEConfig`, covering:
+`src/configs/base.py` defines `SSVAEConfig`, covering:
 
 - Architecture: `latent_dim`, `hidden_dims`, `encoder_type`, `decoder_type`, `classifier_type`.
 - Loss weights: `recon_weight`, `kl_weight`, `label_weight`, optional `use_contrastive`, `contrastive_weight`.
@@ -150,21 +118,21 @@ Labels live in `data/labels.csv` with columns `Serial` and `label`. Unlabeled da
 ### 2. Train
 
 ```bash
-python scripts/train.py \
+python use_cases/scripts/train.py \
   --labels data/labels.csv \
   --weights artifacts/checkpoints/ssvae.ckpt
 ```
 
 - Preprocessing: `MinMaxScaler` followed by binarization (`> 0.5 -> 1.0`).
-- Outputs:
+- Outputs (saved alongside the `--weights` path):
   - Checkpoint: `artifacts/checkpoints/ssvae.ckpt` (Flax serialization of params/opt state/step).
-  - Progress CSV: `artifacts/progress/ssvae_history.csv`.
-  - Training plot: `artifacts/progress/ssvae_loss_plot.png`.
+  - History CSV: `artifacts/checkpoints/ssvae_history.csv`.
+  - Training plot: `artifacts/checkpoints/ssvae_loss.png`.
 
 ### 3. Inference
 
 ```bash
-python scripts/infer.py \
+python use_cases/scripts/infer.py \
   --weights artifacts/checkpoints/ssvae.ckpt \
   --output data/output_latent.npz \
   --split train  # or test
@@ -182,7 +150,7 @@ python scripts/infer.py \
 ### 4. Interactive Viewer
 
 ```bash
-python scripts/view_latent.py
+python use_cases/scripts/view_latent.py
 ```
 
 Features:
@@ -211,7 +179,7 @@ This is ideal for dashboards or manual labeling sessions where you add labels it
 Showcase Notebook
 -----------------
 
-`notebooks/showcase_ssvae.ipynb` demonstrates the three stages of semi-supervised learning on a MNIST subset (≈12k samples) and runs in under 10 minutes on CPU:
+`use_cases/notebooks/showcase_ssvae.ipynb` demonstrates the three stages of semi-supervised learning on a MNIST subset (≈12k samples) and runs in under 10 minutes on CPU:
 
 1. **Stage 1 – Untrained:** random latent scatter.
 2. **Stage 2 – Unsupervised:** clusters emerge from reconstruction-only training.
@@ -225,49 +193,10 @@ Artifacts (saved automatically to `artifacts/showcase/`):
 - `comparison.png` – side-by-side visualization of all stages.
 - `stage2_unsupervised.ckpt`, `stage3_semi_supervised.ckpt` – checkpoints between stages.
 
-The notebook inserts the project root into `sys.path`, so it can be run directly from `notebooks/`:
+The notebook inserts `ROOT/src` into `sys.path`, so it can be run directly from `use_cases/notebooks/`:
 
 ```bash
 source .venv/bin/activate
-jupyter notebook notebooks/showcase_ssvae.ipynb
+jupyter notebook use_cases/notebooks/showcase_ssvae.ipynb
 # Kernel → Restart & Run All
 ```
-
----
-
-Verifying the Installation
----------------------------
-
-To validate your environment manually (mirrors the notebook tests):
-
-1. **Sanity import:**
-   ```bash
-   python -c "import ssvae; print(ssvae.SSVAE)"
-   ```
-2. **Train on MNIST (subset) and check `artifacts/progress/` + `artifacts/checkpoints/` outputs.**
-3. **Infer latent space:** confirm `data/output_latent.npz` contains the expected keys.
-4. **Interactive trainer smoke test:** run the small script in `docs/CLEANUP_NOTES.md` to ensure the latent space responds to new labels.
-
-The comprehensive test plan (and its successful execution) is logged in `ROOT/progress_tracker.txt` under the “End-to-End Verification Test” entry dated 2025-10-09.
-
----
-
-Development Notes & Future Work
--------------------------------
-
-Accomplished (per /ROOT mission & follow-ups):
-
-- Extracted configuration, losses, components, and trainer into modular packages.
-- Added `InteractiveTrainer` for incremental training workflows.
-- Replaced TensorFlow implementation with a canonical JAX/Flax model; removed `src_tf/` entirely.
-- Standardized imports (`from ssvae import SSVAE`) and artifact layout (`artifacts/`).
-- Provided a showcase notebook and detailed documentation (this README and `docs/STRUCTURE.md`).
-
-Suggested next steps:
-
-- Implement convolutional encoder/decoder variants and expose them via config toggles.
-- Replace the contrastive loss stub with a real implementation (e.g., supervised contrastive, InfoNCE).
-- Add a data-loader utility (e.g., `data/mnist.py`) so scripts/notebooks share preprocessing code.
-- Integrate the interactive trainer into a UI (Streamlit/Panel) for rapid human-in-the-loop labeling.
-- Add automated tests for loss functions, trainer loops, and component shapes.
-- Migrate legacy `.h5` weights from `models/` into an archival directory or convert them if needed.

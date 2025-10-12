@@ -2,9 +2,10 @@ from pathlib import Path
 import sys
 import argparse
 
-BASE_DIR = Path(__file__).resolve().parents[1]
-if str(BASE_DIR) not in sys.path:
-    sys.path.insert(0, str(BASE_DIR))
+ROOT_DIR = Path(__file__).resolve().parents[2]
+SRC_DIR = ROOT_DIR / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 import numpy as np
 import sklearn.manifold
@@ -13,8 +14,8 @@ from sklearn.datasets import fetch_openml
 
 from ssvae import SSVAE, SSCVAE
 
-DEFAULT_WEIGHTS = BASE_DIR / "artifacts" / "checkpoints" / "ssvae.ckpt"
-DEFAULT_OUTPUT = BASE_DIR / "data" / "output_latent.npz"
+DEFAULT_WEIGHTS = ROOT_DIR / "artifacts" / "checkpoints" / "ssvae.ckpt"
+DEFAULT_OUTPUT = ROOT_DIR / "data" / "output_latent.npz"
 
 X, y = fetch_openml('mnist_784', version=1, return_X_y=True, as_frame=False)
 X = X.astype(np.float32) / 255.0

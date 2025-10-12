@@ -19,9 +19,9 @@ Quick recipes
 - Dense baseline (default): SSVAEConfig(encoder_type="dense", decoder_type="dense")
 - Conv MNIST: SSVAEConfig(encoder_type="conv", decoder_type="conv")
 
-CLI usage (scripts/train.py)
-- Train conv:  `python scripts/train.py --encoder-type conv --decoder-type conv --latent-dim 2 --batch-size 512 --max-epochs 50`
-- Train dense: `python scripts/train.py --encoder-type dense --decoder-type dense`
+CLI usage (use_cases/scripts/train.py)
+- Train conv:  `python use_cases/scripts/train.py --encoder-type conv --decoder-type conv --latent-dim 2 --batch-size 512 --max-epochs 50`
+- Train dense: `python use_cases/scripts/train.py --encoder-type dense --decoder-type dense`
 
 Programmatic usage
 - from ssvae import SSVAE

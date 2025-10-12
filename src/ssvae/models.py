@@ -98,7 +98,7 @@ class SSVAENetwork(nn.Module):
 
 class SSVAE:
     """
-    Modular JAX SSVAE with a stable public API used by scripts/train.py and scripts/infer.py.
+    Modular JAX SSVAE with a stable public API used by use_cases/scripts/train.py and use_cases/scripts/infer.py.
 
     Methods:
     - prepare_data_for_keras_model(data)
@@ -293,8 +293,11 @@ class SSVAE:
 
     def _export_history(self, history: Dict[str, list[float]]):
         try:
-            PROGRESS_DIR.mkdir(parents=True, exist_ok=True)
-            csv_path = PROGRESS_DIR / "ssvae_history.csv"
+            base_path = Path(self.weights_path) if self.weights_path else DEFAULT_CHECKPOINT_PATH
+            history_path = base_path.with_name(f"{base_path.stem}_history.csv")
+            plot_path = base_path.with_name(f"{base_path.stem}_loss.png")
+            history_path.parent.mkdir(parents=True, exist_ok=True)
+
             headers = [
                 "epoch",
                 "loss",
@@ -306,7 +309,7 @@ class SSVAE:
                 "classification_loss",
                 "val_classification_loss",
             ]
-            with open(csv_path, "w", encoding="utf-8") as f:
+            with open(history_path, "w", encoding="utf-8") as f:
                 f.write(",".join(headers) + "\n")
                 epochs = len(history["loss"])
                 for i in range(epochs):
@@ -345,7 +348,7 @@ class SSVAE:
                 axes[1].legend()
                 axes[1].grid(True)
                 fig.tight_layout()
-                fig.savefig(PROGRESS_PLOT_PATH)
+                fig.savefig(plot_path)
                 plt.close(fig)
         except Exception:
             pass
@@ -426,9 +429,8 @@ class SSCVAE(SSVAE):
         super().__init__(input_dim=input_dim[:2], config=config)
 
 
-BASE_DIR = Path(__file__).resolve().parents[1]
-PROGRESS_DIR = BASE_DIR / "artifacts" / "progress"
-PROGRESS_PLOT_PATH = PROGRESS_DIR / "ssvae_loss_plot.png"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_CHECKPOINT_PATH = REPO_ROOT / "artifacts" / "checkpoints" / "ssvae.ckpt"
 
 try:  # optional plotting
     import matplotlib.pyplot as plt  # type: ignore

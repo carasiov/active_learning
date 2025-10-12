@@ -8,14 +8,15 @@ import pandas as pd
 from sklearn.datasets import fetch_openml
 from sklearn.preprocessing import MinMaxScaler
 
-BASE_DIR = Path(__file__).resolve().parents[1]
-if str(BASE_DIR) not in sys.path:
-    sys.path.insert(0, str(BASE_DIR))
+ROOT_DIR = Path(__file__).resolve().parents[2]
+SRC_DIR = ROOT_DIR / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
 from configs.base import SSVAEConfig
 
-DEFAULT_LABELS = BASE_DIR / "data" / "labels.csv"
-DEFAULT_WEIGHTS = BASE_DIR / "artifacts" / "checkpoints" / "ssvae.ckpt"
+DEFAULT_LABELS = ROOT_DIR / "data" / "labels.csv"
+DEFAULT_WEIGHTS = ROOT_DIR / "artifacts" / "checkpoints" / "ssvae.ckpt"
 
 
 def parse_args() -> argparse.Namespace:
@@ -102,7 +103,7 @@ def main() -> None:
     if config.xla_flags:
         os.environ["XLA_FLAGS"] = config.xla_flags
 
-    from ssvae import SSVAE  # noqa: E402  # Import after setting XLA flags
+    from ssvae import SSVAE  # noqa: E402  # Import after adjusting sys.path
 
     vae = SSVAE(input_dim=(28, 28), config=config)
     vae.fit(train_images, labels, weights_path=args.weights)

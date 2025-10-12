@@ -8,24 +8,14 @@ data/raw/input_raw_avanto.csv
 data/raw/input_raw.csv
 domain/__pycache__/vae_model_copy.cpython-311.pyc
 domain/__pycache__/vae_model.cpython-311.pyc
-models/cvae.weights.h5
-models/scalers.pkl
-models/sscvae.weights.h5
-models/ssvae.weights copy.h5
-models/ssvae.weights.h5
-models/vae.weights.h5
-models/progress/ssvae_loss_plot.png
-models/progress/vae_loss_plot.png
 data/*.npz
 
 
 # Data
 data/labels.csv
 data/*.npz
-# Models and training artifacts
-models/*.h5
-models/scalers.pkl
-models/progress/*.png
+# Legacy TensorFlow weights (relocated under artifacts/legacy/tf_weights)
+models
 # Python cache
 domain/__pycache__/*
 *.pyc

@@ -14,10 +14,9 @@ if [[ "${ARCH}" != "dense" && "${ARCH}" != "conv" ]]; then
 fi
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-ROOT_DIR=$(cd "${SCRIPT_DIR}/.." && pwd)
-EXPERIMENT_ROOT="${ROOT_DIR}/experiments"
+ROOT_DIR=$(cd "${SCRIPT_DIR}/../.." && pwd)
+EXPERIMENT_ROOT="${ROOT_DIR}/use_cases/experiments"
 LABEL_DIR="${EXPERIMENT_ROOT}/label_sets"
-PROGRESS_DIR="${ROOT_DIR}/artifacts/progress"
 ARTIFACT_ROOT="${EXPERIMENT_ROOT}/artifacts/label_efficiency"
 
 COUNTS=(10 25 50 100 250 500)
@@ -71,22 +70,30 @@ for N in "${COUNTS[@]}"; do
     HISTORY_DEST="${RUN_DIR}/${RUN_BASENAME}_history.csv"
 
     echo "Generating labels -> ${LABEL_PATH}"
-    python "${ROOT_DIR}/experiments/generate_labels.py" \
+    python "${ROOT_DIR}/use_cases/experiments/generate_labels.py" \
         --num-labels "${N}" \
         --output "${LABEL_PATH}"
 
     echo "Starting training -> ${WEIGHTS_PATH}"
-    python "${ROOT_DIR}/scripts/train.py" \
+    python "${ROOT_DIR}/use_cases/scripts/train.py" \
         --labels "${LABEL_PATH}" \
         --weights "${WEIGHTS_PATH}" \
         "${TRAIN_ARGS[@]}"
 
-    HISTORY_SRC="${PROGRESS_DIR}/ssvae_history.csv"
+    HISTORY_SRC="${RUN_DIR}/${RUN_BASENAME}_history.csv"
+    if [[ ! -f "${HISTORY_SRC}" ]]; then
+        LEGACY_HISTORY="${ROOT_DIR}/artifacts/progress/ssvae_history.csv"
+        if [[ -f "${LEGACY_HISTORY}" ]]; then
+            HISTORY_SRC="${LEGACY_HISTORY}"
+            echo "Warning: default history not found. Falling back to legacy location ${LEGACY_HISTORY}." >&2
+        fi
+    fi
+
     if [[ -f "${HISTORY_SRC}" ]]; then
         cp "${HISTORY_SRC}" "${HISTORY_DEST}"
         echo "Saved training history -> ${HISTORY_DEST}"
     else
-        echo "Warning: expected history at ${HISTORY_SRC} but none found." >&2
+        echo "Warning: no training history produced for ${RUN_BASENAME}." >&2
     fi
 
     printf "%s,%s,%s,%s,%s,%s\n" \
