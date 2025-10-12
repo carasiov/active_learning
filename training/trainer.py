@@ -40,6 +40,21 @@ class Trainer:
             "val_contrastive_loss": [],
         }
 
+    def _log_session_hyperparameters(self, *, max_epochs: int, patience: int) -> None:
+        summary = self.config.get_informative_hyperparameters()
+        summary["max_epochs"] = max_epochs
+        summary["patience"] = patience
+        lines = ["Starting training session with hyperparameters:"]
+        padding = max(len(name) for name in summary)
+        for key, value in summary.items():
+            lines.append(f"  - {key.ljust(padding)} : {value}")
+        print("\n".join(lines), flush=True)
+
+    @staticmethod
+    def _count_labeled_samples(labels: np.ndarray) -> int:
+        """Count the number of non-NaN labels."""
+        return int(np.sum(~np.isnan(labels.reshape(-1))))
+
     def train(
         self,
         state: SSVAETrainState,
@@ -66,6 +81,19 @@ class Trainer:
             val_size = max(1, min(int(self.config.val_split * total_samples), total_samples - 1))
         train_size = total_samples - val_size
 
+        labeled_count = self._count_labeled_samples(y_np)
+        has_labels = labeled_count > 0
+        if self.config.monitor_metric == "auto":
+            monitor_metric = "classification_loss" if has_labels else "loss"
+        elif self.config.monitor_metric in {"loss", "classification_loss"}:
+            monitor_metric = self.config.monitor_metric
+        else:
+            raise ValueError(f"Unknown monitor_metric: {self.config.monitor_metric}")
+
+        print(f"Monitoring validation {monitor_metric} for early stopping.", flush=True)
+        if has_labels:
+            print(f"Detected {labeled_count} labeled samples.", flush=True)
+
         state_rng = state.rng
         if total_samples > 0:
             state_rng, dataset_key = jax.random.split(state_rng)
@@ -87,6 +115,7 @@ class Trainer:
         batch_size = self.config.batch_size
         max_epochs = num_epochs if num_epochs is not None else self.config.max_epochs
         used_patience = patience if patience is not None else self.config.patience
+        self._log_session_hyperparameters(max_epochs=max_epochs, patience=used_patience)
 
         eval_batch_size = min(batch_size, 1024)
 
@@ -118,7 +147,12 @@ class Trainer:
             export_history_fn(history)
             return state, shuffle_rng, history
 
+        halted_early = False
+        checkpoint_saved = False
+        epochs_ran = 0
+
         for epoch in range(max_epochs):
+            epochs_ran = epoch + 1
             if train_size > 0:
                 shuffle_rng, epoch_key = jax.random.split(shuffle_rng)
                 perm = jax.random.permutation(epoch_key, train_size)
@@ -158,17 +192,29 @@ class Trainer:
 
             log_fn(epoch, train_metrics, val_metrics, history)
 
-            current_val = float(val_metrics["loss"])
+            current_val = float(val_metrics[monitor_metric])
             if current_val < best_val:
                 best_val = current_val
                 wait = 0
                 if weights_path is not None:
                     Path(weights_path).parent.mkdir(parents=True, exist_ok=True)
                     save_fn(weights_path)
+                    checkpoint_saved = True
             else:
                 wait += 1
                 if wait >= used_patience:
+                    print(
+                        f"Early stopping triggered: {monitor_metric} stalled for {used_patience} epochs "
+                        f"(best {best_val:.4f})."
+                    )
+                    halted_early = True
                     break
+
+        if checkpoint_saved:
+            status = "Early stopping" if halted_early else "Training complete"
+            print(
+                f"{status} after {epochs_ran} epochs. Best {monitor_metric} = {best_val:.4f} (checkpoint saved to {weights_path})."
+            )
 
         state = state.replace(rng=state_rng)
         export_history_fn(history)

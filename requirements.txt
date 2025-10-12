@@ -1,7 +1,0 @@
-pandas
-matplotlib
-scikit-learn
-jax
-jaxlib
-flax
-optax

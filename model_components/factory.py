@@ -52,7 +52,11 @@ def build_classifier(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = 
         hidden_dims = _resolve_encoder_hidden_dims(config, resolved_hw)
         last_hidden = hidden_dims[-1] if hidden_dims else config.latent_dim
         classifier_hidden_dims = (last_hidden, last_hidden)
-        return Classifier(hidden_dims=classifier_hidden_dims, num_classes=10)
+        return Classifier(
+            hidden_dims=classifier_hidden_dims,
+            num_classes=10,
+            dropout_rate=config.dropout_rate,
+        )
     if config.classifier_type == "conv":
         raise NotImplementedError("ConvClassifier not yet implemented")
     raise ValueError(f"Unknown classifier type: {config.classifier_type}")

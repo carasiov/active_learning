@@ -71,19 +71,22 @@ def compute_loss_and_metrics(
 
     rec_loss = reconstruction_loss(batch_x, recon, config.recon_weight)
     kl_loss = kl_divergence(z_mean, z_log, config.kl_weight)
-    cls_loss = classification_loss(logits, batch_y, 1.0)
+    # Compute classification loss for metrics (unweighted) and for the objective (weighted).
+    cls_loss_unweighted = classification_loss(logits, batch_y, 1.0)
+    cls_loss_weighted = classification_loss(logits, batch_y, config.label_weight)
 
     if config.use_contrastive:
         contrastive = _contrastive_loss_stub(z, config.contrastive_weight)
     else:
         contrastive = jnp.array(0.0, dtype=rec_loss.dtype)
 
-    total = rec_loss + kl_loss + cls_loss + contrastive
+    total = rec_loss + kl_loss + cls_loss_weighted + contrastive
     metrics = {
         "loss": total,
         "reconstruction_loss": rec_loss,
         "kl_loss": kl_loss,
-        "classification_loss": cls_loss,
+        "classification_loss": cls_loss_unweighted,
+        "weighted_classification_loss": cls_loss_weighted,
         "contrastive_loss": contrastive,
     }
     return total, metrics

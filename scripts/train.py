@@ -12,7 +12,7 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from configs.base import SSVAEConfig, get_architecture_defaults
+from configs.base import SSVAEConfig
 
 DEFAULT_LABELS = BASE_DIR / "data" / "labels.csv"
 DEFAULT_WEIGHTS = BASE_DIR / "artifacts" / "checkpoints" / "ssvae.ckpt"
@@ -32,6 +32,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--recon-weight", type=float, default=None, help="Override reconstruction loss weight")
     parser.add_argument("--kl-weight", type=float, default=None, help="Override KL loss weight")
     parser.add_argument("--label-weight", type=float, default=None, help="Override classification loss weight")
+    parser.add_argument("--weight-decay", type=float, default=None, help="Override weight decay")
+    parser.add_argument("--dropout-rate", type=float, default=None, help="Override dropout rate in classifier")
+    parser.add_argument(
+        "--monitor-metric",
+        type=str,
+        default=None,
+        choices=["auto", "loss", "classification_loss"],
+        help="Metric to monitor for early stopping",
+    )
     parser.add_argument("--xla-flags", type=str, default=None, help="Override XLA_FLAGS value")
     return parser.parse_args()
 
@@ -52,23 +61,36 @@ def load_label_array(path: Path, num_samples: int) -> np.ndarray:
 
 
 def build_config(args: argparse.Namespace) -> SSVAEConfig:
-    base = SSVAEConfig()
-    encoder_type = args.encoder_type or base.encoder_type
-    decoder_type = args.decoder_type or base.decoder_type
-    defaults = get_architecture_defaults(encoder_type)
-    return SSVAEConfig(
-        encoder_type=encoder_type,
-        decoder_type=decoder_type,
-        latent_dim=args.latent_dim or base.latent_dim,
-        batch_size=args.batch_size or defaults["batch_size"],
-        max_epochs=args.max_epochs or base.max_epochs,
-        patience=args.patience or base.patience,
-        learning_rate=args.learning_rate or defaults["learning_rate"],
-        recon_weight=args.recon_weight or defaults["recon_weight"],
-        kl_weight=args.kl_weight or base.kl_weight,
-        label_weight=args.label_weight or defaults["label_weight"],
-        xla_flags=args.xla_flags or defaults.get("xla_flags"),
-    )
+    config_kwargs = {}
+    if args.encoder_type is not None:
+        config_kwargs["encoder_type"] = args.encoder_type
+    if args.decoder_type is not None:
+        config_kwargs["decoder_type"] = args.decoder_type
+    if args.latent_dim is not None:
+        config_kwargs["latent_dim"] = args.latent_dim
+    if args.batch_size is not None:
+        config_kwargs["batch_size"] = args.batch_size
+    if args.max_epochs is not None:
+        config_kwargs["max_epochs"] = args.max_epochs
+    if args.patience is not None:
+        config_kwargs["patience"] = args.patience
+    if args.learning_rate is not None:
+        config_kwargs["learning_rate"] = args.learning_rate
+    if args.recon_weight is not None:
+        config_kwargs["recon_weight"] = args.recon_weight
+    if args.kl_weight is not None:
+        config_kwargs["kl_weight"] = args.kl_weight
+    if args.label_weight is not None:
+        config_kwargs["label_weight"] = args.label_weight
+    if args.weight_decay is not None:
+        config_kwargs["weight_decay"] = args.weight_decay
+    if args.dropout_rate is not None:
+        config_kwargs["dropout_rate"] = args.dropout_rate
+    if args.monitor_metric is not None:
+        config_kwargs["monitor_metric"] = args.monitor_metric
+    if args.xla_flags is not None:
+        config_kwargs["xla_flags"] = args.xla_flags
+    return SSVAEConfig(**config_kwargs)
 
 
 def main() -> None:
@@ -76,16 +98,6 @@ def main() -> None:
     train_images = load_training_images()
     labels = load_label_array(Path(args.labels), train_images.shape[0])
     config = build_config(args)
-
-    print(
-        f"Creating SSVAE with encoder={config.encoder_type}, decoder={config.decoder_type}, latent_dim={config.latent_dim}",
-        flush=True,
-    )
-    print(
-        f"  batch_size={config.batch_size}, lr={config.learning_rate}, recon_weight={config.recon_weight}, "
-        f"kl_weight={config.kl_weight}, label_weight={config.label_weight}",
-        flush=True,
-    )
 
     if config.xla_flags:
         os.environ["XLA_FLAGS"] = config.xla_flags
