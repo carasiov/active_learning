@@ -28,11 +28,10 @@ active_learning/
 │   ├── model_components/
 │   ├── ssvae/
 │   └── training/
-├── use_cases/              # Reproducible workflows built on the library
-│   ├── experiments/        # Experiment runners and their artifacts
-│   ├── notebooks/          # Showcase and exploratory notebooks
-│   └── scripts/            # CLI entry points (train, infer, viewers)
-└── ROOT/                   # Refactor spec and progress tracker
+└─── use_cases/              # Reproducible workflows built on the library
+    ├── experiments/        # Experiment runners and their artifacts
+    ├── notebooks/          # Showcase and exploratory notebooks
+    └── scripts/            # CLI entry points (train, infer, viewers)
 ```
 
 
