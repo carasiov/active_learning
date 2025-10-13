@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-from utils.device import configure_jax_device, print_device_banner
+from utils import configure_jax_device, print_device_banner
 
 configure_jax_device()
 

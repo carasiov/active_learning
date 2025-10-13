@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict
 
-from utils.device import get_configured_device_info
+from utils import get_device_info
 
 from .base_callback import HistoryDict, MetricsDict, TrainingCallback
 
@@ -18,13 +18,12 @@ class ConsoleLogger(TrainingCallback):
 
     def on_train_start(self, trainer: "Trainer") -> None:
         self._header_printed = False
-        device_info = get_configured_device_info()
-        if device_info:
-            plural = "s" if device_info.device_count != 1 else ""
-            forced_note = " (JAX_PLATFORMS override)" if device_info.forced else ""
+
+        device_type, device_count = get_device_info()
+        if device_type:
+            plural = "s" if device_count != 1 else ""
             print(
-                f"[JAX] Training on {device_info.device_type.upper()} "
-                f"with {device_info.device_count} device{plural}{forced_note}.",
+                f"Training on {device_type.upper()} ({device_count} device{plural})",
                 flush=True,
             )
 
