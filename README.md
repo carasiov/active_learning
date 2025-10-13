@@ -8,6 +8,7 @@ Highlights
 - **Canonical JAX/Flax implementation:** `src/ssvae/` exposes the public API.
 - **Composable architecture:** encoder/decoder/classifier components live under `src/ssvae/components/`, enabling easy swaps via config.
 - **Modular observability:** `src/callbacks/` provides training callbacks for console logging, CSV export, and loss plotting.
+- **Runtime helpers:** `src/utils/` centralizes cross-cutting utilities such as JAX device detection.
 - **Pure training loop:** `src/training/` houses loss functions, the trainer, train state wrapper, and an interactive trainer for incremental labeling sessions.
 - **Use-case bundles:** CLI entry points under `use_cases/scripts/` feed generated outputs into `artifacts/` (checkpoints, run histories, showcase figures).
 - **End-to-end showcase notebook:** `use_cases/notebooks/showcase_ssvae.ipynb` walks through the three stages of semi-supervised learning.
@@ -28,7 +29,8 @@ active_learning/
 │   │   ├── components/
 │   │   ├── config.py
 │   │   └── models.py
-│   └── training/
+│   ├── training/
+│   └── utils/
 └─── use_cases/              # Reproducible workflows built on the library
     ├── experiments/        # Experiment runners and their artifacts
     ├── notebooks/          # Showcase and exploratory notebooks

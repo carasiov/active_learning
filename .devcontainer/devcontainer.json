@@ -15,9 +15,6 @@
 		"--gpus=all",
 		"--shm-size=8g"
 	],
-	"containerEnv": {
-		"JAX_PLATFORMS": "cuda"
-	},
 	"customizations": {
 		"vscode": {
 			"extensions": [

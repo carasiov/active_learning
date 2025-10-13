@@ -52,6 +52,14 @@ This directory contains the VS Code devcontainer configuration for GPU-accelerat
    # Should show: [cuda(id=0), cuda(id=1)]
    ```
 
+### Device Selection
+
+The application now auto-detects available JAX devices. If CUDA is not available the runtime falls back to CPU automatically and prints a banner describing the active backend. To force a specific backend you can set `JAX_PLATFORMS` before launching Python, for example:
+
+```bash
+JAX_PLATFORMS=cpu python use_cases/scripts/train.py
+```
+
 ### Daily Usage
 
 After the first build, reopening in container is fast (~10 seconds).
@@ -112,4 +120,3 @@ You can also use this devcontainer locally (without GPU) for testing:
 3. JAX will use CPU mode (slower, but works for small tests)
 
 The same container config works both places!
-

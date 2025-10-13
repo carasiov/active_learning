@@ -8,6 +8,7 @@ packages = [
     { include = "ssvae", from = "src" },
     { include = "callbacks", from = "src" },
     { include = "training", from = "src" },
+    { include = "utils", from = "src" },
 ]
 
 [tool.poetry.dependencies]

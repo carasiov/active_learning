@@ -4,6 +4,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+from utils.device import configure_jax_device, print_device_banner
+
+configure_jax_device()
+
 import numpy as np
 
 from ssvae.config import SSVAEConfig
@@ -88,11 +92,17 @@ class SSVAE:
     - fit(data, labels, weights_path)
     """
 
+    _DEVICE_BANNER_PRINTED = False
+
     def __init__(self, input_dim: Tuple[int, int], config: SSVAEConfig | None = None):
         self.input_dim = input_dim
         self.config = config or SSVAEConfig()
         self.latent_dim = self.config.latent_dim
         self.weights_path: str | None = None
+
+        if not SSVAE._DEVICE_BANNER_PRINTED:
+            print_device_banner()
+            SSVAE._DEVICE_BANNER_PRINTED = True
 
         self._out_hw = (input_dim[0], input_dim[1])
         if self.config.input_hw is None:
