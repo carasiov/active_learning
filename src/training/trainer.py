@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Dict, Sequence, Tuple
+from typing import Callable, Dict, Iterator, Sequence, Tuple
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 
-from ssvae.config import SSVAEConfig
 from callbacks import TrainingCallback
+from ssvae.config import SSVAEConfig
 from training.train_state import SSVAETrainState
 
 MetricsDict = Dict[str, jnp.ndarray]
@@ -16,6 +17,73 @@ HistoryDict = Dict[str, list[float]]
 TrainStepFn = Callable[[SSVAETrainState, jnp.ndarray, jnp.ndarray, jax.Array], Tuple[SSVAETrainState, MetricsDict]]
 EvalMetricsFn = Callable[[Dict[str, Dict[str, jnp.ndarray]], jnp.ndarray, jnp.ndarray], MetricsDict]
 SaveFn = Callable[[str], None]
+
+
+@dataclass(frozen=True)
+class DataSplits:
+    x_train: jnp.ndarray
+    y_train: jnp.ndarray
+    x_val: jnp.ndarray
+    y_val: jnp.ndarray
+    train_size: int
+    val_size: int
+    total_samples: int
+    labeled_count: int
+
+    @property
+    def has_labels(self) -> bool:
+        return self.labeled_count > 0
+
+    def with_train(self, x_train: jnp.ndarray, y_train: jnp.ndarray) -> DataSplits:
+        return DataSplits(
+            x_train=x_train,
+            y_train=y_train,
+            x_val=self.x_val,
+            y_val=self.y_val,
+            train_size=self.train_size,
+            val_size=self.val_size,
+            total_samples=self.total_samples,
+            labeled_count=self.labeled_count,
+        )
+
+
+@dataclass(frozen=True)
+class TrainingSetup:
+    batch_size: int
+    eval_batch_size: int
+    max_epochs: int
+    patience: int
+    monitor_metric: str
+
+
+@dataclass
+class EarlyStoppingTracker:
+    monitor_metric: str
+    patience: int
+    best_val: float = np.inf
+    wait: int = 0
+    checkpoint_saved: bool = False
+    halted_early: bool = False
+
+    def update(self, current_val: float, *, weights_path: str | None, save_fn: SaveFn) -> bool:
+        if current_val < self.best_val:
+            self.best_val = current_val
+            self.wait = 0
+            if weights_path is not None:
+                Path(weights_path).parent.mkdir(parents=True, exist_ok=True)
+                save_fn(weights_path)
+                self.checkpoint_saved = True
+            return False
+
+        self.wait += 1
+        if self.wait >= self.patience:
+            print(
+                f"Early stopping triggered: {self.monitor_metric} stalled for {self.patience} epochs "
+                f"(best {self.best_val:.4f})."
+            )
+            self.halted_early = True
+            return True
+        return False
 
 
 class Trainer:
@@ -68,7 +136,59 @@ class Trainer:
         callbacks: Sequence[TrainingCallback] | None = None,
         num_epochs: int | None = None,
         patience: int | None = None,
-    ) -> Tuple[SSVAETrainState, jax.Array, HistoryDict]:  # returns (state, updated_shuffle_rng, history)
+    ) -> Tuple[SSVAETrainState, jax.Array, HistoryDict]:
+        state_rng = state.rng
+        splits, state_rng = self._prepare_data(state_rng=state_rng, data=data, labels=labels)
+        setup = self._configure_training(splits=splits, num_epochs=num_epochs, patience=patience)
+
+        history = self._init_history()
+        tracker = EarlyStoppingTracker(monitor_metric=setup.monitor_metric, patience=setup.patience)
+        callback_list = list(callbacks or [])
+
+        self._run_callbacks(callback_list, "on_train_start", self)
+
+        if setup.max_epochs <= 0:
+            state = state.replace(rng=state_rng)
+            self._run_callbacks(callback_list, "on_train_end", history, self)
+            return state, shuffle_rng, history
+
+        epochs_ran = 0
+        for epoch in range(setup.max_epochs):
+            epochs_ran = epoch + 1
+            state, state_rng, shuffle_rng, splits = self._train_one_epoch(
+                state,
+                splits=splits,
+                state_rng=state_rng,
+                shuffle_rng=shuffle_rng,
+                train_step_fn=train_step_fn,
+                batch_size=setup.batch_size,
+            )
+
+            train_metrics, val_metrics = self._evaluate_both_splits(
+                state.params, splits, eval_metrics_fn=eval_metrics_fn, eval_batch_size=setup.eval_batch_size
+            )
+            self._update_history(history, train_metrics, val_metrics)
+
+            metrics_bundle = {"train": train_metrics, "val": val_metrics}
+            self._run_callbacks(callback_list, "on_epoch_end", epoch, metrics_bundle, history, self)
+
+            current_val = float(val_metrics[setup.monitor_metric])
+            should_stop = tracker.update(current_val, weights_path=weights_path, save_fn=save_fn)
+            if should_stop:
+                break
+
+        if tracker.checkpoint_saved:
+            status = "Early stopping" if tracker.halted_early else "Training complete"
+            print(
+                f"{status} after {epochs_ran} epochs. Best {tracker.monitor_metric} = {tracker.best_val:.4f} "
+                f"(checkpoint saved to {weights_path})."
+            )
+
+        state = state.replace(rng=state_rng)
+        self._run_callbacks(callback_list, "on_train_end", history, self)
+        return state, shuffle_rng, history
+
+    def _prepare_data(self, *, state_rng: jax.Array, data: np.ndarray, labels: np.ndarray) -> Tuple[DataSplits, jax.Array]:
         x_np = np.asarray(data, dtype=np.float32)
         y_np = np.asarray(labels, dtype=np.float32).reshape((-1,))
 
@@ -80,19 +200,7 @@ class Trainer:
         train_size = total_samples - val_size
 
         labeled_count = self._count_labeled_samples(y_np)
-        has_labels = labeled_count > 0
-        if self.config.monitor_metric == "auto":
-            monitor_metric = "classification_loss" if has_labels else "loss"
-        elif self.config.monitor_metric in {"loss", "classification_loss"}:
-            monitor_metric = self.config.monitor_metric
-        else:
-            raise ValueError(f"Unknown monitor_metric: {self.config.monitor_metric}")
 
-        print(f"Monitoring validation {monitor_metric} for early stopping.", flush=True)
-        if has_labels:
-            print(f"Detected {labeled_count} labeled samples.", flush=True)
-
-        state_rng = state.rng
         if total_samples > 0:
             state_rng, dataset_key = jax.random.split(state_rng)
             perm = np.asarray(jax.random.permutation(dataset_key, total_samples))
@@ -102,126 +210,194 @@ class Trainer:
         x_train_np, y_train_np = x_np[:train_size], y_np[:train_size]
         x_val_np, y_val_np = x_np[train_size:], y_np[train_size:]
 
-        x_train = jnp.array(x_train_np)
-        y_train = jnp.array(y_train_np)
-        x_val = jnp.array(x_val_np)
-        y_val = jnp.array(y_val_np)
+        splits = DataSplits(
+            x_train=jnp.array(x_train_np),
+            y_train=jnp.array(y_train_np),
+            x_val=jnp.array(x_val_np),
+            y_val=jnp.array(y_val_np),
+            train_size=train_size,
+            val_size=val_size,
+            total_samples=total_samples,
+            labeled_count=labeled_count,
+        )
+        return splits, state_rng
 
-        history = self._init_history()
-        best_val = np.inf
-        wait = 0
+    def _configure_training(
+        self,
+        *,
+        splits: DataSplits,
+        num_epochs: int | None,
+        patience: int | None,
+    ) -> TrainingSetup:
+        if self.config.monitor_metric == "auto":
+            monitor_metric = "classification_loss" if splits.has_labels else "loss"
+        elif self.config.monitor_metric in {"loss", "classification_loss"}:
+            monitor_metric = self.config.monitor_metric
+        else:
+            raise ValueError(f"Unknown monitor_metric: {self.config.monitor_metric}")
+
+        print(f"Monitoring validation {monitor_metric} for early stopping.", flush=True)
+        if splits.has_labels:
+            print(f"Detected {splits.labeled_count} labeled samples.", flush=True)
+
         batch_size = self.config.batch_size
         max_epochs = num_epochs if num_epochs is not None else self.config.max_epochs
         used_patience = patience if patience is not None else self.config.patience
+
         self._log_session_hyperparameters(max_epochs=max_epochs, patience=used_patience)
 
         eval_batch_size = min(batch_size, 1024)
-        callback_list = list(callbacks) if callbacks is not None else []
+        return TrainingSetup(
+            batch_size=batch_size,
+            eval_batch_size=eval_batch_size,
+            max_epochs=max_epochs,
+            patience=used_patience,
+            monitor_metric=monitor_metric,
+        )
 
-        def _run_eval(params, ex, ey):
-            """Evaluate metrics in smaller chunks to avoid large temporary buffers on GPU."""
-            total = ex.shape[0]
-            if total == 0:
-                return eval_metrics_fn(params, ex, ey)
+    def _train_one_epoch(
+        self,
+        state: SSVAETrainState,
+        *,
+        splits: DataSplits,
+        state_rng: jax.Array,
+        shuffle_rng: jax.Array,
+        train_step_fn: TrainStepFn,
+        batch_size: int,
+    ) -> Tuple[SSVAETrainState, jax.Array, jax.Array, DataSplits]:
+        if splits.train_size == 0:
+            return state, state_rng, shuffle_rng, splits
 
-            metrics_sum: Dict[str, jnp.ndarray] | None = None
-            processed = 0
-            for start in range(0, total, eval_batch_size):
-                end = min(start + eval_batch_size, total)
-                bx = jnp.asarray(ex[start:end])
-                by = jnp.asarray(ey[start:end])
-                batch_metrics = eval_metrics_fn(params, bx, by)
-                weight = end - start
-                if metrics_sum is None:
-                    metrics_sum = {k: batch_metrics[k] * weight for k in batch_metrics}
-                else:
-                    for key in metrics_sum:
-                        metrics_sum[key] = metrics_sum[key] + batch_metrics[key] * weight
-                processed += weight
+        shuffle_rng, epoch_key = jax.random.split(shuffle_rng)
+        perm = jax.random.permutation(epoch_key, splits.train_size)
+        x_train = jnp.take(splits.x_train, perm, axis=0)
+        y_train = jnp.take(splits.y_train, perm, axis=0)
 
-            return {k: metrics_sum[k] / processed for k in metrics_sum}
+        for batch_x, batch_y in self._batch_iterator(x_train, y_train, batch_size):
+            state, state_rng = self._train_one_batch(state, batch_x, batch_y, state_rng, train_step_fn)
 
-        for callback in callback_list:
-            callback.on_train_start(self)
+        updated_splits = splits.with_train(x_train=x_train, y_train=y_train)
+        return state, state_rng, shuffle_rng, updated_splits
 
-        if max_epochs <= 0:
-            state = state.replace(rng=state_rng)
-            for callback in callback_list:
-                callback.on_train_end(history, self)
-            return state, shuffle_rng, history
+    def _batch_iterator(
+        self,
+        x_train: jnp.ndarray,
+        y_train: jnp.ndarray,
+        batch_size: int,
+    ) -> Iterator[Tuple[jnp.ndarray, jnp.ndarray]]:
+        train_size = x_train.shape[0]
+        if train_size == 0:
+            return
 
-        halted_early = False
-        checkpoint_saved = False
-        epochs_ran = 0
+        full_span = (train_size // batch_size) * batch_size
+        if full_span == 0:
+            yield jnp.asarray(x_train), jnp.asarray(y_train)
+            return
 
-        for epoch in range(max_epochs):
-            epochs_ran = epoch + 1
-            if train_size > 0:
-                shuffle_rng, epoch_key = jax.random.split(shuffle_rng)
-                perm = jax.random.permutation(epoch_key, train_size)
-                x_train = jnp.take(x_train, perm, axis=0)
-                y_train = jnp.take(y_train, perm, axis=0)
+        for start in range(0, full_span, batch_size):
+            end = start + batch_size
+            yield jnp.asarray(x_train[start:end]), jnp.asarray(y_train[start:end])
 
-                full_span = (train_size // batch_size) * batch_size
-                if full_span == 0:
-                    state_rng, raw_key = jax.random.split(state_rng)
-                    batch_key = jax.random.fold_in(raw_key, int(state.step))
-                    state, _ = train_step_fn(state, x_train, y_train, batch_key)
-                else:
-                    for start in range(0, full_span, batch_size):
-                        end = start + batch_size
-                        bx = jnp.asarray(x_train[start:end])
-                        by = jnp.asarray(y_train[start:end])
-                        state_rng, raw_key = jax.random.split(state_rng)
-                        batch_key = jax.random.fold_in(raw_key, int(state.step))
-                        state, _ = train_step_fn(state, bx, by, batch_key)
-                    if full_span < train_size:
-                        bx = jnp.asarray(x_train[full_span:train_size])
-                        by = jnp.asarray(y_train[full_span:train_size])
-                        state_rng, raw_key = jax.random.split(state_rng)
-                        batch_key = jax.random.fold_in(raw_key, int(state.step))
-                        state, _ = train_step_fn(state, bx, by, batch_key)
+        if full_span < train_size:
+            yield jnp.asarray(x_train[full_span:train_size]), jnp.asarray(y_train[full_span:train_size])
 
-            if train_size > 0:
-                train_metrics = _run_eval(state.params, x_train, y_train)
-            else:
-                train_metrics = _run_eval(state.params, x_val, y_val)
+    def _train_one_batch(
+        self,
+        state: SSVAETrainState,
+        batch_x: jnp.ndarray,
+        batch_y: jnp.ndarray,
+        state_rng: jax.Array,
+        train_step_fn: TrainStepFn,
+    ) -> Tuple[SSVAETrainState, jax.Array]:
+        state_rng, raw_key = jax.random.split(state_rng)
+        batch_key = jax.random.fold_in(raw_key, int(state.step))
+        state, _ = train_step_fn(state, batch_x, batch_y, batch_key)
+        return state, state_rng
 
-            val_metrics = _run_eval(state.params, x_val, y_val) if val_size > 0 else train_metrics
-
-            for key in ("loss", "reconstruction_loss", "kl_loss", "classification_loss", "contrastive_loss"):
-                history[key].append(float(train_metrics[key]))
-                history["val_" + key].append(float(val_metrics[key]))
-
-            metrics_bundle = {"train": train_metrics, "val": val_metrics}
-            for callback in callback_list:
-                callback.on_epoch_end(epoch, metrics_bundle, history, self)
-
-            current_val = float(val_metrics[monitor_metric])
-            if current_val < best_val:
-                best_val = current_val
-                wait = 0
-                if weights_path is not None:
-                    Path(weights_path).parent.mkdir(parents=True, exist_ok=True)
-                    save_fn(weights_path)
-                    checkpoint_saved = True
-            else:
-                wait += 1
-                if wait >= used_patience:
-                    print(
-                        f"Early stopping triggered: {monitor_metric} stalled for {used_patience} epochs "
-                        f"(best {best_val:.4f})."
-                    )
-                    halted_early = True
-                    break
-
-        if checkpoint_saved:
-            status = "Early stopping" if halted_early else "Training complete"
-            print(
-                f"{status} after {epochs_ran} epochs. Best {monitor_metric} = {best_val:.4f} (checkpoint saved to {weights_path})."
+    def _evaluate_both_splits(
+        self,
+        params: Dict[str, Dict[str, jnp.ndarray]],
+        splits: DataSplits,
+        *,
+        eval_metrics_fn: EvalMetricsFn,
+        eval_batch_size: int,
+    ) -> Tuple[MetricsDict, MetricsDict]:
+        if splits.train_size > 0:
+            train_metrics = self._evaluate_in_chunks(
+                params,
+                splits.x_train,
+                splits.y_train,
+                eval_metrics_fn=eval_metrics_fn,
+                eval_batch_size=eval_batch_size,
+            )
+        else:
+            train_metrics = self._evaluate_in_chunks(
+                params,
+                splits.x_val,
+                splits.y_val,
+                eval_metrics_fn=eval_metrics_fn,
+                eval_batch_size=eval_batch_size,
             )
 
-        state = state.replace(rng=state_rng)
-        for callback in callback_list:
-            callback.on_train_end(history, self)
-        return state, shuffle_rng, history
+        if splits.val_size > 0:
+            val_metrics = self._evaluate_in_chunks(
+                params,
+                splits.x_val,
+                splits.y_val,
+                eval_metrics_fn=eval_metrics_fn,
+                eval_batch_size=eval_batch_size,
+            )
+        else:
+            val_metrics = train_metrics
+
+        return train_metrics, val_metrics
+
+    def _evaluate_in_chunks(
+        self,
+        params: Dict[str, Dict[str, jnp.ndarray]],
+        inputs: jnp.ndarray,
+        targets: jnp.ndarray,
+        *,
+        eval_metrics_fn: EvalMetricsFn,
+        eval_batch_size: int,
+    ) -> MetricsDict:
+        total = inputs.shape[0]
+        if total == 0:
+            return eval_metrics_fn(params, inputs, targets)
+
+        metrics_sum: Dict[str, jnp.ndarray] | None = None
+        processed = 0
+        for start in range(0, total, eval_batch_size):
+            end = min(start + eval_batch_size, total)
+            batch_inputs = jnp.asarray(inputs[start:end])
+            batch_targets = jnp.asarray(targets[start:end])
+            batch_metrics = eval_metrics_fn(params, batch_inputs, batch_targets)
+            weight = end - start
+            if metrics_sum is None:
+                metrics_sum = {k: batch_metrics[k] * weight for k in batch_metrics}
+            else:
+                for key in metrics_sum:
+                    metrics_sum[key] = metrics_sum[key] + batch_metrics[key] * weight
+            processed += weight
+
+        assert metrics_sum is not None  # for mypy; total > 0 ensures this
+        return {k: metrics_sum[k] / processed for k in metrics_sum}
+
+    def _update_history(
+        self,
+        history: HistoryDict,
+        train_metrics: MetricsDict,
+        val_metrics: MetricsDict,
+    ) -> None:
+        for key in ("loss", "reconstruction_loss", "kl_loss", "classification_loss", "contrastive_loss"):
+            history[key].append(float(train_metrics[key]))
+            history[f"val_{key}"].append(float(val_metrics[key]))
+
+    @staticmethod
+    def _run_callbacks(
+        callbacks: Sequence[TrainingCallback],
+        method: str,
+        *args,
+    ) -> None:
+        for callback in callbacks:
+            getattr(callback, method)(*args)
