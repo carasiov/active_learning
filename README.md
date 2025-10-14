@@ -55,7 +55,7 @@ The project includes a devcontainer configuration for reproducible GPU-accelerat
 2. Open project folder
 3. Click "Reopen in Container" when prompted
 4. Wait for initial build (~5-10 minutes first time)
-5. Verify GPU: `python -c "import jax; print(jax.devices())"`
+5. Verify GPU: `poetry run python -c "import jax; print(jax.devices())"`
 
 See `.devcontainer/README.md` for detailed instructions and troubleshooting.
 
@@ -122,7 +122,7 @@ Labels live in `data/mnist/labels.csv` with columns `Serial` and `label`. Unlabe
 ### 2. Train
 
 ```bash
-python use_cases/scripts/train.py \
+poetry run python use_cases/scripts/train.py \
   --labels data/mnist/labels.csv \
   --weights artifacts/checkpoints/ssvae.ckpt
 ```
@@ -136,7 +136,7 @@ python use_cases/scripts/train.py \
 ### 3. Inference
 
 ```bash
-python use_cases/scripts/infer.py \
+poetry run python use_cases/scripts/infer.py \
   --weights artifacts/checkpoints/ssvae.ckpt \
   --output data/output_latent.npz \
   --split train  # or test
@@ -154,7 +154,7 @@ python use_cases/scripts/infer.py \
 ### 4. Interactive Viewer
 
 ```bash
-python use_cases/scripts/view_latent.py
+poetry run python use_cases/scripts/view_latent.py
 ```
 
 Features:

@@ -7,6 +7,7 @@ This directory contains the VS Code devcontainer configuration for GPU-accelerat
 - Creates a Docker container with CUDA 12.1 (compatible with cluster's CUDA 12.4)
 - Installs Python 3.11
 - Installs Poetry and all project dependencies
+- Forces Poetry to create the virtualenv inside the workspace (`.venv/`)
 - Passes through GPU access
 - Configures VS Code with Python and Jupyter extensions
 
@@ -48,7 +49,7 @@ This directory contains the VS Code devcontainer configuration for GPU-accelerat
 
 5. Verify GPU access:
    ```bash
-   python -c "import jax; print(jax.devices())"
+   poetry run python -c "import jax; print(jax.devices())"
    # Should show: [cuda(id=0), cuda(id=1)]
    ```
 
@@ -57,7 +58,7 @@ This directory contains the VS Code devcontainer configuration for GPU-accelerat
 The application now auto-detects available JAX devices. If CUDA is not available the runtime falls back to CPU automatically and prints a banner describing the active backend. To force a specific backend you can set `JAX_PLATFORMS` before launching Python, for example:
 
 ```bash
-JAX_PLATFORMS=cpu python use_cases/scripts/train.py
+JAX_PLATFORMS=cpu poetry run python use_cases/scripts/train.py
 ```
 
 ### Daily Usage
@@ -70,18 +71,17 @@ After the first build, reopening in container is fast (~10 seconds).
 
 ### Running Code
 
-Inside the container:
+Inside the container the Python extension auto-activates `.venv`. When running commands manually, prefix with `poetry run` (or activate the environment via `source .venv/bin/activate`):
 
 ```bash
 # Train with GPU
-python scripts/test_conv.py
-# Should be much faster than CPU!
+poetry run python scripts/test_conv.py
 
 # Full training
-python scripts/train.py
+poetry run python scripts/train.py
 
 # Notebooks work too
-jupyter notebook
+poetry run jupyter notebook
 ```
 
 ### Rebuilding the Container
