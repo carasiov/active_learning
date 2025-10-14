@@ -13,7 +13,8 @@
 		}
 	},
 	"runArgs": [
-		"--shm-size=8g"
+		"--shm-size=8g",
+		"--gpus=all"
 	],
 	"containerEnv": {
 		"POETRY_VIRTUALENVS_CREATE": "1",

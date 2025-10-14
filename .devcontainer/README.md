@@ -49,6 +49,9 @@ This directory contains the VS Code devcontainer configuration for GPU-accelerat
 
 5. Verify GPU access:
    ```bash
+   nvidia-smi
+   # Should list the host GPUs when passthrough is working
+
    poetry run python -c "import jax; print(jax.devices())"
    # Should show: [cuda(id=0), cuda(id=1)]
    ```
@@ -101,6 +104,7 @@ If you modify `.devcontainer/devcontainer.json`:
 **"GPU not detected inside container"**
 - Verify outside container: `nvidia-smi` on cluster
 - Check docker has GPU access: `docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi`
+- Rebuild or reopen the devcontainer after ensuring GPUs are exposed (`F1` → "Dev Containers: Rebuild Container")
 
 **"Poetry install fails"**
 - Check internet access from container

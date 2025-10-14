@@ -1,6 +1,7 @@
 """Minimal JAX device detection with graceful fallback."""
 import logging
 import os
+import shutil
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +68,10 @@ def print_device_banner():
 
     if device_type == "cpu" and not os.environ.get("JAX_PLATFORMS"):
         print(" Note: Running on CPU (GPU unavailable)")
-        print(" Tip: Check 'nvidia-smi' and Docker '--gpus' flag")
+        if shutil.which("nvidia-smi") is None:
+            print(" Tip: 'nvidia-smi' not found. Restart the devcontainer with '--gpus all' or rebuild after enabling GPU passthrough.")
+        else:
+            print(" Tip: GPU driver detected. Rebuild the devcontainer or check CUDA visibility for JAX.")
 
     print("=" * 60)
     print(flush=True)
