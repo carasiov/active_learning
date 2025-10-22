@@ -96,7 +96,7 @@ class InteractiveTrainer:
 
     def save_checkpoint(self, path: str) -> None:
         """Persist current model parameters and optimizer state."""
-        self.model._save_weights(path)
+        self.model._save_weights(self._state, path)
         self._weights_path = path
 
     def load_checkpoint(self, path: str) -> None:

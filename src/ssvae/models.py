@@ -216,12 +216,12 @@ class SSVAE:
     def prepare_data_for_keras_model(self, data: np.ndarray) -> np.ndarray:
         return np.where(data == 0, 0.0, 1.0)
 
-    def _save_weights(self, path: str):
+    def _save_weights(self, state: SSVAETrainState, path: str):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         payload = {
-            "params": self.state.params,
-            "opt_state": self.state.opt_state,
-            "step": self.state.step,
+            "params": state.params,
+            "opt_state": state.opt_state,
+            "step": state.step,
         }
         data = to_bytes(payload)
         with open(path, "wb") as f:

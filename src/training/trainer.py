@@ -16,7 +16,7 @@ MetricsDict = Dict[str, jnp.ndarray]
 HistoryDict = Dict[str, list[float]]
 TrainStepFn = Callable[[SSVAETrainState, jnp.ndarray, jnp.ndarray, jax.Array], Tuple[SSVAETrainState, MetricsDict]]
 EvalMetricsFn = Callable[[Dict[str, Dict[str, jnp.ndarray]], jnp.ndarray, jnp.ndarray], MetricsDict]
-SaveFn = Callable[[str], None]
+SaveFn = Callable[[SSVAETrainState, str], None]
 
 
 @dataclass(frozen=True)
@@ -65,13 +65,20 @@ class EarlyStoppingTracker:
     checkpoint_saved: bool = False
     halted_early: bool = False
 
-    def update(self, current_val: float, *, weights_path: str | None, save_fn: SaveFn) -> bool:
+    def update(
+        self,
+        current_val: float,
+        *,
+        state: SSVAETrainState,
+        weights_path: str | None,
+        save_fn: SaveFn,
+    ) -> bool:
         if current_val < self.best_val:
             self.best_val = current_val
             self.wait = 0
             if weights_path is not None:
                 Path(weights_path).parent.mkdir(parents=True, exist_ok=True)
-                save_fn(weights_path)
+                save_fn(state, weights_path)
                 self.checkpoint_saved = True
             return False
 
@@ -173,7 +180,12 @@ class Trainer:
             self._run_callbacks(callback_list, "on_epoch_end", epoch, metrics_bundle, history, self)
 
             current_val = float(val_metrics[setup.monitor_metric])
-            should_stop = tracker.update(current_val, weights_path=weights_path, save_fn=save_fn)
+            should_stop = tracker.update(
+                current_val,
+                state=state,
+                weights_path=weights_path,
+                save_fn=save_fn,
+            )
             if should_stop:
                 break
 
