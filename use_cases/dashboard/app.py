@@ -1,13 +1,11 @@
 """
-Dash-based dashboard for the SSVAE active learning workflow (Phase 1).
+Dash-based dashboard for the SSVAE active learning workflow.
 
-This module implements the static UI with labeling capabilities:
+Currently includes:
 - 60k-point latent space visualization backed by Plotly Scattergl
 - Sample selection with original/reconstructed image preview
 - Immediate label persistence to ``data/mnist/labels.csv``
-
-Phase 2/3 features (training integration, live metrics) will extend the
-structures defined here without restructuring the module.
+- Background training controls with live status updates
 """
 
 from __future__ import annotations
@@ -17,8 +15,8 @@ import io
 import sys
 import threading
 from pathlib import Path
-from queue import Queue
-from typing import Dict, Tuple
+from queue import Queue, Empty
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -29,19 +27,23 @@ from dash import ALL, Dash, Input, Output, State, dcc, html
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
-from matplotlib import cm, colors as mcolors
+from matplotlib import colormaps, colors as mcolors
 
 # Ensure repository imports work when running without installation.
 ROOT_DIR = Path(__file__).resolve().parents[2]
 SRC_DIR = ROOT_DIR / "src"
+DASHBOARD_DIR = Path(__file__).resolve().parent
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
+if str(DASHBOARD_DIR) not in sys.path:
+    sys.path.insert(0, str(DASHBOARD_DIR))
 
 from ssvae import SSVAE, SSVAEConfig  # noqa: E402
 from training.interactive_trainer import InteractiveTrainer  # noqa: E402
 from data.mnist import load_train_images_for_ssvae, load_mnist_splits  # noqa: E402
+from dashboard_callback import DashboardMetricsCallback  # noqa: E402
 
 
 CHECKPOINT_PATH = ROOT_DIR / "artifacts" / "checkpoints" / "ssvae.ckpt"
@@ -69,21 +71,137 @@ app_state: Dict[str, object] = {
         "active": False,
         "thread": None,
         "target_epochs": 0,
+        "status_messages": [],
     },
     "ui": {
         "selected_sample": 0,
         "color_mode": "user_labels",
         "labels_version": 0,
+        "latent_version": 0,
     },
     "history": {
         "epochs": [],
         "train_loss": [],
         "val_loss": [],
+        "train_reconstruction_loss": [],
+        "val_reconstruction_loss": [],
+        "train_kl_loss": [],
+        "val_kl_loss": [],
+        "train_classification_loss": [],
+        "val_classification_loss": [],
     },
 }
 
 
-COOLWARM_CMAP = cm.get_cmap("coolwarm")
+COOLWARM_CMAP = colormaps["coolwarm"]
+MAX_STATUS_MESSAGES = 10
+
+
+def _append_status_message_locked(message: str) -> None:
+    messages = app_state["training"].setdefault("status_messages", [])
+    messages.append(message)
+    if len(messages) > MAX_STATUS_MESSAGES:
+        messages = messages[-MAX_STATUS_MESSAGES:]
+    app_state["training"]["status_messages"] = messages
+
+
+def _append_status_message(message: str) -> None:
+    with state_lock:
+        _append_status_message_locked(message)
+
+
+def _update_history_with_epoch(payload: Dict[str, float]) -> None:
+    with state_lock:
+        history = app_state["history"]
+        history["epochs"].append(int(payload["epoch"]))
+        for key in (
+            "train_loss",
+            "val_loss",
+            "train_reconstruction_loss",
+            "val_reconstruction_loss",
+            "train_kl_loss",
+            "val_kl_loss",
+            "train_classification_loss",
+            "val_classification_loss",
+        ):
+            value = payload.get(key)
+            if value is not None:
+                history.setdefault(key, []).append(float(value))
+
+
+def _clear_metrics_queue() -> None:
+    while True:
+        try:
+            metrics_queue.get_nowait()
+        except Empty:
+            break
+
+
+def _configure_trainer_callbacks(trainer: InteractiveTrainer, target_epochs: int) -> None:
+    existing = getattr(trainer, "_callbacks", None)
+    if existing:
+        base_callbacks = [cb for cb in existing if not isinstance(cb, DashboardMetricsCallback)]
+    else:
+        base_callbacks = list(
+            trainer.model._build_callbacks(
+                weights_path=trainer.model.weights_path or str(CHECKPOINT_PATH),
+                export_history=False,
+            )
+        )
+    base_callbacks.append(DashboardMetricsCallback(metrics_queue, target_epochs))
+    trainer._callbacks = base_callbacks
+
+
+def train_worker(num_epochs: int) -> None:
+    """Background worker that runs incremental training and pushes updates to the UI."""
+    try:
+        with state_lock:
+            trainer: InteractiveTrainer = app_state["trainer"]
+            x_train_ref = app_state["data"]["x_train"]
+            labels_ref = app_state["data"]["labels"]
+            target_epochs = int(app_state["training"]["target_epochs"] or num_epochs)
+            _configure_trainer_callbacks(trainer, target_epochs)
+
+        if x_train_ref is None or labels_ref is None:
+            metrics_queue.put({"type": "error", "message": "Training data not initialized."})
+            return
+
+        x_train = np.array(x_train_ref)
+        labels = np.array(labels_ref, copy=True)
+
+        _append_status_message(f"Training for {target_epochs} epoch(s)...")
+        history = trainer.train_epochs(
+            num_epochs=target_epochs,
+            data=x_train,
+            labels=labels,
+            weights_path=str(CHECKPOINT_PATH),
+        )
+
+        with state_lock:
+            model = app_state["model"]
+        latent, recon, pred_classes, pred_certainty = model.predict(x_train)
+
+        with state_lock:
+            labels_latest = np.array(app_state["data"]["labels"], copy=True)
+            true_labels = app_state["data"]["true_labels"]
+        hover_text = _build_hover_text(pred_classes, pred_certainty, labels_latest, true_labels)
+
+        with state_lock:
+            app_state["data"]["latent"] = latent
+            app_state["data"]["reconstructed"] = recon
+            app_state["data"]["pred_classes"] = pred_classes
+            app_state["data"]["pred_certainty"] = pred_certainty
+            app_state["data"]["hover_text"] = hover_text
+            app_state["ui"]["latent_version"] = int(app_state["ui"]["latent_version"]) + 1
+            latent_version = app_state["ui"]["latent_version"]
+        metrics_queue.put({"type": "latent_updated", "version": latent_version})
+        metrics_queue.put({"type": "training_complete", "history": history})
+    except Exception as exc:  # pragma: no cover - defensive
+        metrics_queue.put({"type": "error", "message": str(exc)})
+    finally:
+        with state_lock:
+            app_state["training"]["active"] = False
+            app_state["training"]["thread"] = None
 
 
 def initialize_model_and_data() -> None:
@@ -91,6 +209,7 @@ def initialize_model_and_data() -> None:
     with state_lock:
         if app_state["model"] is not None:
             return
+    CHECKPOINT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     config = SSVAEConfig()
     model = SSVAE(input_dim=(28, 28), config=config)
@@ -133,6 +252,8 @@ def initialize_model_and_data() -> None:
         app_state["training"]["active"] = False
         app_state["training"]["thread"] = None
         app_state["training"]["target_epochs"] = 0
+        app_state["training"]["status_messages"] = []
+        app_state["ui"]["latent_version"] = 0
 
 
 def _format_hover_entry(
@@ -186,7 +307,9 @@ def array_to_base64(arr: np.ndarray) -> str:
         scaled = ((arr - min_val) / (max_val - min_val) * 255.0).astype(np.uint8)
     else:
         scaled = np.zeros_like(arr, dtype=np.uint8)
-    img = Image.fromarray(scaled, mode="L")
+    img = Image.fromarray(scaled)
+    if img.mode != "L":
+        img = img.convert("L")
     buffer = io.BytesIO()
     img.save(buffer, format="PNG")
     encoded = base64.b64encode(buffer.getvalue()).decode("utf-8")
@@ -294,6 +417,21 @@ def _update_label(sample_idx: int, new_label: float | None) -> Tuple[dict, str]:
 def create_app() -> Dash:
     initialize_model_and_data()
 
+    with state_lock:
+        config = app_state["config"]
+        recon_weight_value = float(np.clip(config.recon_weight, 0.0, 5000.0))
+        kl_weight_value = float(np.clip(config.kl_weight, 0.0, 1.0))
+        learning_rate_value = float(np.clip(config.learning_rate, 0.0001, 0.01))
+        default_epochs = max(1, int(app_state["training"]["target_epochs"] or 5))
+        latent_version = int(app_state["ui"]["latent_version"])
+        existing_status = list(app_state["training"]["status_messages"])
+
+    status_initial_children = (
+        html.Ul([html.Li(msg) for msg in existing_status], className="mb-0 small")
+        if existing_status
+        else html.Span("Idle.", className="text-muted")
+    )
+
     app = Dash(
         __name__,
         external_stylesheets=[dbc.themes.BOOTSTRAP],
@@ -305,7 +443,101 @@ def create_app() -> Dash:
         [
             dcc.Store(id="selected-sample-store", data=int(app_state["ui"]["selected_sample"])),
             dcc.Store(id="labels-store", data={"version": int(app_state["ui"]["labels_version"])}),
+            dcc.Store(id="training-control-store", data={"token": 0}),
+            dcc.Store(id="latent-store", data={"version": latent_version}),
+            dcc.Interval(id="training-poll", interval=2000, n_intervals=0, disabled=True),
             html.H1("SSVAE Active Learning Dashboard", className="mb-4"),
+            dbc.Row(
+                [
+                    dbc.Col(
+                        dbc.Card(
+                            [
+                                dbc.CardHeader("Training Controls"),
+                                dbc.CardBody(
+                                    [
+                                        dbc.Label("Reconstruction Weight"),
+                                        dcc.Slider(
+                                            id="recon-weight-slider",
+                                            min=0,
+                                            max=5000,
+                                            step=50,
+                                            value=recon_weight_value,
+                                            marks={0: "0", 2500: "2500", 5000: "5000"},
+                                            tooltip={"placement": "bottom", "always_visible": False},
+                                        ),
+                                        dbc.Label("KL Weight", className="mt-3"),
+                                        dcc.Slider(
+                                            id="kl-weight-slider",
+                                            min=0.0,
+                                            max=1.0,
+                                            step=0.01,
+                                            value=kl_weight_value,
+                                            marks={0.0: "0", 0.5: "0.5", 1.0: "1"},
+                                            tooltip={"placement": "bottom", "always_visible": False},
+                                        ),
+                                        dbc.Label("Learning Rate", className="mt-3"),
+                                        dcc.Slider(
+                                            id="learning-rate-slider",
+                                            min=0.0001,
+                                            max=0.01,
+                                            step=0.0001,
+                                            value=learning_rate_value,
+                                            marks={0.0001: "1e-4", 0.005: "5e-3", 0.01: "1e-2"},
+                                            tooltip={"placement": "bottom", "always_visible": False},
+                                        ),
+                                        dbc.Row(
+                                            [
+                                                dbc.Col(
+                                                    [
+                                                        dbc.Label("Epochs", className="mt-3"),
+                                                        dcc.Input(
+                                                            id="num-epochs-input",
+                                                            type="number",
+                                                            min=1,
+                                                            max=200,
+                                                            step=1,
+                                                            value=default_epochs,
+                                                            debounce=True,
+                                                            style={"width": "100%"},
+                                                        ),
+                                                    ],
+                                                    md=4,
+                                                ),
+                                                dbc.Col(
+                                                    dbc.Button(
+                                                        "Start Training",
+                                                        id="start-training-button",
+                                                        color="success",
+                                                        className="mt-4",
+                                                        n_clicks=0,
+                                                    ),
+                                                    md="auto",
+                                                ),
+                                            ],
+                                            className="g-3 align-items-end",
+                                        ),
+                                    ]
+                                ),
+                            ],
+                            className="mb-3",
+                        ),
+                        width=8,
+                    ),
+                    dbc.Col(
+                        dbc.Card(
+                            [
+                                dbc.CardHeader("Training Status"),
+                                dbc.CardBody(
+                                    html.Div(status_initial_children, id="training-status", className="m-0"),
+                                ),
+                            ],
+                            className="mb-3",
+                        ),
+                        width=4,
+                    ),
+                ],
+                className="mb-2",
+            ),
             dbc.Row(
                 [
                     dbc.Col(
@@ -415,15 +647,164 @@ def create_app() -> Dash:
 
 
 def register_callbacks(app: Dash) -> None:
-    """Register Dash callbacks for the Phase 1 dashboard."""
+    """Register Dash callbacks for the dashboard."""
+
+    @app.callback(
+        Output("training-control-store", "data"),
+        Input("start-training-button", "n_clicks"),
+        State("recon-weight-slider", "value"),
+        State("kl-weight-slider", "value"),
+        State("learning-rate-slider", "value"),
+        State("num-epochs-input", "value"),
+        State("training-control-store", "data"),
+        prevent_initial_call=True,
+    )
+    def handle_start_training(
+        n_clicks: int,
+        recon_weight: float,
+        kl_weight: float,
+        learning_rate: float,
+        num_epochs: Optional[float],
+        control_store: Optional[Dict[str, int]],
+    ) -> object:
+        if not n_clicks:
+            raise PreventUpdate
+
+        if num_epochs is None:
+            _append_status_message("Please specify the number of epochs before starting training.")
+            return dash.no_update
+
+        try:
+            epochs = int(num_epochs)
+        except (TypeError, ValueError):
+            _append_status_message("Epochs must be a whole number between 1 and 200.")
+            return dash.no_update
+
+        if epochs <= 0:
+            _append_status_message("Epochs must be greater than zero.")
+            return dash.no_update
+        epochs = max(1, min(epochs, 200))
+
+        if recon_weight is None or kl_weight is None or learning_rate is None:
+            _append_status_message("Please configure all hyperparameters before training.")
+            return dash.no_update
+
+        with state_lock:
+            if app_state["training"]["active"]:
+                _append_status_message_locked("Training already in progress.")
+                return dash.no_update
+
+            config = app_state["config"]
+            config.recon_weight = float(recon_weight)
+            config.kl_weight = float(kl_weight)
+            config.learning_rate = float(learning_rate)
+
+            model = app_state["model"]
+            model.config.recon_weight = float(recon_weight)
+            model.config.kl_weight = float(kl_weight)
+            model.config.learning_rate = float(learning_rate)
+
+            trainer = app_state["trainer"]
+            trainer.config.recon_weight = float(recon_weight)
+            trainer.config.kl_weight = float(kl_weight)
+            trainer.config.learning_rate = float(learning_rate)
+
+            app_state["training"]["target_epochs"] = epochs
+            app_state["training"]["active"] = True
+            app_state["training"]["status_messages"] = [f"Queued training for {epochs} epoch(s)."]
+
+        _clear_metrics_queue()
+        worker = threading.Thread(target=train_worker, args=(epochs,), daemon=True)
+        with state_lock:
+            app_state["training"]["thread"] = worker
+        worker.start()
+
+        token = (control_store or {}).get("token", 0) + 1
+        return {"token": token}
+
+    @app.callback(
+        Output("training-status", "children"),
+        Output("start-training-button", "disabled"),
+        Output("recon-weight-slider", "disabled"),
+        Output("kl-weight-slider", "disabled"),
+        Output("learning-rate-slider", "disabled"),
+        Output("num-epochs-input", "disabled"),
+        Output("latent-store", "data"),
+        Output("training-poll", "disabled"),
+        Input("training-poll", "n_intervals"),
+        Input("training-control-store", "data"),
+        State("latent-store", "data"),
+    )
+    def poll_training_status(
+        _n_intervals: int,
+        _control_store: Optional[Dict[str, int]],
+        latent_store: Optional[Dict[str, int]],
+    ) -> Tuple[object, bool, bool, bool, bool, bool, Dict[str, int], bool]:  # type: ignore[valid-type]
+        latent_version = (latent_store or {}).get("version", 0)
+        processed_messages = False
+        while True:
+            try:
+                message = metrics_queue.get_nowait()
+            except Empty:
+                break
+            processed_messages = True
+
+            msg_type = message.get("type")
+            if msg_type == "epoch_complete":
+                _update_history_with_epoch(message)
+                epoch = int(message.get("epoch", 0))
+                target = int(message.get("target_epochs", 0))
+                train_loss = message.get("train_loss")
+                val_loss = message.get("val_loss")
+                parts: List[str] = [f"Epoch {epoch}/{target if target else '?'}"]
+                if train_loss is not None:
+                    parts.append(f"train {float(train_loss):.4f}")
+                if val_loss is not None:
+                    parts.append(f"val {float(val_loss):.4f}")
+                _append_status_message(" | ".join(parts))
+            elif msg_type == "training_complete":
+                _append_status_message("Training complete.")
+            elif msg_type == "latent_updated":
+                latent_version = max(latent_version, int(message.get("version", latent_version + 1)))
+            elif msg_type == "error":
+                _append_status_message(f"Error: {message.get('message', 'Unknown error')}")
+
+        with state_lock:
+            active = app_state["training"]["active"]
+            status_messages = list(app_state["training"].get("status_messages", []))
+
+        if status_messages:
+            items = []
+            for msg in status_messages[-MAX_STATUS_MESSAGES:]:
+                class_name = "text-danger" if str(msg).lower().startswith("error:") else None
+                items.append(html.Li(msg, className=class_name))
+            status_children = html.Ul(items, className="mb-0 small")
+        else:
+            status_children = html.Span("Idle.", className="text-muted")
+
+        controls_disabled = bool(active)
+        latent_store_out = {"version": latent_version}
+        interval_disabled = not active and not processed_messages and metrics_queue.empty()
+
+        return (
+            status_children,
+            controls_disabled,
+            controls_disabled,
+            controls_disabled,
+            controls_disabled,
+            controls_disabled,
+            latent_store_out,
+            interval_disabled,
+        )
 
     @app.callback(
         Output("latent-scatter", "figure"),
         Input("color-mode-radio", "value"),
         Input("selected-sample-store", "data"),
         Input("labels-store", "data"),
+        Input("latent-store", "data"),
     )
-    def update_scatter(color_mode: str, selected_idx: int, _labels_store: dict) -> go.Figure:
+    def update_scatter(color_mode: str, selected_idx: int, _labels_store: dict, _latent_store: dict) -> go.Figure:
         with state_lock:
             latent = np.array(app_state["data"]["latent"], dtype=np.float64)
             labels = np.array(app_state["data"]["labels"], dtype=np.float64)
@@ -514,8 +895,9 @@ def register_callbacks(app: Dash) -> None:
         Output("prediction-info", "children"),
         Input("selected-sample-store", "data"),
         Input("labels-store", "data"),
+        Input("latent-store", "data"),
     )
-    def update_sample_display(selected_idx: int, _labels_store: dict) -> Tuple[str, str, str, str]:
+    def update_sample_display(selected_idx: int, _labels_store: dict, _latent_store: dict) -> Tuple[str, str, str, str]:
         if selected_idx is None:
             raise PreventUpdate
 
