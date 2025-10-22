@@ -108,13 +108,12 @@ def initialize_model_and_data() -> None:
     latent, recon, pred_classes, pred_certainty = model.predict(x_train)
 
     labels_array = np.full(shape=(x_train.shape[0],), fill_value=np.nan, dtype=float)
-    if LABELS_PATH.exists():
-        labels_df = pd.read_csv(LABELS_PATH)
-        if not labels_df.empty:
-            serials = labels_df["Serial"].astype(int)
-            label_values = pd.to_numeric(labels_df["label"], errors="coerce")
-            valid_mask = serials.between(0, x_train.shape[0] - 1) & label_values.notna()
-            labels_array[serials[valid_mask]] = label_values[valid_mask].to_numpy(dtype=float)
+    stored_labels = _load_labels_dataframe()
+    if not stored_labels.empty:
+        serials = stored_labels.index.to_numpy()
+        label_values = stored_labels["label"].astype(int).to_numpy()
+        valid_mask = (serials >= 0) & (serials < x_train.shape[0])
+        labels_array[serials[valid_mask]] = label_values[valid_mask].astype(float)
 
     hover_text = _build_hover_text(pred_classes, pred_certainty, labels_array, true_labels)
 
@@ -220,22 +219,35 @@ def _colorize_numeric(values: np.ndarray) -> list[str]:
 
 
 def _load_labels_dataframe() -> pd.DataFrame:
-    """Load the labels CSV (index=Serial) or create an empty frame."""
+    """Load the labels CSV (index=Serial) or create an empty frame with Int64 labels."""
+    columns = ["Serial", "label"]
     if LABELS_PATH.exists():
-        df = pd.read_csv(LABELS_PATH, index_col="Serial")
-        if not df.empty:
-            df.index = df.index.astype(int)
-        else:
-            df.index = df.index.astype(int, copy=False)
+        df = pd.read_csv(LABELS_PATH, usecols=columns)
     else:
-        df = pd.DataFrame(columns=["label"])
-        df.index.name = "Serial"
+        df = pd.DataFrame(columns=columns)
+
+    if df.empty:
+        empty = pd.DataFrame(columns=["label"])
+        empty.index = pd.Index([], name="Serial", dtype=int)
+        empty["label"] = pd.Series(dtype="Int64")
+        return empty
+
+    df["Serial"] = pd.to_numeric(df["Serial"], errors="coerce")
+    df = df.dropna(subset=["Serial"])
+    df["Serial"] = df["Serial"].astype(int)
+    df["label"] = pd.to_numeric(df.get("label"), errors="coerce").astype("Int64")
+    df = df.set_index("Serial")
+    df.index.name = "Serial"
     return df
 
 
 def _persist_labels_dataframe(df: pd.DataFrame) -> None:
-    df.index.name = "Serial"
-    df.to_csv(LABELS_PATH)
+    persisted = df.copy()
+    if not persisted.empty:
+        persisted.index = persisted.index.astype(int)
+        persisted["label"] = persisted["label"].astype("Int64")
+    persisted.index.name = "Serial"
+    persisted.to_csv(LABELS_PATH)
 
 
 def _update_label(sample_idx: int, new_label: float | None) -> Tuple[dict, str]:
