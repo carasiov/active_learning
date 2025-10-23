@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Tuple
 
 import dash
-from dash import ALL, Dash, Input, Output, State
+from dash import ALL, Dash, Input, Output, State, html
 from dash.exceptions import PreventUpdate
 import numpy as np
 
@@ -83,3 +83,33 @@ def register_labeling_callbacks(app: Dash) -> None:
             return version_payload, message
         raise PreventUpdate
 
+    @app.callback(
+        Output("dataset-stats", "children"),
+        Input("labels-store", "data"),
+    )
+    def update_dataset_stats(_labels_store: dict | None):
+        with state_lock:
+            labels = np.array(app_state["data"]["labels"], dtype=float)
+
+        total_samples = int(labels.size)
+        labeled_mask = ~np.isnan(labels)
+        labeled_count = int(np.sum(labeled_mask))
+        unlabeled_count = total_samples - labeled_count
+        labeled_pct = (labeled_count / total_samples * 100.0) if total_samples else 0.0
+
+        lines = [
+            html.Div(f"Total samples: {total_samples}"),
+            html.Div(f"Labeled: {labeled_count} ({labeled_pct:.1f}%)"),
+            html.Div(f"Unlabeled: {unlabeled_count}"),
+        ]
+
+        if labeled_count > 0:
+            labeled_values = labels[labeled_mask].astype(int)
+            lines.append(html.Hr(className="my-2"))
+            lines.append(html.Div("Label distribution:", className="fw-bold"))
+            for digit in range(10):
+                count = int(np.sum(labeled_values == digit))
+                class_name = None if count > 0 else "text-muted"
+                lines.append(html.Div(f"{digit}: {count}", className=class_name))
+
+        return lines

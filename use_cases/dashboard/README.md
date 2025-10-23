@@ -16,7 +16,7 @@ Open http://localhost:8050
 - Click-to-label workflow (updates CSV immediately)
 - Configure training parameters and launch background runs with live status updates
 - Real-time loss curve visualization
-- Dataset statistics tracking (coming soon)
+- Dataset statistics panel with label counts
 
 ## Workflow
 

@@ -451,7 +451,7 @@ def update_loss_curves(_latent_store: dict):
 
 ---
 
-### Task 10: Add Dataset Statistics Display
+### Task 10: Add Dataset Statistics Display *(completed)*
 
 **Objective:** Show labeled sample counts and label distribution.
 

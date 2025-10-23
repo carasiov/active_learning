@@ -236,6 +236,13 @@ def build_dashboard_layout() -> html.Div:
                                         className="mb-2",
                                     ),
                                     html.Div(id="label-feedback", className="text-muted"),
+                                    html.Div(
+                                        [
+                                            html.H6("Dataset Statistics"),
+                                            html.Div(id="dataset-stats", className="small"),
+                                        ],
+                                        className="mb-3",
+                                    ),
                                 ]
                             ),
                         ],
