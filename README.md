@@ -15,27 +15,7 @@ Highlights
 
 
 
-Repository Structure
---------------------
 
-```
-active_learning/
-├── artifacts/              # Generated outputs (checkpoints, per-run history, legacy TF weights)
-├── data/                   # Labels.csv and generated inference outputs
-├── docs/                   # Structure documentation, cleanup notes
-├── src/                    # Installable packages (ssvae, callbacks, training)
-│   ├── callbacks/
-│   ├── ssvae/
-│   │   ├── components/
-│   │   ├── config.py
-│   │   └── models.py
-│   ├── training/
-│   └── utils/
-└─── use_cases/              # Reproducible workflows built on the library
-    ├── experiments/        # Experiment runners and their artifacts
-    ├── notebooks/          # Showcase and exploratory notebooks
-    └── scripts/            # CLI entry points (train, infer, viewers)
-```
 
 
 Development Setup
@@ -202,30 +182,3 @@ Callbacks are instantiated in `SSVAE._build_callbacks`, so CLI scripts and noteb
 4. Inject it by passing a callback list to `Trainer.train(..., callbacks=[...])`, to `InteractiveTrainer(..., callbacks=[...])`, or by extending `SSVAE._build_callbacks` in your own wrapper.
 
 This architecture keeps the training loop free of I/O concerns while making it straightforward to add integrations like streaming loggers, experiment trackers, or custom visualizations.
-
----
-
-Showcase Notebook
------------------
-
-`use_cases/notebooks/showcase_ssvae.ipynb` demonstrates the three stages of semi-supervised learning on a MNIST subset (≈12k samples) and runs in under 10 minutes on CPU:
-
-1. **Stage 1 – Untrained:** random latent scatter.
-2. **Stage 2 – Unsupervised:** clusters emerge from reconstruction-only training.
-3. **Stage 3 – Semi-Supervised:** only 50 labels (5 per digit) yield meaningful classification boundaries.
-
-Artifacts (saved automatically to `artifacts/showcase/`):
-
-- `stage1_latent.png`, `stage2_latent.png`, `stage3_latent.png` – latent plots at each stage.
-- `stage2_recon.png` – original vs reconstructed samples.
-- `stage3_predictions.png`, `stage3_certainty.png` – classifier results.
-- `comparison.png` – side-by-side visualization of all stages.
-- `stage2_unsupervised.ckpt`, `stage3_semi_supervised.ckpt` – checkpoints between stages.
-
-The notebook inserts `ROOT/src` into `sys.path`, so it can be run directly from `use_cases/notebooks/`:
-
-```bash
-source .venv/bin/activate
-jupyter notebook use_cases/notebooks/showcase_ssvae.ipynb
-# Kernel → Restart & Run All
-```

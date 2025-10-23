@@ -33,3 +33,9 @@ Open http://localhost:8050
 - Background threading for training
 - State preserved across training sessions
 - Integrates with existing CLI tools (train.py, infer.py still work)
+- Modular layout:
+  - `app.py` orchestrates initialization, layout, and callback registration
+  - `state.py` owns shared model/data state, locks, and labeling helpers
+  - `layouts.py` builds the Dash component tree
+  - `callbacks/` groups training, visualization, and labeling callbacks
+  - `utils.py` hosts colorization and image encoding helpers
