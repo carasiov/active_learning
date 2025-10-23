@@ -6,7 +6,7 @@ import threading
 from typing import Dict, List, Optional, Tuple
 
 import dash
-from dash import Dash, Input, Output, State, html
+from dash import Dash, Input, Output, State, html, no_update
 from dash.exceptions import PreventUpdate
 import numpy as np
 from queue import Empty
@@ -26,6 +26,13 @@ from use_cases.dashboard.state import (
     _update_history_with_epoch,
 )
 from use_cases.dashboard.utils import _build_hover_text
+
+_LAST_POLL_STATE: Dict[str, object] = {
+    "status_messages": None,
+    "controls_disabled": None,
+    "interval_disabled": None,
+    "latent_version": None,
+}
 
 
 def _configure_trainer_callbacks(trainer: InteractiveTrainer, target_epochs: int) -> None:
@@ -222,6 +229,13 @@ def register_training_callbacks(app: Dash) -> None:
             active = app_state["training"]["active"]
             status_messages = list(app_state["training"].get("status_messages", []))
 
+        latest_messages = tuple(str(msg) for msg in status_messages[-MAX_STATUS_MESSAGES:])
+        status_changed = (
+            _LAST_POLL_STATE["status_messages"] is None
+            or processed_messages
+            or latest_messages != _LAST_POLL_STATE["status_messages"]
+        )
+
         if status_messages:
             items = []
             for msg in status_messages[-MAX_STATUS_MESSAGES:]:
@@ -232,16 +246,41 @@ def register_training_callbacks(app: Dash) -> None:
             status_children = html.Span("Idle.", className="text-muted")
 
         controls_disabled = bool(active)
-        latent_store_out = {"version": latent_version}
+        controls_changed = (
+            _LAST_POLL_STATE["controls_disabled"] is None
+            or controls_disabled != _LAST_POLL_STATE["controls_disabled"]
+        )
+
         interval_disabled = not active and not processed_messages and metrics_queue.empty()
+        interval_changed = (
+            _LAST_POLL_STATE["interval_disabled"] is None
+            or interval_disabled != _LAST_POLL_STATE["interval_disabled"]
+        )
+
+        latent_changed = (
+            _LAST_POLL_STATE["latent_version"] is None
+            or latent_version != _LAST_POLL_STATE["latent_version"]
+        )
+        latent_store_out = {"version": latent_version}
+
+        # Update cached state with the latest values.
+        _LAST_POLL_STATE["status_messages"] = latest_messages
+        _LAST_POLL_STATE["controls_disabled"] = controls_disabled
+        _LAST_POLL_STATE["interval_disabled"] = interval_disabled
+        _LAST_POLL_STATE["latent_version"] = latent_version
+
+        status_output = status_children if status_changed else no_update
+        control_output = controls_disabled if controls_changed else no_update
+        latent_output = latent_store_out if latent_changed else no_update
+        interval_output = interval_disabled if interval_changed else no_update
 
         return (
-            status_children,
-            controls_disabled,
-            controls_disabled,
-            controls_disabled,
-            controls_disabled,
-            controls_disabled,
-            latent_store_out,
-            interval_disabled,
+            status_output,
+            control_output,
+            control_output,
+            control_output,
+            control_output,
+            control_output,
+            latent_output,
+            interval_output,
         )
