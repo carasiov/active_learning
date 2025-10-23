@@ -15,7 +15,7 @@ Open http://localhost:8050
 - Color-by toggles for user labels, predicted class, true label, or certainty
 - Click-to-label workflow (updates CSV immediately)
 - Configure training parameters and launch background runs with live status updates
-- Real-time loss curve visualization (coming soon)
+- Real-time loss curve visualization
 - Dataset statistics tracking (coming soon)
 
 ## Workflow

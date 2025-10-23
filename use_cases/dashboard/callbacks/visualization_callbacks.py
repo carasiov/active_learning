@@ -182,3 +182,50 @@ def register_visualization_callbacks(app: Dash) -> None:
         with state_lock:
             app_state["ui"]["color_mode"] = color_mode
         return color_mode
+
+    @app.callback(
+        Output("loss-curves", "figure"),
+        Input("latent-store", "data"),
+    )
+    def update_loss_curves(_latent_store: dict | None):
+        with state_lock:
+            history = app_state["history"]
+            epochs = list(history.get("epochs", []))
+
+        figure = go.Figure()
+        if not epochs:
+            figure.update_layout(
+                template="plotly_white",
+                xaxis_title="Epoch",
+                yaxis_title="Loss",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02),
+            )
+            return figure
+
+        series_info = [
+            ("train_loss", "Train Loss"),
+            ("val_loss", "Val Loss"),
+            ("train_reconstruction_loss", "Train Recon"),
+            ("val_reconstruction_loss", "Val Recon"),
+        ]
+
+        for key, label in series_info:
+            values = history.get(key)
+            if values and len(values) == len(epochs):
+                figure.add_trace(
+                    go.Scatter(
+                        x=epochs,
+                        y=list(values),
+                        mode="lines+markers",
+                        name=label,
+                    )
+                )
+
+        figure.update_layout(
+            template="plotly_white",
+            xaxis_title="Epoch",
+            yaxis_title="Loss",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02),
+            margin=dict(l=20, r=20, t=30, b=40),
+        )
+        return figure

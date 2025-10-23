@@ -129,6 +129,24 @@ def build_dashboard_layout() -> html.Div:
             dbc.Row(
                 [
                     dbc.Col(
+                        dbc.Card(
+                            [
+                                dbc.CardHeader("Training Progress"),
+                                dbc.CardBody(
+                                    dcc.Graph(id="loss-curves", style={"height": "400px"}),
+                                ),
+                            ],
+                            className="mb-3",
+                        ),
+                        width=8,
+                    ),
+                    dbc.Col(width=4),
+                ],
+                className="mb-2",
+            ),
+            dbc.Row(
+                [
+                    dbc.Col(
                         [
                             dbc.Card(
                                 [
