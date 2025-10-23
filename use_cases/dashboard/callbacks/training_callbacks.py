@@ -95,6 +95,7 @@ def train_worker(num_epochs: int) -> None:
         metrics_queue.put({"type": "latent_updated", "version": latent_version})
         metrics_queue.put({"type": "training_complete", "history": history})
     except Exception as exc:  # pragma: no cover - defensive
+        _append_status_message(f"Training error: {exc}")
         metrics_queue.put({"type": "error", "message": str(exc)})
     finally:
         with state_lock:
@@ -145,35 +146,42 @@ def register_training_callbacks(app: Dash) -> None:
             _append_status_message("Please configure all hyperparameters before training.")
             return dash.no_update
 
-        with state_lock:
-            if app_state["training"]["active"]:
-                _append_status_message_locked("Training already in progress.")
-                return dash.no_update
+        try:
+            with state_lock:
+                if app_state["training"]["active"]:
+                    _append_status_message_locked("Training already in progress.")
+                    return dash.no_update
 
-            config = app_state["config"]
-            config.recon_weight = float(recon_weight)
-            config.kl_weight = float(kl_weight)
-            config.learning_rate = float(learning_rate)
+                config = app_state["config"]
+                config.recon_weight = float(recon_weight)
+                config.kl_weight = float(kl_weight)
+                config.learning_rate = float(learning_rate)
 
-            model = app_state["model"]
-            model.config.recon_weight = float(recon_weight)
-            model.config.kl_weight = float(kl_weight)
-            model.config.learning_rate = float(learning_rate)
+                model = app_state["model"]
+                model.config.recon_weight = float(recon_weight)
+                model.config.kl_weight = float(kl_weight)
+                model.config.learning_rate = float(learning_rate)
 
-            trainer = app_state["trainer"]
-            trainer.config.recon_weight = float(recon_weight)
-            trainer.config.kl_weight = float(kl_weight)
-            trainer.config.learning_rate = float(learning_rate)
+                trainer = app_state["trainer"]
+                trainer.config.recon_weight = float(recon_weight)
+                trainer.config.kl_weight = float(kl_weight)
+                trainer.config.learning_rate = float(learning_rate)
 
-            app_state["training"]["target_epochs"] = epochs
-            app_state["training"]["active"] = True
-            app_state["training"]["status_messages"] = [f"Queued training for {epochs} epoch(s)."]
+                app_state["training"]["target_epochs"] = epochs
+                app_state["training"]["active"] = True
+                app_state["training"]["status_messages"] = [f"Queued training for {epochs} epoch(s)."]
 
-        _clear_metrics_queue()
-        worker = threading.Thread(target=train_worker, args=(epochs,), daemon=True)
-        with state_lock:
-            app_state["training"]["thread"] = worker
-        worker.start()
+            _clear_metrics_queue()
+            worker = threading.Thread(target=train_worker, args=(epochs,), daemon=True)
+            with state_lock:
+                app_state["training"]["thread"] = worker
+            worker.start()
+        except Exception as exc:
+            with state_lock:
+                app_state["training"]["active"] = False
+                app_state["training"]["thread"] = None
+            _append_status_message(f"Error starting training: {exc}")
+            return dash.no_update
 
         token = (control_store or {}).get("token", 0) + 1
         return {"token": token}

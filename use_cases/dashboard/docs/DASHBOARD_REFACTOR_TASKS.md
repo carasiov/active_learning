@@ -524,7 +524,7 @@ def update_dataset_stats(_labels_store: dict):
 
 ## Phase 4: Final Polish (Optional)
 
-### Task 11: Add Error Boundary for Training
+### Task 11: Add Error Boundary for Training *(completed)*
 
 **Objective:** Improve error handling when training fails.
 
