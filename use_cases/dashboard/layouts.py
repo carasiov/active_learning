@@ -34,6 +34,8 @@ def build_dashboard_layout() -> html.Div:
             dcc.Store(id="training-control-store", data={"token": 0}),
             dcc.Store(id="latent-store", data={"version": latent_version}),
             dcc.Interval(id="training-poll", interval=2000, n_intervals=0, disabled=True),
+            dcc.Store(id="keyboard-label-store"),
+            dcc.Interval(id="keyboard-poll", interval=300, n_intervals=0, disabled=False),
             html.H1("SSVAE Active Learning Dashboard", className="mb-4"),
             dbc.Row(
                 [

@@ -84,6 +84,57 @@ def register_labeling_callbacks(app: Dash) -> None:
         raise PreventUpdate
 
     @app.callback(
+        Output("labels-store", "data", allow_duplicate=True),
+        Output("label-feedback", "children", allow_duplicate=True),
+        Input("keyboard-label-store", "data"),
+        State("selected-sample-store", "data"),
+        prevent_initial_call=True,
+    )
+    def handle_keyboard_label(event: dict | None, selected_idx: int | None) -> Tuple[dict, str]:
+        if not event or selected_idx is None:
+            raise PreventUpdate
+        digit = event.get("digit")
+        if digit is None or not (0 <= int(digit) <= 9):
+            raise PreventUpdate
+        version_payload, message = _update_label(int(selected_idx), int(digit))
+        return version_payload, message
+
+    app.clientside_callback(
+        """
+        function(n, existing) {
+            if (typeof window.__dashKeyboardListener__ === "undefined") {
+                window.__dashKeyboardListener__ = {digit: null, timestamp: null};
+                document.addEventListener("keydown", function(evt) {
+                    if (evt.metaKey || evt.ctrlKey || evt.altKey) {
+                        return;
+                    }
+                    const tag = (evt.target && evt.target.tagName) ? evt.target.tagName.toLowerCase() : "";
+                    if (tag === "input" || tag === "textarea" || (evt.target && evt.target.isContentEditable)) {
+                        return;
+                    }
+                    const value = parseInt(evt.key, 10);
+                    if (!Number.isNaN(value) && value >= 0 && value <= 9) {
+                        window.__dashKeyboardListener__ = {digit: value, timestamp: Date.now()};
+                    }
+                });
+            }
+            const last = window.__dashKeyboardListener__;
+            if (!last || last.timestamp === null) {
+                return window.dash_clientside.no_update;
+            }
+            if (existing && existing.timestamp === last.timestamp) {
+                return window.dash_clientside.no_update;
+            }
+            return last;
+        }
+        """,
+        Output("keyboard-label-store", "data"),
+        Input("keyboard-poll", "n_intervals"),
+        State("keyboard-label-store", "data"),
+        prevent_initial_call=False,
+    )
+
+    @app.callback(
         Output("dataset-stats", "children"),
         Input("labels-store", "data"),
     )

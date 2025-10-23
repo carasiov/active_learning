@@ -17,6 +17,7 @@ Open http://localhost:8050
 - Configure training parameters and launch background runs with live status updates
 - Real-time loss curve visualization
 - Dataset statistics panel with label counts
+- Keyboard shortcuts (0-9) for rapid labeling
 
 ## Workflow
 

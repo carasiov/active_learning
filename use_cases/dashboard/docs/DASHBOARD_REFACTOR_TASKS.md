@@ -546,7 +546,7 @@ def update_dataset_stats(_labels_store: dict):
 
 ---
 
-### Task 12: Add Keyboard Shortcuts for Labeling
+### Task 12: Add Keyboard Shortcuts for Labeling *(completed)*
 
 **Objective:** Allow pressing 0-9 keys to label selected sample.
 
