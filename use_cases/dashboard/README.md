@@ -1,6 +1,7 @@
 # SSVAE Dashboard
 
-Interactive dashboard for semi-supervised active learning.
+One interface for the complete active learning cycle: explore, label, train, evaluate.
+The dashboard replaces scattered scripts and manual CSV editing with a unified UI where you can see your latent space, label uncertain samples, train your model, and immediately see results—all without touching the terminal.
 
 ## Quick Start
 ```bash
@@ -23,12 +24,12 @@ Open http://localhost:8050
 
 - Audience: single-user ML researchers on localhost.
 - Goal: one interface to label, train, and evaluate without touching the terminal.
-- Success: full label–train–evaluate cycles happen inside the dashboard; 60k‑point scatter feels smooth; you prefer the dashboard over the CLI for day‑to‑day work.
+- Full label–train–evaluate cycles happen inside the dashboard; 60k‑point scatter feels smooth.
 
 ## Design Principles
 
 - Localhost only: no auth, no separate backend services.
-- UI layer only: model, training loops, and callbacks in `src/` remain unchanged.
+- UI layer only: model, training loops, and callbacks in `src/` remain.
 - Compatibility first: share `labels.csv` and checkpoints with the CLI without migrations.
 - Fast interactions: cache visuals and patch updates to keep the app responsive.
 
@@ -45,11 +46,6 @@ Open http://localhost:8050
 4. Click "Start Training"
 5. Watch status updates as training progresses
 6. Repeat
-
-## Keyboard Shortcuts
-
-- 0–9: assign the corresponding label to the selected sample
-- Shortcuts are ignored while typing in inputs
 
 ## Data & Persistence
 
@@ -92,8 +88,3 @@ Open http://localhost:8050
 
 - The dashboard and CLI share the labels CSV and checkpoint format.
 - You can switch between CLI and dashboard without migration steps.
-
-## Troubleshooting
-
-- GPU not available: JAX falls back to CPU automatically; the dashboard still runs.
-- Port in use: run with a different port (e.g., `PORT=8051 poetry run python use_cases/dashboard/app.py`).
