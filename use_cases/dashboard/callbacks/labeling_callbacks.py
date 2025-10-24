@@ -148,19 +148,91 @@ def register_labeling_callbacks(app: Dash) -> None:
         unlabeled_count = total_samples - labeled_count
         labeled_pct = (labeled_count / total_samples * 100.0) if total_samples else 0.0
 
+        # Style definitions
+        stat_row_style = {
+            "display": "flex",
+            "justifyContent": "space-between",
+            "padding": "8px 12px",
+            "margin": "4px 0",
+            "backgroundColor": "#f8f9fa",
+            "borderRadius": "4px",
+            "fontSize": "0.95rem",
+        }
+        stat_label_style = {"fontWeight": "500", "color": "#495057"}
+        stat_value_style = {"fontWeight": "600", "color": "#212529"}
+
+        # Main stats
         lines = [
-            html.Div(f"Total samples: {total_samples}"),
-            html.Div(f"Labeled: {labeled_count} ({labeled_pct:.1f}%)"),
-            html.Div(f"Unlabeled: {unlabeled_count}"),
+            html.Div(
+                [
+                    html.Span("Total Samples", style=stat_label_style),
+                    html.Span(f"{total_samples:,}", style=stat_value_style),
+                ],
+                style=stat_row_style,
+            ),
+            html.Div(
+                [
+                    html.Span("Labeled", style=stat_label_style),
+                    html.Span(f"{labeled_count:,} ({labeled_pct:.1f}%)", style=stat_value_style),
+                ],
+                style=stat_row_style,
+            ),
+            html.Div(
+                [
+                    html.Span("Unlabeled", style=stat_label_style),
+                    html.Span(f"{unlabeled_count:,}", style=stat_value_style),
+                ],
+                style=stat_row_style,
+            ),
         ]
 
+        # Label distribution
         if labeled_count > 0:
+            lines.append(html.Hr(className="my-3"))
+            lines.append(
+                html.Div(
+                    "Label Distribution",
+                    className="fw-bold mb-2",
+                    style={"fontSize": "1rem", "color": "#212529"},
+                )
+            )
+            
+            digit_stat_style = {
+                "display": "inline-block",
+                "width": "48%",
+                "padding": "6px",
+                "margin": "2px 0",
+                "backgroundColor": "#e9ecef",
+                "borderRadius": "3px",
+                "textAlign": "center",
+                "fontSize": "0.9rem",
+            }
+            
+            digit_elements = []
             labeled_values = labels[labeled_mask].astype(int)
-            lines.append(html.Hr(className="my-2"))
-            lines.append(html.Div("Label distribution:", className="fw-bold"))
             for digit in range(10):
                 count = int(np.sum(labeled_values == digit))
-                class_name = None if count > 0 else "text-muted"
-                lines.append(html.Div(f"{digit}: {count}", className=class_name))
+                digit_elements.append(
+                    html.Div(
+                        [
+                            html.Span(f"Digit {digit}: ", style={"fontWeight": "500"}),
+                            html.Span(
+                                str(count),
+                                style={
+                                    "fontWeight": "600",
+                                    "color": "#0d6efd" if count > 0 else "#6c757d",
+                                },
+                            ),
+                        ],
+                        style=digit_stat_style,
+                    )
+                )
+            
+            lines.append(
+                html.Div(
+                    digit_elements,
+                    style={"display": "flex", "flexWrap": "wrap", "justifyContent": "space-between"},
+                )
+            )
 
         return lines
