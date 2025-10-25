@@ -65,29 +65,52 @@ def array_to_base64(arr: np.ndarray) -> str:
     return f"data:image/png;base64,{encoded}"
 
 
-def _build_hover_text(
+def _format_label_value(value: float | int | None, *, empty_text: str) -> str:
+    """Return a compact string for hover metadata values."""
+    if value is None:
+        return empty_text
+    if isinstance(value, float) and np.isnan(value):
+        return empty_text
+    return f"{int(value)}"
+
+
+def _format_hover_metadata_entry(
+    idx: int,
+    pred_class: int,
+    pred_certainty: float,
+    user_label: float,
+    true_label: int | None,
+) -> List[object]:
+    """Create the metadata payload for a single latent point."""
+    return [
+        int(idx),
+        int(pred_class),
+        float(pred_certainty) * 100.0,
+        _format_label_value(user_label, empty_text="Unlabeled"),
+        _format_label_value(true_label, empty_text="?"),
+    ]
+
+
+def _build_hover_metadata(
     pred_classes: np.ndarray,
     pred_certainty: np.ndarray,
     labels: np.ndarray,
-    true_labels: np.ndarray,
-) -> List[str]:
-    """Construct hover tooltips for latent space scatter plot points."""
-    hover_entries: List[str] = []
-    for idx in range(len(pred_classes)):
-        pred_class = int(pred_classes[idx])
-        certainty = float(pred_certainty[idx])
-        user_label = float(labels[idx])
-        true_label = None
+    true_labels: np.ndarray | None,
+) -> List[List[object]]:
+    """Construct compact hover metadata for the latent scatter plot."""
+    metadata: List[List[object]] = []
+    total = int(len(pred_classes))
+    for idx in range(total):
+        true_label_val = None
         if true_labels is not None:
-            true_label = int(true_labels[idx])
-
-        label_text = "Unlabeled" if np.isnan(user_label) else f"{int(user_label)}"
-        true_label_text = "?" if true_label is None else f"{true_label}"
-        hover_entries.append(
-            f"Index: {idx}<br>Prediction: {pred_class}"
-            f"<br>Confidence: {certainty * 100:.1f}%"
-            f"<br>User Label: {label_text}"
-            f"<br>True Label: {true_label_text}"
+            true_label_val = int(true_labels[idx])
+        metadata.append(
+            _format_hover_metadata_entry(
+                idx,
+                int(pred_classes[idx]),
+                float(pred_certainty[idx]),
+                float(labels[idx]),
+                true_label_val,
+            )
         )
-    return hover_entries
-
+    return metadata

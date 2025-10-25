@@ -15,6 +15,14 @@ from use_cases.dashboard.utils import _colorize_numeric, _colorize_user_labels
 _BASE_FIGURE_CACHE: Dict[int, go.Figure] = {}
 _COLOR_CACHE: Dict[Tuple[int, str, int], list[str]] = {}
 
+_LATENT_HOVER_TEMPLATE = (
+    "Index: %{customdata[0]}<br>"
+    "Prediction: %{customdata[1]}<br>"
+    "Confidence: %{customdata[2]:.1f}%<br>"
+    "User Label: %{customdata[3]}<br>"
+    "True Label: %{customdata[4]}<extra></extra>"
+)
+
 
 def _compute_colors(
     color_mode: str,
@@ -48,13 +56,14 @@ def _build_highlight(latent: np.ndarray, selected_idx: int | None) -> Tuple[list
 
 def _build_base_figure(
     latent: np.ndarray,
-    hover_text: list[str],
+    hover_metadata: list[list[object]],
     color_mode: str,
     colors: list[str],
     selected_idx: int | None,
+    latent_version: int,
 ) -> go.Figure:
-    x_vals = latent[:, 0].astype(float).tolist()
-    y_vals = latent[:, 1].astype(float).tolist()
+    x_vals = latent[:, 0]
+    y_vals = latent[:, 1]
 
     figure = go.Figure()
     figure.add_trace(
@@ -63,8 +72,8 @@ def _build_base_figure(
             y=y_vals,
             mode="markers",
             marker=_build_marker(color_mode, colors),
-            hovertext=hover_text,
-            hoverinfo="text",
+            customdata=hover_metadata,
+            hovertemplate=_LATENT_HOVER_TEMPLATE,
         )
     )
 
@@ -91,6 +100,10 @@ def _build_base_figure(
         margin=dict(l=20, r=20, t=20, b=20),
         xaxis_title="Latent Dimension 1",
         yaxis_title="Latent Dimension 2",
+        dragmode="pan",
+        hovermode="closest",
+        uirevision=f"latent-{latent_version}",
+        transition={"duration": 0},
     )
     return figure
 
@@ -115,7 +128,7 @@ def register_visualization_callbacks(app: Dash) -> None:
         label_version = int((labels_store or {}).get("version", 0))
 
         with state_lock:
-            latent = np.array(app_state["data"]["latent"], dtype=np.float64)
+            latent = np.array(app_state["data"]["latent"], dtype=np.float32)
             labels = np.array(app_state["data"]["labels"], dtype=np.float64)
             true_labels = (
                 np.array(app_state["data"]["true_labels"], dtype=np.float64)
@@ -124,10 +137,14 @@ def register_visualization_callbacks(app: Dash) -> None:
             )
             pred_classes = np.array(app_state["data"]["pred_classes"], dtype=np.int32)
             pred_certainty = np.array(app_state["data"]["pred_certainty"], dtype=np.float64)
-            hover_text = list(app_state["data"]["hover_text"])
+            hover_metadata = list(app_state["data"].get("hover_metadata", []))
 
         if latent is None or latent.size == 0:
             return go.Figure()
+        if not hover_metadata:
+            hover_metadata = [
+                [idx, 0, 0.0, "Unlabeled", "?"] for idx in range(latent.shape[0])
+            ]
 
         # Drop stale caches for old latent versions to keep memory bounded.
         if latent_version not in _BASE_FIGURE_CACHE:
@@ -142,14 +159,21 @@ def register_visualization_callbacks(app: Dash) -> None:
             _COLOR_CACHE[cache_key] = colors
 
         if latent_version not in _BASE_FIGURE_CACHE:
-            figure = _build_base_figure(latent, hover_text, color_mode, colors, selected_idx)
+            figure = _build_base_figure(
+                latent,
+                hover_metadata,
+                color_mode,
+                colors,
+                selected_idx,
+                latent_version,
+            )
             _BASE_FIGURE_CACHE[latent_version] = figure
             return figure
 
         highlight_x, highlight_y, visible = _build_highlight(latent, selected_idx)
         patch = Patch()
         patch["data"][0]["marker"] = _build_marker(color_mode, colors)
-        patch["data"][0]["hovertext"] = hover_text
+        patch["data"][0]["customdata"] = hover_metadata
         patch["data"][1]["x"] = highlight_x
         patch["data"][1]["y"] = highlight_y
         patch["data"][1]["visible"] = visible
@@ -159,6 +183,7 @@ def register_visualization_callbacks(app: Dash) -> None:
             "symbol": "x",
             "line": {"width": 2, "color": "#ffffff"},
         }
+        patch["layout"] = {"uirevision": f"latent-{latent_version}"}
         return patch
 
     @app.callback(
