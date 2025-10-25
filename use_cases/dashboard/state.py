@@ -25,7 +25,10 @@ from ssvae import SSVAE, SSVAEConfig  # noqa: E402
 from training.interactive_trainer import InteractiveTrainer  # noqa: E402
 from data.mnist import load_train_images_for_ssvae, load_mnist_splits  # noqa: E402
 
-from use_cases.dashboard.utils import _build_hover_text  # noqa: E402
+from use_cases.dashboard.utils import (  # noqa: E402
+    _build_hover_metadata,
+    _format_hover_metadata_entry,
+)
 
 
 CHECKPOINT_PATH = ROOT_DIR / "artifacts" / "checkpoints" / "ssvae.ckpt"
@@ -49,7 +52,7 @@ app_state: Dict[str, object] = {
         "reconstructed": None,
         "pred_classes": None,
         "pred_certainty": None,
-        "hover_text": None,
+        "hover_metadata": None,
     },
     "training": {
         "active": False,
@@ -147,7 +150,7 @@ def initialize_model_and_data() -> None:
         valid_mask = (serials >= 0) & (serials < x_train.shape[0])
         labels_array[serials[valid_mask]] = label_values[valid_mask].astype(float)
 
-    hover_text = _build_hover_text(pred_classes, pred_certainty, labels_array, true_labels)
+    hover_metadata = _build_hover_metadata(pred_classes, pred_certainty, labels_array, true_labels)
 
     with state_lock:
         app_state["model"] = model
@@ -160,30 +163,13 @@ def initialize_model_and_data() -> None:
         app_state["data"]["reconstructed"] = recon
         app_state["data"]["pred_classes"] = pred_classes
         app_state["data"]["pred_certainty"] = pred_certainty
-        app_state["data"]["hover_text"] = hover_text
+        app_state["data"]["hover_metadata"] = hover_metadata
         app_state["ui"]["selected_sample"] = int(app_state["ui"]["selected_sample"])
         app_state["training"]["active"] = False
         app_state["training"]["thread"] = None
         app_state["training"]["target_epochs"] = 0
         app_state["training"]["status_messages"] = []
         app_state["ui"]["latent_version"] = 0
-
-
-def _format_hover_entry(
-    idx: int,
-    pred_class: int,
-    pred_certainty: float,
-    user_label: float,
-    true_label: int | None,
-) -> str:
-    label_text = "Unlabeled" if np.isnan(user_label) else f"{int(user_label)}"
-    true_label_text = "?" if true_label is None else f"{true_label}"
-    return (
-        f"Index: {idx}<br>Prediction: {pred_class}"
-        f"<br>Confidence: {pred_certainty * 100:.1f}%"
-        f"<br>User Label: {label_text}"
-        f"<br>True Label: {true_label_text}"
-    )
 
 
 def _load_labels_dataframe() -> pd.DataFrame:
@@ -239,16 +225,16 @@ def _update_label(sample_idx: int, new_label: float | None) -> Tuple[dict, str]:
         pred_classes = np.array(app_state["data"]["pred_classes"], dtype=np.int32)
         pred_certainty = np.array(app_state["data"]["pred_certainty"], dtype=np.float64)
         true_labels = app_state["data"]["true_labels"]
-        hover_text = list(app_state["data"]["hover_text"])
+        hover_metadata = list(app_state["data"].get("hover_metadata", []))
         true_label_value = int(true_labels[sample_idx]) if true_labels is not None else None
-        hover_text[sample_idx] = _format_hover_entry(
+        hover_metadata[sample_idx] = _format_hover_metadata_entry(
             sample_idx,
             int(pred_classes[sample_idx]),
             float(pred_certainty[sample_idx]),
-            labels_array[sample_idx],
+            float(labels_array[sample_idx]),
             true_label_value,
         )
-        app_state["data"]["hover_text"] = hover_text
+        app_state["data"]["hover_metadata"] = hover_metadata
         app_state["ui"]["labels_version"] = int(app_state["ui"]["labels_version"]) + 1
         version_payload = {"version": app_state["ui"]["labels_version"]}
 

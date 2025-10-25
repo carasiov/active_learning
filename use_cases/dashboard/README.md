@@ -13,7 +13,7 @@ Open http://localhost:8050
 ## Features
 
 - Interactive 60k-point latent space visualization
-- Color-by toggles for user labels, predicted class, true label, or certainty
+- Instant color-by toggles (user labels, predicted, true, certainty) powered by client-side palette caching
 - Click-to-label workflow (updates CSV immediately)
 - Configure training parameters and launch background runs with live status updates
 - Real-time loss curve visualization
@@ -62,7 +62,7 @@ Open http://localhost:8050
 - Modular layout:
   - `app.py` orchestrates initialization, layout, and callback registration
   - `state.py` owns shared model/data state, locks, and labeling helpers
-  - `layouts.py` builds the Dash component tree (stores, loss curves, stats)
+  - `layouts.py` builds the Dash component tree, including hidden stores (`color-mode-store`, `color-palette-store`) for instantaneous coloring
   - `callbacks/` groups training, visualization, and labeling callbacks
   - `utils.py` hosts colorization and image encoding helpers
 
@@ -75,7 +75,7 @@ Open http://localhost:8050
 
 ## Performance Notes
 
-- Scatter figure is cached per latent version; color-mode swaps patch only marker colors.
+- Scatter figure is cached per latent version; color-mode swaps never hit the server thanks to the client-side palette store.
 - Polling callback returns `no_update` for unchanged outputs.
 - Polling auto-disables when idle (no training, empty queue) to reduce CPU use.
 

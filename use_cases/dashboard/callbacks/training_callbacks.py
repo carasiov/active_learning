@@ -25,7 +25,7 @@ from use_cases.dashboard.state import (
     _clear_metrics_queue,
     _update_history_with_epoch,
 )
-from use_cases.dashboard.utils import _build_hover_text
+from use_cases.dashboard.utils import _build_hover_metadata
 
 _LAST_POLL_STATE: Dict[str, object] = {
     "status_messages": None,
@@ -82,14 +82,14 @@ def train_worker(num_epochs: int) -> None:
         with state_lock:
             labels_latest = np.array(app_state["data"]["labels"], copy=True)
             true_labels = app_state["data"]["true_labels"]
-        hover_text = _build_hover_text(pred_classes, pred_certainty, labels_latest, true_labels)
+        hover_metadata = _build_hover_metadata(pred_classes, pred_certainty, labels_latest, true_labels)
 
         with state_lock:
             app_state["data"]["latent"] = latent
             app_state["data"]["reconstructed"] = recon
             app_state["data"]["pred_classes"] = pred_classes
             app_state["data"]["pred_certainty"] = pred_certainty
-            app_state["data"]["hover_text"] = hover_text
+            app_state["data"]["hover_metadata"] = hover_metadata
             app_state["ui"]["latent_version"] = int(app_state["ui"]["latent_version"]) + 1
             latent_version = app_state["ui"]["latent_version"]
         metrics_queue.put({"type": "latent_updated", "version": latent_version})
