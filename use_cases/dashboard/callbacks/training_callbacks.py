@@ -107,8 +107,92 @@ def register_training_callbacks(app: Dash) -> None:
     """Register all training-related callbacks."""
 
     @app.callback(
-        Output("training-control-store", "data"),
+        Output("training-confirm-modal", "is_open"),
+        Output("modal-training-info", "children"),
         Input("start-training-button", "n_clicks"),
+        Input("modal-confirm-button", "n_clicks"),
+        Input("modal-cancel-button", "n_clicks"),
+        State("training-confirm-modal", "is_open"),
+        State("num-epochs-input", "value"),
+        State("recon-weight-slider", "value"),
+        State("kl-weight-slider", "value"),
+        State("learning-rate-slider", "value"),
+        prevent_initial_call=True,
+    )
+    def toggle_modal(
+        start_clicks: int,
+        confirm_clicks: int,
+        cancel_clicks: int,
+        is_open: bool,
+        num_epochs: Optional[float],
+        recon_weight: float,
+        kl_weight: float,
+        learning_rate: float,
+    ) -> Tuple[bool, object]:
+        ctx = dash.callback_context
+        if not ctx.triggered:
+            raise PreventUpdate
+        
+        triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
+        
+        # Cancel button closes modal
+        if triggered_id == "modal-cancel-button":
+            return False, no_update
+        
+        # Start button opens modal with training info
+        if triggered_id == "start-training-button":
+            if num_epochs is None:
+                _append_status_message("Please specify the number of epochs before starting training.")
+                return False, no_update
+            
+            try:
+                epochs = int(num_epochs)
+            except (TypeError, ValueError):
+                _append_status_message("Epochs must be a whole number between 1 and 200.")
+                return False, no_update
+            
+            if epochs <= 0:
+                _append_status_message("Epochs must be greater than zero.")
+                return False, no_update
+            
+            epochs = max(1, min(epochs, 200))
+            
+            # Estimate training time (rough: 30 seconds per epoch)
+            estimated_minutes = (epochs * 30) / 60
+            eta_text = f"~{int(estimated_minutes)} min" if estimated_minutes >= 1 else "<1 min"
+            
+            with state_lock:
+                labels = np.array(app_state["data"]["labels"])
+                labeled_count = int(np.sum(~np.isnan(labels)))
+            
+            info_text = [
+                html.Div(f"Train for {epochs} epoch(s) (estimated: {eta_text})", style={
+                    "fontWeight": "600",
+                    "marginBottom": "8px",
+                }),
+                html.Div([
+                    html.Div(f"• Labeled samples: {labeled_count:,}"),
+                    html.Div(f"• Learning rate: {learning_rate:.4f}"),
+                    html.Div(f"• Reconstruction weight: {recon_weight:.0f}"),
+                    html.Div(f"• KL weight: {kl_weight:.2f}"),
+                ], style={
+                    "fontSize": "13px",
+                    "color": "#86868b",
+                    "lineHeight": "1.8",
+                }),
+            ]
+            
+            return True, info_text
+        
+        # Confirm button starts training and closes modal
+        if triggered_id == "modal-confirm-button":
+            return False, no_update
+        
+        raise PreventUpdate
+
+    @app.callback(
+        Output("training-control-store", "data"),
+        Input("modal-confirm-button", "n_clicks"),
         State("recon-weight-slider", "value"),
         State("kl-weight-slider", "value"),
         State("learning-rate-slider", "value"),
@@ -116,15 +200,15 @@ def register_training_callbacks(app: Dash) -> None:
         State("training-control-store", "data"),
         prevent_initial_call=True,
     )
-    def handle_start_training(
-        n_clicks: int,
+    def handle_training_confirmation(
+        confirm_clicks: int,
         recon_weight: float,
         kl_weight: float,
         learning_rate: float,
         num_epochs: Optional[float],
         control_store: Optional[Dict[str, int]],
     ) -> object:
-        if not n_clicks:
+        if not confirm_clicks:
             raise PreventUpdate
 
         if num_epochs is None:
@@ -246,12 +330,39 @@ def register_training_callbacks(app: Dash) -> None:
 
         if status_messages:
             items = []
-            for msg in status_messages[-MAX_STATUS_MESSAGES:]:
-                class_name = "text-danger" if str(msg).lower().startswith("error:") else None
-                items.append(html.Li(msg, className=class_name))
-            status_children = html.Ul(items, className="mb-0 small")
+            # Auto-scroll to bottom by reversing and showing last N
+            display_messages = status_messages[-MAX_STATUS_MESSAGES:]
+            for i, msg in enumerate(display_messages):
+                msg_str = str(msg)
+                # Bold the last message if it's an error
+                is_last = (i == len(display_messages) - 1)
+                is_error = msg_str.lower().startswith("error:")
+                
+                style = {
+                    "fontSize": "12px",
+                    "fontFamily": "ui-monospace, monospace",
+                    "lineHeight": "1.6",
+                    "marginBottom": "4px",
+                }
+                
+                if is_error:
+                    style["color"] = "#FF3B30"
+                    style["fontWeight"] = "600"
+                elif is_last and not msg_str.lower().startswith("idle"):
+                    style["color"] = "#1d1d1f"
+                    style["fontWeight"] = "500"
+                else:
+                    style["color"] = "#86868b"
+                
+                items.append(html.Div(msg, style=style))
+            
+            status_children = html.Div(items)
         else:
-            status_children = html.Span("Idle.", className="text-muted")
+            status_children = html.Div("Ready to train", style={
+                "fontSize": "12px",
+                "color": "#86868b",
+                "fontFamily": "ui-monospace, monospace",
+            })
 
         controls_disabled = bool(active)
         controls_changed = (

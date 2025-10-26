@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dash import dcc, html
@@ -31,6 +30,70 @@ def build_dashboard_layout() -> html.Div:
             dcc.Store(id="keyboard-label-store"),
             dcc.Interval(id="keyboard-poll", interval=300, n_intervals=0, disabled=False),
             dcc.Interval(id='resize-setup-trigger', interval=100, n_intervals=0, max_intervals=1),
+            
+            # Training confirmation modal
+            dbc.Modal(
+                [
+                    dbc.ModalHeader(dbc.ModalTitle("Confirm Training")),
+                    dbc.ModalBody(
+                        [
+                            html.Div(id="modal-training-info", style={
+                                "fontSize": "14px",
+                                "lineHeight": "1.6",
+                                "color": "#1d1d1f",
+                            }),
+                            html.Div(
+                                "⚠️ This will overwrite the current checkpoint at ssvae.ckpt",
+                                style={
+                                    "marginTop": "16px",
+                                    "padding": "12px",
+                                    "backgroundColor": "#FFF3CD",
+                                    "border": "1px solid #FFE69C",
+                                    "borderRadius": "6px",
+                                    "fontSize": "13px",
+                                    "color": "#856404",
+                                },
+                            ),
+                        ]
+                    ),
+                    dbc.ModalFooter(
+                        [
+                            dbc.Button(
+                                "Cancel",
+                                id="modal-cancel-button",
+                                n_clicks=0,
+                                style={
+                                    "backgroundColor": "#ffffff",
+                                    "color": "#86868b",
+                                    "border": "1px solid #d1d1d6",
+                                    "borderRadius": "6px",
+                                    "padding": "8px 16px",
+                                    "fontSize": "13px",
+                                    "fontWeight": "500",
+                                },
+                            ),
+                            dbc.Button(
+                                "Start Training",
+                                id="modal-confirm-button",
+                                n_clicks=0,
+                                style={
+                                    "backgroundColor": "#34C759",
+                                    "color": "#ffffff",
+                                    "border": "none",
+                                    "borderRadius": "6px",
+                                    "padding": "8px 16px",
+                                    "fontSize": "13px",
+                                    "fontWeight": "600",
+                                    "marginLeft": "8px",
+                                },
+                            ),
+                        ]
+                    ),
+                ],
+                id="training-confirm-modal",
+                is_open=False,
+                centered=True,
+            ),
             
             # Header
             html.Div(
@@ -119,30 +182,42 @@ def build_dashboard_layout() -> html.Div:
                     # CENTER PANEL
                     html.Div(
                         [
-                            # Color mode selector
+                            # Color mode selector + legend
                             html.Div(
                                 [
-                                    html.Span("Color by:", style={
-                                        "fontSize": "12px",
-                                        "color": "#86868b",
-                                        "marginRight": "12px",
-                                    }),
-                                    dbc.RadioItems(
-                                        id="color-mode-radio",
-                                        options=[
-                                            {"label": "Labels", "value": "user_labels"},
-                                            {"label": "Predicted", "value": "pred_class"},
-                                            {"label": "True", "value": "true_class"},
-                                            {"label": "Confidence", "value": "certainty"},
+                                    html.Div(
+                                        [
+                                            html.Span("Color by:", style={
+                                                "fontSize": "12px",
+                                                "color": "#86868b",
+                                                "marginRight": "12px",
+                                            }),
+                                            dbc.RadioItems(
+                                                id="color-mode-radio",
+                                                options=[
+                                                    {"label": "Labels", "value": "user_labels"},
+                                                    {"label": "Predicted", "value": "pred_class"},
+                                                    {"label": "True", "value": "true_class"},
+                                                    {"label": "Confidence", "value": "certainty"},
+                                                ],
+                                                value="user_labels",
+                                                inline=True,
+                                                style={"fontSize": "13px"},
+                                            ),
                                         ],
-                                        value="user_labels",
-                                        inline=True,
-                                        style={"fontSize": "13px"},
+                                        style={
+                                            "display": "flex",
+                                            "alignItems": "center",
+                                        },
+                                    ),
+                                    html.Div(
+                                        id="scatter-legend",
+                                        style={
+                                            "marginTop": "8px",
+                                        },
                                     ),
                                 ],
                                 style={
-                                    "display": "flex",
-                                    "alignItems": "center",
                                     "padding": "12px 24px",
                                     "borderBottom": "1px solid #e5e5e5",
                                     "backgroundColor": "#ffffff",
@@ -152,21 +227,39 @@ def build_dashboard_layout() -> html.Div:
                             
                             # Latent space
                             html.Div(
-                                dcc.Graph(
-                                    id="latent-scatter",
-                                    style={"height": "100%", "width": "100%"},
-                                    config={
-                                        "displayModeBar": True,
-                                        "scrollZoom": True,
-                                        "responsive": True,
-                                        "displaylogo": False,
-                                    },
-                                ),
+                                [
+                                    html.Div(
+                                        "2D Latent Space (SSVAE Encoder)",
+                                        style={
+                                            "position": "absolute",
+                                            "top": "8px",
+                                            "left": "24px",
+                                            "fontSize": "12px",
+                                            "fontWeight": "600",
+                                            "color": "#1d1d1f",
+                                            "backgroundColor": "rgba(255, 255, 255, 0.9)",
+                                            "padding": "4px 8px",
+                                            "borderRadius": "4px",
+                                            "zIndex": "1000",
+                                        },
+                                    ),
+                                    dcc.Graph(
+                                        id="latent-scatter",
+                                        style={"height": "100%", "width": "100%"},
+                                        config={
+                                            "displayModeBar": True,
+                                            "scrollZoom": True,
+                                            "responsive": True,
+                                            "displaylogo": False,
+                                        },
+                                    ),
+                                ],
                                 id="latent-plot-container",
                                 style={
                                     "flex": "1",
                                     "minHeight": "300px",
                                     "backgroundColor": "#fafafa",
+                                    "position": "relative",
                                 },
                             ),
                             
@@ -182,19 +275,44 @@ def build_dashboard_layout() -> html.Div:
                                 },
                             ),
                             
-                            # Loss curves
+                            # Loss curves with smoothing toggle
                             html.Div(
-                                dcc.Graph(
-                                    id="loss-curves",
-                                    style={"height": "100%", "width": "100%"},
-                                    config={"displayModeBar": False},
-                                ),
+                                [
+                                    html.Div(
+                                        [
+                                            html.Span("Training Progress", style={
+                                                "fontSize": "13px",
+                                                "fontWeight": "600",
+                                                "color": "#1d1d1f",
+                                            }),
+                                            dbc.Checkbox(
+                                                id="loss-smoothing-toggle",
+                                                label="Smooth",
+                                                value=[],
+                                                style={
+                                                    "marginLeft": "auto",
+                                                    "fontSize": "12px",
+                                                },
+                                            ),
+                                        ],
+                                        style={
+                                            "display": "flex",
+                                            "alignItems": "center",
+                                            "padding": "8px 16px",
+                                            "borderBottom": "1px solid #e5e5e5",
+                                        },
+                                    ),
+                                    dcc.Graph(
+                                        id="loss-curves",
+                                        style={"height": "calc(100% - 45px)", "width": "100%"},
+                                        config={"displayModeBar": False},
+                                    ),
+                                ],
                                 id="loss-plot-container",
                                 style={
-                                    "height": "200px",
-                                    "minHeight": "120px",
+                                    "height": "220px",
+                                    "minHeight": "200px",
                                     "borderTop": "1px solid #e5e5e5",
-                                    "padding": "8px",
                                     "backgroundColor": "#ffffff",
                                 },
                             ),
@@ -301,7 +419,7 @@ def build_dashboard_layout() -> html.Div:
                                     "fontSize": "12px",
                                     "fontFamily": "ui-monospace, 'SF Mono', Monaco, monospace",
                                     "color": "#1d1d1f",
-                                    "lineHeight": "1.6",
+                                    "lineHeight": "1.8",
                                     "borderTop": "1px solid #e5e5e5",
                                     "borderBottom": "1px solid #e5e5e5",
                                 },
@@ -375,7 +493,7 @@ def build_dashboard_layout() -> html.Div:
                                     ),
                                     
                                     dbc.Button(
-                                        "Delete Label",
+                                        "Clear Label",
                                         id="delete-label-button",
                                         n_clicks=0,
                                         style={
@@ -416,8 +534,16 @@ def build_dashboard_layout() -> html.Div:
                                         "textTransform": "uppercase",
                                         "letterSpacing": "0.5px",
                                     }),
-                                    html.Div("0-9: Assign label", style={"fontSize": "12px", "color": "#1d1d1f"}),
-                                    html.Div("D: Delete label", style={"fontSize": "12px", "color": "#1d1d1f"}),
+                                    html.Div("0–9: Assign label", style={
+                                        "fontSize": "12px",
+                                        "color": "#1d1d1f",
+                                        "lineHeight": "1.6",
+                                    }),
+                                    html.Div("Tab: Navigate controls", style={
+                                        "fontSize": "12px",
+                                        "color": "#1d1d1f",
+                                        "lineHeight": "1.6",
+                                    }),
                                 ],
                                 style={
                                     "marginTop": "auto",
@@ -482,7 +608,7 @@ def _build_stats_section() -> html.Div:
 def _build_config_section(config, default_epochs: int) -> html.Div:
     return html.Div(
         [
-            html.Div("Training", style={
+            html.Div("Training Configuration", style={
                 "fontSize": "13px",
                 "fontWeight": "600",
                 "color": "#1d1d1f",
@@ -504,6 +630,7 @@ def _build_config_section(config, default_epochs: int) -> html.Div:
                         max=200,
                         step=1,
                         value=default_epochs,
+                        placeholder="e.g., 5",
                         debounce=True,
                         style={
                             "width": "100%",
@@ -549,7 +676,14 @@ def _build_config_section(config, default_epochs: int) -> html.Div:
             
             html.Div(
                 [
-                    html.Label("Recon Weight", style={
+                    html.Label([
+                        "Recon Weight",
+                        html.Span(" (higher = better image quality)", style={
+                            "fontSize": "10px",
+                            "color": "#86868b",
+                            "fontWeight": "normal",
+                        }),
+                    ], style={
                         "fontSize": "12px",
                         "color": "#86868b",
                         "display": "block",
@@ -628,7 +762,7 @@ def _build_status_section(status_messages: list) -> html.Div:
                         "fontSize": "11px",
                         "color": "#86868b",
                         "fontFamily": "ui-monospace, monospace",
-                        "lineHeight": "1.5",
+                        "lineHeight": "1.6",
                     })
                     for msg in status_messages
                 ],
@@ -636,8 +770,8 @@ def _build_status_section(status_messages: list) -> html.Div:
                     "padding": "8px",
                     "backgroundColor": "#f5f5f7",
                     "borderRadius": "6px",
-                    "minHeight": "60px",
-                    "maxHeight": "120px",
+                    "minHeight": "80px",
+                    "maxHeight": "180px",
                     "overflowY": "auto",
                 },
             ),

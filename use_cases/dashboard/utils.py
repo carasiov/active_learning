@@ -10,11 +10,18 @@ import numpy as np
 from matplotlib import colormaps, colors as mcolors
 from PIL import Image
 
-COOLWARM_CMAP = colormaps["coolwarm"]
+# Colorblind-safe palettes
+TABLEAU_10_EXTENDED = [
+    '#4E79A7', '#F28E2B', '#E15759', '#76B7B2', '#59A14F',
+    '#EDC948', '#B07AA1', '#FF9DA7', '#9C755F', '#BAB0AC',
+    '#999999'  # 11th color for unlabeled (neutral gray)
+]
+
+VIRIDIS_CMAP = colormaps['viridis']
 
 
-def _values_to_hex(values: np.ndarray) -> List[str]:
-    """Map numeric values onto hex color codes using the coolwarm colormap."""
+def _values_to_hex_viridis(values: np.ndarray) -> List[str]:
+    """Map numeric values onto hex color codes using the viridis colormap (colorblind-safe)."""
     if values.size == 0:
         return []
     values = np.array(values, dtype=np.float64)
@@ -25,19 +32,33 @@ def _values_to_hex(values: np.ndarray) -> List[str]:
     else:
         normed = (values - v_min) / (v_max - v_min)
         normed = np.clip(normed, 0.0, 1.0)
-    rgba = COOLWARM_CMAP(normed)
+    rgba = VIRIDIS_CMAP(normed)
     return [mcolors.to_hex(color[:3]) for color in rgba]
 
 
 def _colorize_user_labels(labels: np.ndarray) -> List[str]:
-    """Return colors for user-provided labels, treating NaN entries as unlabeled."""
-    filled = np.where(np.isnan(labels), 4.5, labels)
-    return _values_to_hex(filled)
+    """Return colors for user-provided labels using Tableau 10 (colorblind-safe).
+    
+    Treats NaN entries as unlabeled (gray). Uses discrete color palette for digits 0-9.
+    """
+    colors = []
+    for label in labels:
+        if np.isnan(label):
+            colors.append(TABLEAU_10_EXTENDED[10])  # Gray for unlabeled
+        else:
+            idx = int(label) % 10
+            colors.append(TABLEAU_10_EXTENDED[idx])
+    return colors
+
+
+def _colorize_discrete_classes(classes: np.ndarray) -> List[str]:
+    """Return colors for discrete class predictions using Tableau 10 (colorblind-safe)."""
+    return [TABLEAU_10_EXTENDED[int(c) % 10] for c in classes]
 
 
 def _colorize_numeric(values: np.ndarray) -> List[str]:
-    """Return colors for an array of numeric values."""
-    return _values_to_hex(values)
+    """Return colors for an array of numeric values using viridis (colorblind-safe)."""
+    return _values_to_hex_viridis(values)
 
 
 def array_to_base64(arr: np.ndarray) -> str:
@@ -114,3 +135,22 @@ def _build_hover_metadata(
             )
         )
     return metadata
+
+
+def compute_ema_smoothing(values: List[float], alpha: float = 0.15) -> List[float]:
+    """Compute exponential moving average for smoothing loss curves.
+    
+    Args:
+        values: Raw metric values
+        alpha: Smoothing factor (0 = no smoothing, 1 = no memory)
+    
+    Returns:
+        Smoothed values with same length as input
+    """
+    if not values or len(values) < 2:
+        return list(values)
+    
+    smoothed = [values[0]]
+    for val in values[1:]:
+        smoothed.append(alpha * val + (1 - alpha) * smoothed[-1])
+    return smoothed

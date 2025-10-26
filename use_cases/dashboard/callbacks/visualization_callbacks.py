@@ -4,13 +4,19 @@ from __future__ import annotations
 
 from typing import Dict, Tuple
 
-from dash import Dash, Input, Output, Patch
+from dash import Dash, Input, Output, Patch, html
 from dash.exceptions import PreventUpdate
 import numpy as np
 import plotly.graph_objects as go
 
 from use_cases.dashboard.state import app_state, state_lock
-from use_cases.dashboard.utils import _colorize_numeric, _colorize_user_labels
+from use_cases.dashboard.utils import (
+    _colorize_numeric,
+    _colorize_user_labels,
+    _colorize_discrete_classes,
+    compute_ema_smoothing,
+    TABLEAU_10_EXTENDED,
+)
 
 _BASE_FIGURE_CACHE: Dict[int, go.Figure] = {}
 _COLOR_CACHE: Dict[Tuple[int, str, int], list[str]] = {}
@@ -34,17 +40,23 @@ def _compute_colors(
     if color_mode == "user_labels":
         return _colorize_user_labels(labels)
     if color_mode == "pred_class":
-        return _colorize_numeric(pred_classes.astype(np.float64))
+        return _colorize_discrete_classes(pred_classes)
     if color_mode == "true_class" and true_labels is not None:
-        return _colorize_numeric(true_labels)
+        return _colorize_discrete_classes(true_labels.astype(np.int32))
     if color_mode == "certainty":
         return _colorize_numeric(pred_certainty)
-    return _colorize_numeric(pred_classes.astype(np.float64))
+    return _colorize_discrete_classes(pred_classes)
 
 
 def _build_marker(color_mode: str, colors: list[str]) -> Dict[str, object]:
-    opacity = 0.95 if color_mode == "certainty" else 0.9
-    return {"color": colors, "size": 7, "opacity": opacity, "line": {"width": 0}}
+    # Balance visibility vs overplotting (60k points)
+    if color_mode == "certainty":
+        opacity = 0.6  # Lower for continuous gradient
+        size = 6
+    else:
+        opacity = 0.75  # Higher for discrete classes (better visibility)
+        size = 7  # Slightly larger for discrete modes
+    return {"color": colors, "size": size, "opacity": opacity, "line": {"width": 0}}
 
 
 def _build_highlight(latent: np.ndarray, selected_idx: int | None) -> Tuple[list[float], list[float], bool]:
@@ -74,6 +86,7 @@ def _build_base_figure(
             marker=_build_marker(color_mode, colors),
             customdata=hover_metadata,
             hovertemplate=_LATENT_HOVER_TEMPLATE,
+            showlegend=False,
         )
     )
 
@@ -92,19 +105,33 @@ def _build_base_figure(
             name="Selected",
             hoverinfo="skip",
             visible=visible,
+            showlegend=False,
         )
     )
 
     figure.update_layout(
         template="plotly_white",
-        margin=dict(l=20, r=20, t=20, b=20),
-        xaxis_title="Latent Dimension 1",
-        yaxis_title="Latent Dimension 2",
+        margin=dict(l=50, r=20, t=20, b=50),
+        xaxis_title=dict(text="Latent Dimension 1", font=dict(size=13, color="#1d1d1f", family="sans-serif")),
+        yaxis_title=dict(text="Latent Dimension 2", font=dict(size=13, color="#1d1d1f", family="sans-serif")),
         dragmode="pan",
         hovermode="closest",
         uirevision=f"latent-{latent_version}",
         transition={"duration": 0},
     )
+    
+    # Add visible grid lines
+    figure.update_xaxes(
+        showgrid=True,
+        gridcolor="rgba(0, 0, 0, 0.1)",
+        gridwidth=1,
+    )
+    figure.update_yaxes(
+        showgrid=True,
+        gridcolor="rgba(0, 0, 0, 0.1)",
+        gridwidth=1,
+    )
+    
     return figure
 
 
@@ -146,9 +173,9 @@ def register_visualization_callbacks(app: Dash) -> None:
                 [idx, 0, 0.0, "Unlabeled", "?"] for idx in range(latent.shape[0])
             ]
 
-        # Drop stale caches for old latent versions to keep memory bounded.
+        # Clear old caches when latent changes
         if latent_version not in _BASE_FIGURE_CACHE:
-            stale_keys = [key for key in _COLOR_CACHE if key[0] == latent_version]
+            stale_keys = [key for key in _COLOR_CACHE if key[0] != latent_version]
             for key in stale_keys:
                 _COLOR_CACHE.pop(key, None)
 
@@ -187,6 +214,105 @@ def register_visualization_callbacks(app: Dash) -> None:
         return patch
 
     @app.callback(
+        Output("scatter-legend", "children"),
+        Input("color-mode-radio", "value"),
+        Input("labels-store", "data"),
+    )
+    def update_legend(color_mode: str, _labels_store: dict | None):
+        """Generate dynamic legend based on color mode."""
+        if color_mode == "certainty":
+            # Continuous colorbar - show range
+            return html.Div(
+                [
+                    html.Span("0% (uncertain)", style={
+                        "fontSize": "12px",
+                        "color": "#86868b",
+                        "marginRight": "8px",
+                    }),
+                    html.Div(style={
+                        "flex": "1",
+                        "height": "10px",
+                        "background": "linear-gradient(to right, #440154, #31688e, #35b779, #fde724)",
+                        "borderRadius": "4px",
+                        "maxWidth": "200px",
+                    }),
+                    html.Span("100% (confident)", style={
+                        "fontSize": "12px",
+                        "color": "#86868b",
+                        "marginLeft": "8px",
+                    }),
+                ],
+                style={
+                    "display": "flex",
+                    "alignItems": "center",
+                    "gap": "8px",
+                    "padding": "8px 0",
+                }
+            )
+        
+        # Discrete legend for classes
+        legend_items = []
+        for i in range(10):
+            legend_items.append(
+                html.Div(
+                    [
+                        html.Div(style={
+                            "width": "14px",
+                            "height": "14px",
+                            "backgroundColor": TABLEAU_10_EXTENDED[i],
+                            "borderRadius": "3px",
+                            "marginRight": "6px",
+                        }),
+                        html.Span(str(i), style={
+                            "fontSize": "13px",
+                            "color": "#1d1d1f",
+                            "fontFamily": "ui-monospace, monospace",
+                            "fontWeight": "500",
+                        }),
+                    ],
+                    style={
+                        "display": "flex",
+                        "alignItems": "center",
+                    }
+                )
+            )
+        
+        # Add "unlabeled" for user_labels mode
+        if color_mode == "user_labels":
+            legend_items.append(
+                html.Div(
+                    [
+                        html.Div(style={
+                            "width": "14px",
+                            "height": "14px",
+                            "backgroundColor": TABLEAU_10_EXTENDED[10],  # Gray
+                            "borderRadius": "3px",
+                            "marginRight": "6px",
+                        }),
+                        html.Span("unlabeled", style={
+                            "fontSize": "12px",
+                            "color": "#86868b",
+                            "fontFamily": "ui-monospace, monospace",
+                        }),
+                    ],
+                    style={
+                        "display": "flex",
+                        "alignItems": "center",
+                    }
+                )
+            )
+        
+        return html.Div(
+            legend_items,
+            style={
+                "display": "flex",
+                "flexWrap": "wrap",
+                "gap": "14px",
+                "padding": "8px 0",
+            }
+        )
+
+    @app.callback(
         Output("selected-sample-store", "data"),
         Input("latent-scatter", "clickData"),
         prevent_initial_call=True,
@@ -211,8 +337,9 @@ def register_visualization_callbacks(app: Dash) -> None:
     @app.callback(
         Output("loss-curves", "figure"),
         Input("latent-store", "data"),
+        Input("loss-smoothing-toggle", "value"),
     )
-    def update_loss_curves(_latent_store: dict | None):
+    def update_loss_curves(_latent_store: dict | None, smoothing_enabled: list):
         with state_lock:
             history = app_state["history"]
             epochs = list(history.get("epochs", []))
@@ -223,34 +350,64 @@ def register_visualization_callbacks(app: Dash) -> None:
                 template="plotly_white",
                 xaxis_title="Epoch",
                 yaxis_title="Loss",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+                margin=dict(l=40, r=20, t=30, b=40),
             )
             return figure
 
+        # Check if smoothing is enabled (checkbox returns list of checked values)
+        apply_smoothing = bool(smoothing_enabled)
+
         series_info = [
-            ("train_loss", "Train Loss"),
-            ("val_loss", "Val Loss"),
-            ("train_reconstruction_loss", "Train Recon"),
-            ("val_reconstruction_loss", "Val Recon"),
+            ("train_loss", "Train Loss", "#007AFF"),
+            ("val_loss", "Val Loss", "#FF3B30"),
+            ("train_reconstruction_loss", "Train Recon", "#34C759"),
+            ("val_reconstruction_loss", "Val Recon", "#FF9500"),
         ]
 
-        for key, label in series_info:
+        for key, label, color in series_info:
             values = history.get(key)
             if values and len(values) == len(epochs):
+                raw_values = list(values)
+                
+                # Add raw trace (solid line)
                 figure.add_trace(
                     go.Scatter(
                         x=epochs,
-                        y=list(values),
+                        y=raw_values,
                         mode="lines+markers",
                         name=label,
+                        line=dict(color=color, width=2),
+                        marker=dict(size=4),
                     )
                 )
+                
+                # Add smoothed trace if enabled and we have enough points
+                if apply_smoothing and len(raw_values) >= 2:
+                    smoothed = compute_ema_smoothing(raw_values, alpha=0.15)
+                    figure.add_trace(
+                        go.Scatter(
+                            x=epochs,
+                            y=smoothed,
+                            mode="lines",
+                            name=f"{label} (smoothed)",
+                            line=dict(color=color, width=2, dash="dash"),
+                            showlegend=True,
+                        )
+                    )
 
         figure.update_layout(
             template="plotly_white",
             xaxis_title="Epoch",
             yaxis_title="Loss",
-            legend=dict(orientation="h", yanchor="bottom", y=1.02),
-            margin=dict(l=20, r=20, t=30, b=40),
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="left",
+                x=0,
+                font=dict(size=10),
+            ),
+            margin=dict(l=40, r=20, t=40, b=40),
         )
         return figure

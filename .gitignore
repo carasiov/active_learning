@@ -42,3 +42,5 @@ artifacts
 # Devcontainer
 .devcontainer/.env
 .devcontainer/*.log
+.devcontainer/devcontainer.json
+devcontainer.json

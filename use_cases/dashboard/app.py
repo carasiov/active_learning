@@ -36,6 +36,15 @@ body {
     overflow: hidden;
 }
 
+/* Focus rings for accessibility */
+button:focus-visible,
+input:focus-visible,
+.form-check-input:focus-visible {
+    outline: 3px solid #007AFF !important;
+    outline-offset: 2px !important;
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.2) !important;
+}
+
 button:hover:not(:disabled) {
     opacity: 0.85;
     transform: translateY(-1px);
@@ -59,6 +68,12 @@ input:focus {
 .form-check-input:checked {
     background-color: #007AFF;
     border-color: #007AFF;
+}
+
+/* Radio buttons focus */
+.form-check-input[type="radio"]:focus-visible {
+    outline: 3px solid #007AFF !important;
+    outline-offset: 2px !important;
 }
 
 ::-webkit-scrollbar {
@@ -137,6 +152,14 @@ button[id*="label-button"]:hover {
     box-shadow: 0 4px 12px rgba(52, 199, 89, 0.3);
 }
 
+#modal-confirm-button:hover:not(:disabled) {
+    background-color: #2FB74A !important;
+}
+
+#modal-cancel-button:hover:not(:disabled) {
+    background-color: #f5f5f7 !important;
+}
+
 button, input {
     transition: all 0.2s ease;
 }
@@ -147,6 +170,27 @@ button, input {
 
 .resizing * {
     pointer-events: none !important;
+}
+
+/* Improve modal accessibility */
+.modal-content {
+    border-radius: 12px !important;
+    border: none !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12) !important;
+}
+
+.modal-header {
+    border-bottom: 1px solid #e5e5e5 !important;
+    padding: 20px 24px !important;
+}
+
+.modal-body {
+    padding: 24px !important;
+}
+
+.modal-footer {
+    border-top: 1px solid #e5e5e5 !important;
+    padding: 16px 24px !important;
 }
 """
 
@@ -164,7 +208,7 @@ def create_app() -> Dash:
     
     app.index_string = f'''
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
         <head>
             {{%metas%}}
             <title>{{%title%}}</title>
@@ -359,7 +403,7 @@ def create_app() -> Dash:
                         const deltaY = e.clientY - startY;
                         
                         // Get current center height (minus header and handle)
-                        const availableHeight = centerPanel.offsetHeight - 45 - 5;
+                        const availableHeight = centerPanel.offsetHeight - 70 - 5;
                         
                         let newLatentHeight = clamp(
                             startHeights.latent + deltaY,

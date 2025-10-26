@@ -5,12 +5,13 @@ from __future__ import annotations
 from typing import Tuple
 
 import dash
-from dash import ALL, Dash, Input, Output, State
+from dash import ALL, Dash, Input, Output, State, dcc
 from dash.exceptions import PreventUpdate
 import numpy as np
+import plotly.graph_objects as go
 
 from use_cases.dashboard.state import app_state, state_lock, _update_label
-from use_cases.dashboard.utils import array_to_base64
+from use_cases.dashboard.utils import array_to_base64, TABLEAU_10_EXTENDED
 
 
 def register_labeling_callbacks(app: Dash) -> None:
@@ -25,7 +26,7 @@ def register_labeling_callbacks(app: Dash) -> None:
         Input("labels-store", "data"),
         Input("latent-store", "data"),
     )
-    def update_sample_display(selected_idx: int, _labels_store: dict, _latent_store: dict) -> Tuple[str, str, str, str]:
+    def update_sample_display(selected_idx: int, _labels_store: dict, _latent_store: dict) -> Tuple[str, str, str, object]:
         if selected_idx is None:
             raise PreventUpdate
 
@@ -52,16 +53,27 @@ def register_labeling_callbacks(app: Dash) -> None:
         label_text = "unlabeled" if np.isnan(user_label) else f"{int(user_label)}"
         true_label = int(true_labels[idx]) if true_labels is not None else "?"
         
-        # Clean, monospace-friendly formatting
-        prediction_lines = [
-            f"Predicted:  {int(pred_classes[idx])} ({pred_certainty[idx] * 100:.1f}%)",
-            f"User Label: {label_text}",
-            f"True Label: {true_label}",
-        ]
-        prediction_text = " | ".join(prediction_lines)
+        # Format as newlines for better readability
+        prediction_info = dash.html.Div(
+            [
+                dash.html.Div(f"Predicted:  {int(pred_classes[idx])} ({pred_certainty[idx] * 100:.1f}%)", style={
+                    "marginBottom": "4px",
+                }),
+                dash.html.Div(f"User Label: {label_text}", style={
+                    "marginBottom": "4px",
+                }),
+                dash.html.Div(f"True Label: {true_label}"),
+            ],
+            style={
+                "fontFamily": "ui-monospace, 'SF Mono', Monaco, monospace",
+                "fontSize": "13px",
+                "color": "#1d1d1f",
+                "lineHeight": "1.6",
+            }
+        )
         
         header_text = f"Sample #{idx}"
-        return header_text, original_src, reconstructed_src, prediction_text
+        return header_text, original_src, reconstructed_src, prediction_info
 
     @app.callback(
         Output("labels-store", "data"),
@@ -152,62 +164,108 @@ def register_labeling_callbacks(app: Dash) -> None:
         unlabeled_count = total_samples - labeled_count
         labeled_pct = (labeled_count / total_samples * 100.0) if total_samples else 0.0
 
-        # Compact, monospace-style stats
+        # Highlight labeled percentage with larger/bold font
         stats_lines = [
-            f"Total:     {total_samples:>6,}",
-            f"Labeled:   {labeled_count:>6,} ({labeled_pct:>5.1f}%)",
-            f"Unlabeled: {unlabeled_count:>6,}",
-        ]
-        
-        stats_divs = [
-            dash.html.Div(line, style={
+            dash.html.Div([
+                "Total: ",
+                dash.html.Span(f"{total_samples:,}", style={"fontWeight": "600"}),
+            ], style={
                 "fontFamily": "ui-monospace, 'SF Mono', monospace",
-                "fontSize": "12px",
+                "fontSize": "14px",
                 "color": "#1d1d1f",
                 "lineHeight": "1.8",
-            })
-            for line in stats_lines
+            }),
+            dash.html.Div([
+                "Labeled: ",
+                dash.html.Span(f"{labeled_count:,} / {total_samples:,}", style={"fontWeight": "600"}),
+                dash.html.Span(f" ({labeled_pct:.1f}%)", style={
+                    "fontWeight": "700",
+                    "color": "#007AFF",
+                    "fontSize": "15px",
+                }),
+            ], style={
+                "fontFamily": "ui-monospace, 'SF Mono', monospace",
+                "fontSize": "14px",
+                "color": "#1d1d1f",
+                "lineHeight": "1.8",
+            }),
+            dash.html.Div([
+                "Unlabeled: ",
+                dash.html.Span(f"{unlabeled_count:,}", style={"fontWeight": "600"}),
+            ], style={
+                "fontFamily": "ui-monospace, 'SF Mono', monospace",
+                "fontSize": "14px",
+                "color": "#1d1d1f",
+                "lineHeight": "1.8",
+                "marginBottom": "12px",
+            }),
         ]
 
-        # Label distribution if we have labels
+        # Label distribution histogram if we have labels
         if labeled_count > 0:
-            stats_divs.append(dash.html.Hr(style={
-                "margin": "12px 0",
+            stats_lines.append(dash.html.Hr(style={
+                "margin": "16px 0",
                 "border": "none",
                 "borderTop": "1px solid #e5e5e5",
             }))
             
-            dist_lines = []
+            stats_lines.append(dash.html.Div("Label Distribution", style={
+                "fontSize": "12px",
+                "fontWeight": "600",
+                "color": "#86868b",
+                "marginBottom": "12px",
+                "textTransform": "uppercase",
+                "letterSpacing": "0.5px",
+            }))
+            
+            # Count labels per digit
             labeled_values = labels[labeled_mask].astype(int)
-            for digit in range(10):
-                count = int(np.sum(labeled_values == digit))
-                dist_lines.append(f"{digit}: {count:>4}")
+            counts = [int(np.sum(labeled_values == digit)) for digit in range(10)]
             
-            # 2-column layout for distribution
-            col1 = [dist_lines[i] for i in range(0, 10, 2)]
-            col2 = [dist_lines[i] for i in range(1, 10, 2)]
+            # Create horizontal bar chart with matching colors
+            fig = go.Figure()
             
-            stats_divs.append(
-                dash.html.Div(
-                    [
-                        dash.html.Div(
-                            [dash.html.Div(line) for line in col1],
-                            style={"flex": "1"},
-                        ),
-                        dash.html.Div(
-                            [dash.html.Div(line) for line in col2],
-                            style={"flex": "1"},
-                        ),
-                    ],
-                    style={
-                        "display": "flex",
-                        "gap": "16px",
-                        "fontFamily": "ui-monospace, 'SF Mono', monospace",
-                        "fontSize": "11px",
-                        "color": "#86868b",
-                        "lineHeight": "1.8",
-                    },
+            fig.add_trace(go.Bar(
+                x=counts,
+                y=[str(i) for i in range(10)],
+                orientation='h',
+                marker=dict(
+                    color=[TABLEAU_10_EXTENDED[i] for i in range(10)],
+                    line=dict(width=0),
+                ),
+                text=counts,
+                textposition='outside',
+                textfont=dict(size=11, color='#1d1d1f', family='ui-monospace, monospace'),
+                hovertemplate='Digit %{y}: %{x} samples<extra></extra>',
+            ))
+            
+            fig.update_layout(
+                template="plotly_white",
+                height=220,
+                margin=dict(l=30, r=40, t=5, b=30),
+                xaxis=dict(
+                    title="Count",
+                    titlefont=dict(size=11, color="#86868b"),
+                    showgrid=True,
+                    gridcolor="rgba(0, 0, 0, 0.05)",
+                    tickfont=dict(size=10, color="#86868b"),
+                ),
+                yaxis=dict(
+                    title="",
+                    tickfont=dict(size=11, color="#1d1d1f", family="ui-monospace, monospace"),
+                    autorange='reversed',  # 0 at top, 9 at bottom
+                ),
+                showlegend=False,
+                paper_bgcolor='rgba(0,0,0,0)',
+                plot_bgcolor='rgba(0,0,0,0)',
+            )
+            
+            stats_lines.append(
+                dcc.Graph(
+                    figure=fig,
+                    config={'displayModeBar': False},
+                    style={"marginTop": "8px"},
                 )
             )
 
-        return stats_divs
+        return stats_lines
