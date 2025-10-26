@@ -38,7 +38,7 @@ def build_dashboard_layout() -> html.Div:
                     dbc.ModalBody(
                         [
                             html.Div(id="modal-training-info", style={
-                                "fontSize": "14px",
+                                "fontSize": "15px",
                                 "lineHeight": "1.6",
                                 "color": "#1d1d1f",
                             }),
@@ -50,7 +50,7 @@ def build_dashboard_layout() -> html.Div:
                                     "backgroundColor": "#FFF3CD",
                                     "border": "1px solid #FFE69C",
                                     "borderRadius": "6px",
-                                    "fontSize": "13px",
+                                    "fontSize": "14px",
                                     "color": "#856404",
                                 },
                             ),
@@ -99,13 +99,13 @@ def build_dashboard_layout() -> html.Div:
             html.Div(
                 [
                     html.H1("SSVAE Active Learning", style={
-                        "fontSize": "20px",
+                        "fontSize": "24px",
                         "fontWeight": "600",
                         "margin": "0",
                         "color": "#1d1d1f",
                     }),
                     html.Div("MNIST Semi-Supervised Learning", style={
-                        "fontSize": "13px",
+                        "fontSize": "15px",
                         "color": "#86868b",
                         "marginTop": "2px",
                     }),
@@ -188,7 +188,7 @@ def build_dashboard_layout() -> html.Div:
                                     html.Div(
                                         [
                                             html.Span("Color by:", style={
-                                                "fontSize": "12px",
+                                                "fontSize": "14px",
                                                 "color": "#86868b",
                                                 "marginRight": "12px",
                                             }),
@@ -202,7 +202,7 @@ def build_dashboard_layout() -> html.Div:
                                                 ],
                                                 value="user_labels",
                                                 inline=True,
-                                                style={"fontSize": "13px"},
+                                                style={"fontSize": "14px"},
                                             ),
                                         ],
                                         style={
@@ -234,7 +234,7 @@ def build_dashboard_layout() -> html.Div:
                                             "position": "absolute",
                                             "top": "8px",
                                             "left": "24px",
-                                            "fontSize": "12px",
+                                            "fontSize": "16px",
                                             "fontWeight": "600",
                                             "color": "#1d1d1f",
                                             "backgroundColor": "rgba(255, 255, 255, 0.9)",
@@ -281,7 +281,7 @@ def build_dashboard_layout() -> html.Div:
                                     html.Div(
                                         [
                                             html.Span("Training Progress", style={
-                                                "fontSize": "13px",
+                                                "fontSize": "15px",
                                                 "fontWeight": "600",
                                                 "color": "#1d1d1f",
                                             }),
@@ -291,7 +291,7 @@ def build_dashboard_layout() -> html.Div:
                                                 value=[],
                                                 style={
                                                     "marginLeft": "auto",
-                                                    "fontSize": "12px",
+                                                    "fontSize": "13px",
                                                 },
                                             ),
                                         ],
@@ -345,7 +345,7 @@ def build_dashboard_layout() -> html.Div:
                                 id="selected-sample-header",
                                 children="Select a point",
                                 style={
-                                    "fontSize": "15px",
+                                    "fontSize": "17px",
                                     "fontWeight": "600",
                                     "color": "#1d1d1f",
                                     "padding": "16px 24px",
@@ -358,7 +358,7 @@ def build_dashboard_layout() -> html.Div:
                                     html.Div(
                                         [
                                             html.Div("Original", style={
-                                                "fontSize": "11px",
+                                                "fontSize": "13px",
                                                 "color": "#86868b",
                                                 "marginBottom": "8px",
                                                 "textAlign": "center",
@@ -382,7 +382,7 @@ def build_dashboard_layout() -> html.Div:
                                     html.Div(
                                         [
                                             html.Div("Reconstructed", style={
-                                                "fontSize": "11px",
+                                                "fontSize": "13px",
                                                 "color": "#86868b",
                                                 "marginBottom": "8px",
                                                 "textAlign": "center",
@@ -416,7 +416,7 @@ def build_dashboard_layout() -> html.Div:
                                 style={
                                     "padding": "12px 24px",
                                     "backgroundColor": "#f5f5f7",
-                                    "fontSize": "12px",
+                                    "fontSize": "13px",
                                     "fontFamily": "ui-monospace, 'SF Mono', Monaco, monospace",
                                     "color": "#1d1d1f",
                                     "lineHeight": "1.8",
@@ -428,7 +428,7 @@ def build_dashboard_layout() -> html.Div:
                             html.Div(
                                 [
                                     html.Div("Assign Label", style={
-                                        "fontSize": "13px",
+                                        "fontSize": "15px",
                                         "fontWeight": "600",
                                         "color": "#1d1d1f",
                                         "marginBottom": "12px",
@@ -500,7 +500,7 @@ def build_dashboard_layout() -> html.Div:
                                             "width": "100%",
                                             "height": "36px",
                                             "marginTop": "12px",
-                                            "fontSize": "13px",
+                                            "fontSize": "14px",
                                             "fontWeight": "500",
                                             "backgroundColor": "#ffffff",
                                             "color": "#FF3B30",
@@ -514,7 +514,7 @@ def build_dashboard_layout() -> html.Div:
                                         id="label-feedback",
                                         style={
                                             "marginTop": "12px",
-                                            "fontSize": "12px",
+                                            "fontSize": "13px",
                                             "color": "#86868b",
                                             "textAlign": "center",
                                             "minHeight": "18px",
@@ -527,7 +527,7 @@ def build_dashboard_layout() -> html.Div:
                             html.Div(
                                 [
                                     html.Div("Keyboard Shortcuts", style={
-                                        "fontSize": "11px",
+                                        "fontSize": "13px",
                                         "fontWeight": "600",
                                         "color": "#86868b",
                                         "marginBottom": "8px",
@@ -535,12 +535,12 @@ def build_dashboard_layout() -> html.Div:
                                         "letterSpacing": "0.5px",
                                     }),
                                     html.Div("0–9: Assign label", style={
-                                        "fontSize": "12px",
+                                        "fontSize": "13px",
                                         "color": "#1d1d1f",
                                         "lineHeight": "1.6",
                                     }),
                                     html.Div("Tab: Navigate controls", style={
-                                        "fontSize": "12px",
+                                        "fontSize": "13px",
                                         "color": "#1d1d1f",
                                         "lineHeight": "1.6",
                                     }),
@@ -587,14 +587,14 @@ def _build_stats_section() -> html.Div:
     return html.Div(
         [
             html.Div("Dataset", style={
-                "fontSize": "13px",
+                "fontSize": "15px",
                 "fontWeight": "600",
                 "color": "#1d1d1f",
                 "marginBottom": "12px",
             }),
             html.Div(
                 id="dataset-stats",
-                style={"fontSize": "12px", "lineHeight": "1.6"},
+                style={"fontSize": "13px", "lineHeight": "1.6"},
             ),
         ],
         style={
@@ -609,7 +609,7 @@ def _build_config_section(config, default_epochs: int) -> html.Div:
     return html.Div(
         [
             html.Div("Training Configuration", style={
-                "fontSize": "13px",
+                "fontSize": "15px",
                 "fontWeight": "600",
                 "color": "#1d1d1f",
                 "marginBottom": "12px",
@@ -618,7 +618,7 @@ def _build_config_section(config, default_epochs: int) -> html.Div:
             html.Div(
                 [
                     html.Label("Epochs", style={
-                        "fontSize": "12px",
+                        "fontSize": "13px",
                         "color": "#86868b",
                         "display": "block",
                         "marginBottom": "4px",
@@ -648,7 +648,7 @@ def _build_config_section(config, default_epochs: int) -> html.Div:
             html.Div(
                 [
                     html.Label("Learning Rate", style={
-                        "fontSize": "12px",
+                        "fontSize": "13px",
                         "color": "#86868b",
                         "display": "block",
                         "marginBottom": "4px",
@@ -679,12 +679,12 @@ def _build_config_section(config, default_epochs: int) -> html.Div:
                     html.Label([
                         "Recon Weight",
                         html.Span(" (higher = better image quality)", style={
-                            "fontSize": "10px",
+                            "fontSize": "11px",
                             "color": "#86868b",
                             "fontWeight": "normal",
                         }),
                     ], style={
-                        "fontSize": "12px",
+                        "fontSize": "13px",
                         "color": "#86868b",
                         "display": "block",
                         "marginBottom": "4px",
@@ -713,7 +713,7 @@ def _build_config_section(config, default_epochs: int) -> html.Div:
             html.Div(
                 [
                     html.Label("KL Weight", style={
-                        "fontSize": "12px",
+                        "fontSize": "13px",
                         "color": "#86868b",
                         "display": "block",
                         "marginBottom": "4px",
@@ -750,7 +750,7 @@ def _build_status_section(status_messages: list) -> html.Div:
     return html.Div(
         [
             html.Div("Status", style={
-                "fontSize": "13px",
+                "fontSize": "15px",
                 "fontWeight": "600",
                 "color": "#1d1d1f",
                 "marginBottom": "8px",
@@ -759,7 +759,7 @@ def _build_status_section(status_messages: list) -> html.Div:
                 id="training-status",
                 children=[
                     html.Div(msg, style={
-                        "fontSize": "11px",
+                        "fontSize": "12px",
                         "color": "#86868b",
                         "fontFamily": "ui-monospace, monospace",
                         "lineHeight": "1.6",

@@ -176,7 +176,7 @@ def register_training_callbacks(app: Dash) -> None:
                     html.Div(f"• Reconstruction weight: {recon_weight:.0f}"),
                     html.Div(f"• KL weight: {kl_weight:.2f}"),
                 ], style={
-                    "fontSize": "13px",
+                    "fontSize": "14px",
                     "color": "#86868b",
                     "lineHeight": "1.8",
                 }),
@@ -339,7 +339,7 @@ def register_training_callbacks(app: Dash) -> None:
                 is_error = msg_str.lower().startswith("error:")
                 
                 style = {
-                    "fontSize": "12px",
+                    "fontSize": "13px",
                     "fontFamily": "ui-monospace, monospace",
                     "lineHeight": "1.6",
                     "marginBottom": "4px",
@@ -359,7 +359,7 @@ def register_training_callbacks(app: Dash) -> None:
             status_children = html.Div(items)
         else:
             status_children = html.Div("Ready to train", style={
-                "fontSize": "12px",
+                "fontSize": "13px",
                 "color": "#86868b",
                 "fontFamily": "ui-monospace, monospace",
             })

@@ -112,12 +112,13 @@ def _build_base_figure(
     figure.update_layout(
         template="plotly_white",
         margin=dict(l=50, r=20, t=20, b=50),
-        xaxis_title=dict(text="Latent Dimension 1", font=dict(size=13, color="#1d1d1f", family="sans-serif")),
-        yaxis_title=dict(text="Latent Dimension 2", font=dict(size=13, color="#1d1d1f", family="sans-serif")),
+        xaxis_title=dict(text="Latent Dimension 1", font=dict(size=15, color="#1d1d1f", family="sans-serif")),
+        yaxis_title=dict(text="Latent Dimension 2", font=dict(size=15, color="#1d1d1f", family="sans-serif")),
         dragmode="pan",
         hovermode="closest",
         uirevision=f"latent-{latent_version}",
         transition={"duration": 0},
+        font=dict(size=13),  # Increase tick label font size
     )
     
     # Add visible grid lines
@@ -125,11 +126,13 @@ def _build_base_figure(
         showgrid=True,
         gridcolor="rgba(0, 0, 0, 0.1)",
         gridwidth=1,
+        tickfont=dict(size=13),
     )
     figure.update_yaxes(
         showgrid=True,
         gridcolor="rgba(0, 0, 0, 0.1)",
         gridwidth=1,
+        tickfont=dict(size=13),
     )
     
     return figure
@@ -225,7 +228,7 @@ def register_visualization_callbacks(app: Dash) -> None:
             return html.Div(
                 [
                     html.Span("0% (uncertain)", style={
-                        "fontSize": "12px",
+                        "fontSize": "14px",
                         "color": "#86868b",
                         "marginRight": "8px",
                     }),
@@ -237,7 +240,7 @@ def register_visualization_callbacks(app: Dash) -> None:
                         "maxWidth": "200px",
                     }),
                     html.Span("100% (confident)", style={
-                        "fontSize": "12px",
+                        "fontSize": "14px",
                         "color": "#86868b",
                         "marginLeft": "8px",
                     }),
@@ -264,7 +267,7 @@ def register_visualization_callbacks(app: Dash) -> None:
                             "marginRight": "6px",
                         }),
                         html.Span(str(i), style={
-                            "fontSize": "13px",
+                            "fontSize": "15px",
                             "color": "#1d1d1f",
                             "fontFamily": "ui-monospace, monospace",
                             "fontWeight": "500",
@@ -290,7 +293,7 @@ def register_visualization_callbacks(app: Dash) -> None:
                             "marginRight": "6px",
                         }),
                         html.Span("unlabeled", style={
-                            "fontSize": "12px",
+                            "fontSize": "14px",
                             "color": "#86868b",
                             "fontFamily": "ui-monospace, monospace",
                         }),
@@ -348,11 +351,14 @@ def register_visualization_callbacks(app: Dash) -> None:
         if not epochs:
             figure.update_layout(
                 template="plotly_white",
-                xaxis_title="Epoch",
-                yaxis_title="Loss",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+                xaxis_title=dict(text="Epoch", font=dict(size=14)),
+                yaxis_title=dict(text="Loss", font=dict(size=14)),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0, font=dict(size=12)),
                 margin=dict(l=40, r=20, t=30, b=40),
+                font=dict(size=12),
             )
+            figure.update_xaxes(tickfont=dict(size=12))
+            figure.update_yaxes(tickfont=dict(size=12))
             return figure
 
         # Check if smoothing is enabled (checkbox returns list of checked values)
@@ -398,16 +404,19 @@ def register_visualization_callbacks(app: Dash) -> None:
 
         figure.update_layout(
             template="plotly_white",
-            xaxis_title="Epoch",
-            yaxis_title="Loss",
+            xaxis_title=dict(text="Epoch", font=dict(size=14)),
+            yaxis_title=dict(text="Loss", font=dict(size=14)),
             legend=dict(
                 orientation="h",
                 yanchor="bottom",
                 y=1.02,
                 xanchor="left",
                 x=0,
-                font=dict(size=10),
+                font=dict(size=12),
             ),
             margin=dict(l=40, r=20, t=40, b=40),
+            font=dict(size=12),  # Increase tick label font size
         )
+        figure.update_xaxes(tickfont=dict(size=12))
+        figure.update_yaxes(tickfont=dict(size=12))
         return figure

@@ -66,7 +66,7 @@ def register_labeling_callbacks(app: Dash) -> None:
             ],
             style={
                 "fontFamily": "ui-monospace, 'SF Mono', Monaco, monospace",
-                "fontSize": "13px",
+                "fontSize": "14px",
                 "color": "#1d1d1f",
                 "lineHeight": "1.6",
             }
@@ -210,7 +210,7 @@ def register_labeling_callbacks(app: Dash) -> None:
             }))
             
             stats_lines.append(dash.html.Div("Label Distribution", style={
-                "fontSize": "12px",
+                "fontSize": "14px",
                 "fontWeight": "600",
                 "color": "#86868b",
                 "marginBottom": "12px",
@@ -235,7 +235,7 @@ def register_labeling_callbacks(app: Dash) -> None:
                 ),
                 text=counts,
                 textposition='outside',
-                textfont=dict(size=11, color='#1d1d1f', family='ui-monospace, monospace'),
+                textfont=dict(size=12, color='#1d1d1f', family='ui-monospace, monospace'),
                 hovertemplate='Digit %{y}: %{x} samples<extra></extra>',
             ))
             
@@ -245,14 +245,14 @@ def register_labeling_callbacks(app: Dash) -> None:
                 margin=dict(l=30, r=40, t=5, b=30),
                 xaxis=dict(
                     title="Count",
-                    titlefont=dict(size=11, color="#86868b"),
+                    titlefont=dict(size=12, color="#86868b"),
                     showgrid=True,
                     gridcolor="rgba(0, 0, 0, 0.05)",
-                    tickfont=dict(size=10, color="#86868b"),
+                    tickfont=dict(size=11, color="#86868b"),
                 ),
                 yaxis=dict(
                     title="",
-                    tickfont=dict(size=11, color="#1d1d1f", family="ui-monospace, monospace"),
+                    tickfont=dict(size=12, color="#1d1d1f", family="ui-monospace, monospace"),
                     autorange='reversed',  # 0 at top, 9 at bottom
                 ),
                 showlegend=False,
