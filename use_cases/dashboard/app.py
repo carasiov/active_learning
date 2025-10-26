@@ -26,6 +26,8 @@ from use_cases.dashboard.callbacks.labeling_callbacks import register_labeling_c
 
 
 CUSTOM_CSS = """
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap');
+
 * {
     box-sizing: border-box;
 }
@@ -34,15 +36,17 @@ body {
     margin: 0;
     padding: 0;
     overflow: hidden;
+    font-family: 'Open Sans', Verdana, sans-serif;
+    color: #4A4A4A;
 }
 
-/* Focus rings for accessibility */
+/* Focus rings for accessibility - infoteam red */
 button:focus-visible,
 input:focus-visible,
 .form-check-input:focus-visible {
-    outline: 3px solid #007AFF !important;
+    outline: 3px solid #C10A27 !important;
     outline-offset: 2px !important;
-    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.2) !important;
+    box-shadow: 0 0 0 3px rgba(193, 10, 39, 0.2) !important;
 }
 
 button:hover:not(:disabled) {
@@ -61,18 +65,18 @@ button:disabled {
 
 input:focus {
     outline: none;
-    border-color: #007AFF !important;
-    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+    border-color: #C10A27 !important;
+    box-shadow: 0 0 0 3px rgba(193, 10, 39, 0.1);
 }
 
 .form-check-input:checked {
-    background-color: #007AFF;
-    border-color: #007AFF;
+    background-color: #C10A27;
+    border-color: #C10A27;
 }
 
 /* Radio buttons focus */
 .form-check-input[type="radio"]:focus-visible {
-    outline: 3px solid #007AFF !important;
+    outline: 3px solid #C10A27 !important;
     outline-offset: 2px !important;
 }
 
@@ -82,16 +86,16 @@ input:focus {
 }
 
 ::-webkit-scrollbar-track {
-    background: #f5f5f7;
+    background: #f5f5f5;
 }
 
 ::-webkit-scrollbar-thumb {
-    background: #c7c7cc;
+    background: #C6C6C6;
     border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: #86868b;
+    background: #6F6F6F;
 }
 
 /* Resize handles */
@@ -109,7 +113,7 @@ input:focus {
     transform: translate(-50%, -50%);
     width: 3px;
     height: 40px;
-    background-color: #d1d1d6;
+    background-color: #C6C6C6;
     border-radius: 2px;
     opacity: 0;
     transition: opacity 0.2s;
@@ -123,7 +127,7 @@ input:focus {
     transform: translate(-50%, -50%);
     width: 40px;
     height: 3px;
-    background-color: #d1d1d6;
+    background-color: #C6C6C6;
     border-radius: 2px;
     opacity: 0;
     transition: opacity 0.2s;
@@ -134,30 +138,31 @@ input:focus {
 }
 
 .resize-handle:hover {
-    background-color: rgba(0, 122, 255, 0.1);
+    background-color: rgba(193, 10, 39, 0.1);
 }
 
 button[id*="label-button"]:hover {
-    background-color: #007AFF !important;
+    background-color: #C10A27 !important;
     color: #ffffff !important;
 }
 
 #delete-label-button:hover {
-    background-color: #FF3B30 !important;
-    color: #ffffff !important;
+    background-color: #f5f5f5 !important;
+    border-color: #6F6F6F !important;
+    color: #000000 !important;
 }
 
 #start-training-button:hover:not(:disabled) {
-    background-color: #2FB74A !important;
-    box-shadow: 0 4px 12px rgba(52, 199, 89, 0.3);
+    background-color: #A81F2F !important;
+    box-shadow: 0 4px 12px rgba(193, 10, 39, 0.3);
 }
 
 #modal-confirm-button:hover:not(:disabled) {
-    background-color: #2FB74A !important;
+    background-color: #A81F2F !important;
 }
 
 #modal-cancel-button:hover:not(:disabled) {
-    background-color: #f5f5f7 !important;
+    background-color: #f5f5f5 !important;
 }
 
 button, input {
@@ -172,15 +177,15 @@ button, input {
     pointer-events: none !important;
 }
 
-/* Improve modal accessibility */
+/* Improve modal accessibility - infoteam style */
 .modal-content {
-    border-radius: 12px !important;
+    border-radius: 8px !important;
     border: none !important;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12) !important;
 }
 
 .modal-header {
-    border-bottom: 1px solid #e5e5e5 !important;
+    border-bottom: 2px solid #C10A27 !important;
     padding: 20px 24px !important;
 }
 
@@ -189,7 +194,7 @@ button, input {
 }
 
 .modal-footer {
-    border-top: 1px solid #e5e5e5 !important;
+    border-top: 1px solid #C6C6C6 !important;
     padding: 16px 24px !important;
 }
 """

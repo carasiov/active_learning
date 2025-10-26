@@ -10,11 +10,19 @@ import numpy as np
 from matplotlib import colormaps, colors as mcolors
 from PIL import Image
 
-# Colorblind-safe palettes
-TABLEAU_10_EXTENDED = [
-    '#4E79A7', '#F28E2B', '#E15759', '#76B7B2', '#59A14F',
-    '#EDC948', '#B07AA1', '#FF9DA7', '#9C755F', '#BAB0AC',
-    '#999999'  # 11th color for unlabeled (neutral gray)
+# infoteam secondary color palette (colorblind-safe)
+INFOTEAM_PALETTE = [
+    '#C10A27',  # infoteam red (primary)
+    '#45717A',  # teal
+    '#AFCC37',  # lime green
+    '#A69DCD',  # lavender
+    '#8BBFC2',  # light teal
+    '#F6C900',  # yellow
+    '#4DBDC6',  # cyan
+    '#554596',  # purple
+    '#CFE09B',  # light green
+    '#F6E3AC',  # cream
+    '#6F6F6F'   # infoteam mid gray for unlabeled
 ]
 
 VIRIDIS_CMAP = colormaps['viridis']
@@ -37,23 +45,23 @@ def _values_to_hex_viridis(values: np.ndarray) -> List[str]:
 
 
 def _colorize_user_labels(labels: np.ndarray) -> List[str]:
-    """Return colors for user-provided labels using Tableau 10 (colorblind-safe).
+    """Return colors for user-provided labels using infoteam palette.
     
     Treats NaN entries as unlabeled (gray). Uses discrete color palette for digits 0-9.
     """
     colors = []
     for label in labels:
         if np.isnan(label):
-            colors.append(TABLEAU_10_EXTENDED[10])  # Gray for unlabeled
+            colors.append(INFOTEAM_PALETTE[10])  # Gray for unlabeled
         else:
             idx = int(label) % 10
-            colors.append(TABLEAU_10_EXTENDED[idx])
+            colors.append(INFOTEAM_PALETTE[idx])
     return colors
 
 
 def _colorize_discrete_classes(classes: np.ndarray) -> List[str]:
-    """Return colors for discrete class predictions using Tableau 10 (colorblind-safe)."""
-    return [TABLEAU_10_EXTENDED[int(c) % 10] for c in classes]
+    """Return colors for discrete class predictions using infoteam palette."""
+    return [INFOTEAM_PALETTE[int(c) % 10] for c in classes]
 
 
 def _colorize_numeric(values: np.ndarray) -> List[str]:

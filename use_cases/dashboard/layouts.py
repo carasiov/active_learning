@@ -40,18 +40,20 @@ def build_dashboard_layout() -> html.Div:
                             html.Div(id="modal-training-info", style={
                                 "fontSize": "15px",
                                 "lineHeight": "1.6",
-                                "color": "#1d1d1f",
+                                "color": "#4A4A4A",
+                                "fontFamily": "'Open Sans', Verdana, sans-serif",
                             }),
                             html.Div(
                                 "⚠️ This will overwrite the current checkpoint at ssvae.ckpt",
                                 style={
                                     "marginTop": "16px",
                                     "padding": "12px",
-                                    "backgroundColor": "#FFF3CD",
-                                    "border": "1px solid #FFE69C",
+                                    "backgroundColor": "#F6E3AC",
+                                    "border": "1px solid #F6C900",
                                     "borderRadius": "6px",
                                     "fontSize": "14px",
-                                    "color": "#856404",
+                                    "color": "#4A4A4A",
+                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
                                 },
                             ),
                         ]
@@ -64,12 +66,13 @@ def build_dashboard_layout() -> html.Div:
                                 n_clicks=0,
                                 style={
                                     "backgroundColor": "#ffffff",
-                                    "color": "#86868b",
-                                    "border": "1px solid #d1d1d6",
+                                    "color": "#6F6F6F",
+                                    "border": "1px solid #C6C6C6",
                                     "borderRadius": "6px",
                                     "padding": "8px 16px",
                                     "fontSize": "13px",
-                                    "fontWeight": "500",
+                                    "fontWeight": "600",
+                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
                                 },
                             ),
                             dbc.Button(
@@ -77,14 +80,15 @@ def build_dashboard_layout() -> html.Div:
                                 id="modal-confirm-button",
                                 n_clicks=0,
                                 style={
-                                    "backgroundColor": "#34C759",
+                                    "backgroundColor": "#C10A27",
                                     "color": "#ffffff",
                                     "border": "none",
                                     "borderRadius": "6px",
                                     "padding": "8px 16px",
                                     "fontSize": "13px",
-                                    "fontWeight": "600",
+                                    "fontWeight": "700",
                                     "marginLeft": "8px",
+                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
                                 },
                             ),
                         ]
@@ -95,27 +99,64 @@ def build_dashboard_layout() -> html.Div:
                 centered=True,
             ),
             
-            # Header
-            html.Div(
-                [
-                    html.H1("SSVAE Active Learning", style={
-                        "fontSize": "24px",
-                        "fontWeight": "600",
-                        "margin": "0",
-                        "color": "#1d1d1f",
-                    }),
-                    html.Div("MNIST Semi-Supervised Learning", style={
-                        "fontSize": "15px",
-                        "color": "#86868b",
-                        "marginTop": "2px",
-                    }),
-                ],
-                style={
-                    "padding": "20px 32px",
-                    "borderBottom": "1px solid #e5e5e5",
-                    "backgroundColor": "#ffffff",
-                },
-            ),
+            # Header with logo and red accent bar
+            html.Div([
+                # Top header with logo
+                html.Div(
+                    [
+                        # infoteam Logo (left)
+                        html.Div(
+                            [
+                                html.Img(
+                                    src="/assets/infoteam_logo_basic.png",
+                                    alt="infoteam software",
+                                    style={
+                                        "height": "50px",
+                                        "width": "auto",
+                                        "display": "block",
+                                    },
+                                ),
+                            ],
+                            style={"display": "inline-block", "marginRight": "32px"},
+                        ),
+                        # Title (right)
+                        html.Div(
+                            [
+                                html.H1("SSVAE Active Learning", style={
+                                    "fontSize": "24px",
+                                    "fontWeight": "700",
+                                    "margin": "0",
+                                    "color": "#000000",
+                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                }),
+                                html.Div("MNIST Semi-Supervised Learning", style={
+                                    "fontSize": "15px",
+                                    "color": "#6F6F6F",
+                                    "marginTop": "2px",
+                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                }),
+                            ],
+                            style={
+                                "display": "inline-block",
+                                "marginLeft": "0",
+                                "verticalAlign": "middle",
+                            },
+                        ),
+                    ],
+                    style={
+                        "padding": "16px 32px",
+                        "backgroundColor": "#ffffff",
+                        "display": "flex",
+                        "alignItems": "center",
+                    },
+                ),
+                # Red accent bar (infoteam brand element)
+                html.Div(style={
+                    "height": "4px",
+                    "backgroundColor": "#C10A27",
+                    "width": "100%",
+                }),
+            ]),
             
             # Main resizable layout
             html.Div(
@@ -137,13 +178,14 @@ def build_dashboard_layout() -> html.Div:
                                             style={
                                                 "width": "100%",
                                                 "height": "44px",
-                                                "backgroundColor": "#34C759",
+                                                "backgroundColor": "#C10A27",
                                                 "border": "none",
                                                 "borderRadius": "8px",
                                                 "fontSize": "15px",
-                                                "fontWeight": "600",
+                                                "fontWeight": "700",
                                                 "color": "#ffffff",
                                                 "cursor": "pointer",
+                                                "fontFamily": "'Open Sans', Verdana, sans-serif",
                                             },
                                         ),
                                         style={"marginTop": "auto", "paddingTop": "16px"},
@@ -163,7 +205,7 @@ def build_dashboard_layout() -> html.Div:
                             "width": "20%",
                             "minWidth": "240px",
                             "backgroundColor": "#ffffff",
-                            "borderRight": "1px solid #e5e5e5",
+                            "borderRight": "1px solid #C6C6C6",
                         },
                     ),
                     
@@ -189,8 +231,9 @@ def build_dashboard_layout() -> html.Div:
                                         [
                                             html.Span("Color by:", style={
                                                 "fontSize": "14px",
-                                                "color": "#86868b",
+                                                "color": "#6F6F6F",
                                                 "marginRight": "12px",
+                                                "fontFamily": "'Open Sans', Verdana, sans-serif",
                                             }),
                                             dbc.RadioItems(
                                                 id="color-mode-radio",
@@ -202,7 +245,7 @@ def build_dashboard_layout() -> html.Div:
                                                 ],
                                                 value="user_labels",
                                                 inline=True,
-                                                style={"fontSize": "14px"},
+                                                style={"fontSize": "14px", "fontFamily": "'Open Sans', Verdana, sans-serif"},
                                             ),
                                         ],
                                         style={
@@ -219,7 +262,7 @@ def build_dashboard_layout() -> html.Div:
                                 ],
                                 style={
                                     "padding": "12px 24px",
-                                    "borderBottom": "1px solid #e5e5e5",
+                                    "borderBottom": "1px solid #C6C6C6",
                                     "backgroundColor": "#ffffff",
                                     "flexShrink": "0",
                                 },
@@ -235,12 +278,13 @@ def build_dashboard_layout() -> html.Div:
                                             "top": "8px",
                                             "left": "24px",
                                             "fontSize": "16px",
-                                            "fontWeight": "600",
-                                            "color": "#1d1d1f",
+                                            "fontWeight": "700",
+                                            "color": "#000000",
                                             "backgroundColor": "rgba(255, 255, 255, 0.9)",
                                             "padding": "4px 8px",
                                             "borderRadius": "4px",
                                             "zIndex": "1000",
+                                            "fontFamily": "'Open Sans', Verdana, sans-serif",
                                         },
                                     ),
                                     dcc.Graph(
@@ -282,8 +326,9 @@ def build_dashboard_layout() -> html.Div:
                                         [
                                             html.Span("Training Progress", style={
                                                 "fontSize": "15px",
-                                                "fontWeight": "600",
-                                                "color": "#1d1d1f",
+                                                "fontWeight": "700",
+                                                "color": "#000000",
+                                                "fontFamily": "'Open Sans', Verdana, sans-serif",
                                             }),
                                             dbc.Checkbox(
                                                 id="loss-smoothing-toggle",
@@ -292,6 +337,7 @@ def build_dashboard_layout() -> html.Div:
                                                 style={
                                                     "marginLeft": "auto",
                                                     "fontSize": "13px",
+                                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
                                                 },
                                             ),
                                         ],
@@ -299,7 +345,7 @@ def build_dashboard_layout() -> html.Div:
                                             "display": "flex",
                                             "alignItems": "center",
                                             "padding": "8px 16px",
-                                            "borderBottom": "1px solid #e5e5e5",
+                                            "borderBottom": "1px solid #C6C6C6",
                                         },
                                     ),
                                     dcc.Graph(
@@ -312,7 +358,7 @@ def build_dashboard_layout() -> html.Div:
                                 style={
                                     "height": "220px",
                                     "minHeight": "200px",
-                                    "borderTop": "1px solid #e5e5e5",
+                                    "borderTop": "1px solid #C6C6C6",
                                     "backgroundColor": "#ffffff",
                                 },
                             ),
@@ -346,10 +392,11 @@ def build_dashboard_layout() -> html.Div:
                                 children="Select a point",
                                 style={
                                     "fontSize": "17px",
-                                    "fontWeight": "600",
-                                    "color": "#1d1d1f",
+                                    "fontWeight": "700",
+                                    "color": "#000000",
                                     "padding": "16px 24px",
-                                    "borderBottom": "1px solid #e5e5e5",
+                                    "borderBottom": "2px solid #C10A27",
+                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
                                 },
                             ),
                             
@@ -359,11 +406,13 @@ def build_dashboard_layout() -> html.Div:
                                         [
                                             html.Div("Original", style={
                                                 "fontSize": "13px",
-                                                "color": "#86868b",
+                                                "color": "#6F6F6F",
                                                 "marginBottom": "8px",
                                                 "textAlign": "center",
                                                 "textTransform": "uppercase",
                                                 "letterSpacing": "0.5px",
+                                                "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                                "fontWeight": "600",
                                             }),
                                             html.Div(
                                                 html.Img(
@@ -383,11 +432,13 @@ def build_dashboard_layout() -> html.Div:
                                         [
                                             html.Div("Reconstructed", style={
                                                 "fontSize": "13px",
-                                                "color": "#86868b",
+                                                "color": "#6F6F6F",
                                                 "marginBottom": "8px",
                                                 "textAlign": "center",
                                                 "textTransform": "uppercase",
                                                 "letterSpacing": "0.5px",
+                                                "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                                "fontWeight": "600",
                                             }),
                                             html.Div(
                                                 html.Img(
@@ -415,13 +466,13 @@ def build_dashboard_layout() -> html.Div:
                                 id="prediction-info",
                                 style={
                                     "padding": "12px 24px",
-                                    "backgroundColor": "#f5f5f7",
+                                    "backgroundColor": "#f5f5f5",
                                     "fontSize": "13px",
                                     "fontFamily": "ui-monospace, 'SF Mono', Monaco, monospace",
-                                    "color": "#1d1d1f",
+                                    "color": "#4A4A4A",
                                     "lineHeight": "1.8",
-                                    "borderTop": "1px solid #e5e5e5",
-                                    "borderBottom": "1px solid #e5e5e5",
+                                    "borderTop": "1px solid #C6C6C6",
+                                    "borderBottom": "1px solid #C6C6C6",
                                 },
                             ),
                             
@@ -429,67 +480,41 @@ def build_dashboard_layout() -> html.Div:
                                 [
                                     html.Div("Assign Label", style={
                                         "fontSize": "15px",
-                                        "fontWeight": "600",
-                                        "color": "#1d1d1f",
+                                        "fontWeight": "700",
+                                        "color": "#000000",
                                         "marginBottom": "12px",
+                                        "fontFamily": "'Open Sans', Verdana, sans-serif",
                                     }),
                                     
+                                    # Single row of digit buttons with flex wrap
                                     html.Div(
                                         [
-                                            html.Div(
-                                                [
-                                                    dbc.Button(
-                                                        str(d),
-                                                        id={"type": "label-button", "label": d},
-                                                        n_clicks=0,
-                                                        style={
-                                                            "width": "44px",
-                                                            "height": "44px",
-                                                            "padding": "0",
-                                                            "fontSize": "16px",
-                                                            "fontWeight": "600",
-                                                            "backgroundColor": "#ffffff",
-                                                            "color": "#007AFF",
-                                                            "border": "1.5px solid #007AFF",
-                                                            "borderRadius": "8px",
-                                                            "cursor": "pointer",
-                                                        },
-                                                    )
-                                                    for d in range(5)
-                                                ],
+                                            dbc.Button(
+                                                str(d),
+                                                id={"type": "label-button", "label": d},
+                                                n_clicks=0,
                                                 style={
-                                                    "display": "flex",
-                                                    "gap": "8px",
-                                                    "marginBottom": "8px",
+                                                    "width": "44px",
+                                                    "height": "44px",
+                                                    "padding": "0",
+                                                    "fontSize": "16px",
+                                                    "fontWeight": "700",
+                                                    "backgroundColor": "#ffffff",
+                                                    "color": "#C10A27",
+                                                    "border": "1.5px solid #C10A27",
+                                                    "borderRadius": "6px",
+                                                    "cursor": "pointer",
+                                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                                    "flexShrink": "0",
                                                 },
-                                            ),
-                                            html.Div(
-                                                [
-                                                    dbc.Button(
-                                                        str(d),
-                                                        id={"type": "label-button", "label": d},
-                                                        n_clicks=0,
-                                                        style={
-                                                            "width": "44px",
-                                                            "height": "44px",
-                                                            "padding": "0",
-                                                            "fontSize": "16px",
-                                                            "fontWeight": "600",
-                                                            "backgroundColor": "#ffffff",
-                                                            "color": "#007AFF",
-                                                            "border": "1.5px solid #007AFF",
-                                                            "borderRadius": "8px",
-                                                            "cursor": "pointer",
-                                                        },
-                                                    )
-                                                    for d in range(5, 10)
-                                                ],
-                                                style={
-                                                    "display": "flex",
-                                                    "gap": "8px",
-                                                },
-                                            ),
+                                            )
+                                            for d in range(10)
                                         ],
+                                        style={
+                                            "display": "flex",
+                                            "flexWrap": "wrap",
+                                            "gap": "8px",
+                                        },
                                     ),
                                     
                                     dbc.Button(
@@ -501,12 +526,13 @@ def build_dashboard_layout() -> html.Div:
                                             "height": "36px",
                                             "marginTop": "12px",
                                             "fontSize": "14px",
-                                            "fontWeight": "500",
+                                            "fontWeight": "600",
                                             "backgroundColor": "#ffffff",
-                                            "color": "#FF3B30",
-                                            "border": "1px solid #FF3B30",
+                                            "color": "#6F6F6F",
+                                            "border": "1px solid #C6C6C6",
                                             "borderRadius": "6px",
                                             "cursor": "pointer",
+                                            "fontFamily": "'Open Sans', Verdana, sans-serif",
                                         },
                                     ),
                                     
@@ -515,7 +541,7 @@ def build_dashboard_layout() -> html.Div:
                                         style={
                                             "marginTop": "12px",
                                             "fontSize": "13px",
-                                            "color": "#86868b",
+                                            "color": "#6F6F6F",
                                             "textAlign": "center",
                                             "minHeight": "18px",
                                         },
@@ -528,28 +554,31 @@ def build_dashboard_layout() -> html.Div:
                                 [
                                     html.Div("Keyboard Shortcuts", style={
                                         "fontSize": "13px",
-                                        "fontWeight": "600",
-                                        "color": "#86868b",
+                                        "fontWeight": "700",
+                                        "color": "#6F6F6F",
                                         "marginBottom": "8px",
                                         "textTransform": "uppercase",
                                         "letterSpacing": "0.5px",
+                                        "fontFamily": "'Open Sans', Verdana, sans-serif",
                                     }),
                                     html.Div("0–9: Assign label", style={
                                         "fontSize": "13px",
-                                        "color": "#1d1d1f",
+                                        "color": "#4A4A4A",
                                         "lineHeight": "1.6",
+                                        "fontFamily": "'Open Sans', Verdana, sans-serif",
                                     }),
                                     html.Div("Tab: Navigate controls", style={
                                         "fontSize": "13px",
-                                        "color": "#1d1d1f",
+                                        "color": "#4A4A4A",
                                         "lineHeight": "1.6",
+                                        "fontFamily": "'Open Sans', Verdana, sans-serif",
                                     }),
                                 ],
                                 style={
                                     "marginTop": "auto",
                                     "padding": "16px 24px",
-                                    "borderTop": "1px solid #e5e5e5",
-                                    "backgroundColor": "#f5f5f7",
+                                    "borderTop": "1px solid #C6C6C6",
+                                    "backgroundColor": "#f5f5f5",
                                 },
                             ),
                         ],
@@ -558,7 +587,7 @@ def build_dashboard_layout() -> html.Div:
                             "width": "20%",
                             "minWidth": "240px",
                             "backgroundColor": "#ffffff",
-                            "borderLeft": "1px solid #e5e5e5",
+                            "borderLeft": "1px solid #C6C6C6",
                             "display": "flex",
                             "flexDirection": "column",
                             "overflowY": "auto",
@@ -568,17 +597,20 @@ def build_dashboard_layout() -> html.Div:
                 id="main-container",
                 style={
                     "display": "flex",
-                    "height": "calc(100vh - 85px)",
+                    "flex": "1",
                     "overflow": "hidden",
+                    "minHeight": "0",
                 },
             ),
         ],
         style={
-            "fontFamily": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+            "fontFamily": "'Open Sans', Verdana, sans-serif",
             "backgroundColor": "#fafafa",
             "minWidth": "1200px",
             "height": "100vh",
             "overflow": "hidden",
+            "display": "flex",
+            "flexDirection": "column",
         },
     )
 
@@ -588,19 +620,20 @@ def _build_stats_section() -> html.Div:
         [
             html.Div("Dataset", style={
                 "fontSize": "15px",
-                "fontWeight": "600",
-                "color": "#1d1d1f",
+                "fontWeight": "700",
+                "color": "#000000",
                 "marginBottom": "12px",
+                "fontFamily": "'Open Sans', Verdana, sans-serif",
             }),
             html.Div(
                 id="dataset-stats",
-                style={"fontSize": "13px", "lineHeight": "1.6"},
+                style={"fontSize": "13px", "lineHeight": "1.6", "fontFamily": "'Open Sans', Verdana, sans-serif"},
             ),
         ],
         style={
             "marginBottom": "24px",
             "paddingBottom": "24px",
-            "borderBottom": "1px solid #e5e5e5",
+            "borderBottom": "1px solid #C6C6C6",
         },
     )
 
@@ -610,18 +643,21 @@ def _build_config_section(config, default_epochs: int) -> html.Div:
         [
             html.Div("Training Configuration", style={
                 "fontSize": "15px",
-                "fontWeight": "600",
-                "color": "#1d1d1f",
+                "fontWeight": "700",
+                "color": "#000000",
                 "marginBottom": "12px",
+                "fontFamily": "'Open Sans', Verdana, sans-serif",
             }),
             
             html.Div(
                 [
                     html.Label("Epochs", style={
                         "fontSize": "13px",
-                        "color": "#86868b",
+                        "color": "#6F6F6F",
                         "display": "block",
                         "marginBottom": "4px",
+                        "fontFamily": "'Open Sans', Verdana, sans-serif",
+                        "fontWeight": "600",
                     }),
                     dcc.Input(
                         id="num-epochs-input",
@@ -636,7 +672,7 @@ def _build_config_section(config, default_epochs: int) -> html.Div:
                             "width": "100%",
                             "padding": "6px 8px",
                             "fontSize": "13px",
-                            "border": "1px solid #d1d1d6",
+                            "border": "1px solid #C6C6C6",
                             "borderRadius": "6px",
                             "fontFamily": "ui-monospace, monospace",
                         },
@@ -649,9 +685,11 @@ def _build_config_section(config, default_epochs: int) -> html.Div:
                 [
                     html.Label("Learning Rate", style={
                         "fontSize": "13px",
-                        "color": "#86868b",
+                        "color": "#6F6F6F",
                         "display": "block",
                         "marginBottom": "4px",
+                        "fontFamily": "'Open Sans', Verdana, sans-serif",
+                        "fontWeight": "600",
                     }),
                     dcc.Input(
                         id="learning-rate-slider",
@@ -665,7 +703,7 @@ def _build_config_section(config, default_epochs: int) -> html.Div:
                             "width": "100%",
                             "padding": "6px 8px",
                             "fontSize": "13px",
-                            "border": "1px solid #d1d1d6",
+                            "border": "1px solid #C6C6C6",
                             "borderRadius": "6px",
                             "fontFamily": "ui-monospace, monospace",
                         },
@@ -680,14 +718,16 @@ def _build_config_section(config, default_epochs: int) -> html.Div:
                         "Recon Weight",
                         html.Span(" (higher = better image quality)", style={
                             "fontSize": "11px",
-                            "color": "#86868b",
+                            "color": "#6F6F6F",
                             "fontWeight": "normal",
                         }),
                     ], style={
                         "fontSize": "13px",
-                        "color": "#86868b",
+                        "color": "#6F6F6F",
                         "display": "block",
                         "marginBottom": "4px",
+                        "fontFamily": "'Open Sans', Verdana, sans-serif",
+                        "fontWeight": "600",
                     }),
                     dcc.Input(
                         id="recon-weight-slider",
@@ -701,7 +741,7 @@ def _build_config_section(config, default_epochs: int) -> html.Div:
                             "width": "100%",
                             "padding": "6px 8px",
                             "fontSize": "13px",
-                            "border": "1px solid #d1d1d6",
+                            "border": "1px solid #C6C6C6",
                             "borderRadius": "6px",
                             "fontFamily": "ui-monospace, monospace",
                         },
@@ -714,9 +754,11 @@ def _build_config_section(config, default_epochs: int) -> html.Div:
                 [
                     html.Label("KL Weight", style={
                         "fontSize": "13px",
-                        "color": "#86868b",
+                        "color": "#6F6F6F",
                         "display": "block",
                         "marginBottom": "4px",
+                        "fontFamily": "'Open Sans', Verdana, sans-serif",
+                        "fontWeight": "600",
                     }),
                     dcc.Input(
                         id="kl-weight-slider",
@@ -730,7 +772,7 @@ def _build_config_section(config, default_epochs: int) -> html.Div:
                             "width": "100%",
                             "padding": "6px 8px",
                             "fontSize": "13px",
-                            "border": "1px solid #d1d1d6",
+                            "border": "1px solid #C6C6C6",
                             "borderRadius": "6px",
                             "fontFamily": "ui-monospace, monospace",
                         },
@@ -741,7 +783,7 @@ def _build_config_section(config, default_epochs: int) -> html.Div:
         style={
             "marginBottom": "24px",
             "paddingBottom": "24px",
-            "borderBottom": "1px solid #e5e5e5",
+            "borderBottom": "1px solid #C6C6C6",
         },
     )
 
@@ -751,16 +793,17 @@ def _build_status_section(status_messages: list) -> html.Div:
         [
             html.Div("Status", style={
                 "fontSize": "15px",
-                "fontWeight": "600",
-                "color": "#1d1d1f",
+                "fontWeight": "700",
+                "color": "#000000",
                 "marginBottom": "8px",
+                "fontFamily": "'Open Sans', Verdana, sans-serif",
             }),
             html.Div(
                 id="training-status",
                 children=[
                     html.Div(msg, style={
                         "fontSize": "12px",
-                        "color": "#86868b",
+                        "color": "#6F6F6F",
                         "fontFamily": "ui-monospace, monospace",
                         "lineHeight": "1.6",
                     })
@@ -768,7 +811,7 @@ def _build_status_section(status_messages: list) -> html.Div:
                 ],
                 style={
                     "padding": "8px",
-                    "backgroundColor": "#f5f5f7",
+                    "backgroundColor": "#f5f5f5",
                     "borderRadius": "6px",
                     "minHeight": "80px",
                     "maxHeight": "180px",

@@ -177,7 +177,7 @@ def register_training_callbacks(app: Dash) -> None:
                     html.Div(f"• KL weight: {kl_weight:.2f}"),
                 ], style={
                     "fontSize": "14px",
-                    "color": "#86868b",
+                    "color": "#6F6F6F",
                     "lineHeight": "1.8",
                 }),
             ]
@@ -346,13 +346,13 @@ def register_training_callbacks(app: Dash) -> None:
                 }
                 
                 if is_error:
-                    style["color"] = "#FF3B30"
+                    style["color"] = "#C10A27"
                     style["fontWeight"] = "600"
                 elif is_last and not msg_str.lower().startswith("idle"):
-                    style["color"] = "#1d1d1f"
+                    style["color"] = "#000000"
                     style["fontWeight"] = "500"
                 else:
-                    style["color"] = "#86868b"
+                    style["color"] = "#6F6F6F"
                 
                 items.append(html.Div(msg, style=style))
             
@@ -360,7 +360,7 @@ def register_training_callbacks(app: Dash) -> None:
         else:
             status_children = html.Div("Ready to train", style={
                 "fontSize": "13px",
-                "color": "#86868b",
+                "color": "#6F6F6F",
                 "fontFamily": "ui-monospace, monospace",
             })
 

@@ -11,7 +11,7 @@ import numpy as np
 import plotly.graph_objects as go
 
 from use_cases.dashboard.state import app_state, state_lock, _update_label
-from use_cases.dashboard.utils import array_to_base64, TABLEAU_10_EXTENDED
+from use_cases.dashboard.utils import array_to_base64, INFOTEAM_PALETTE
 
 
 def register_labeling_callbacks(app: Dash) -> None:
@@ -67,7 +67,7 @@ def register_labeling_callbacks(app: Dash) -> None:
             style={
                 "fontFamily": "ui-monospace, 'SF Mono', Monaco, monospace",
                 "fontSize": "14px",
-                "color": "#1d1d1f",
+                "color": "#4A4A4A",
                 "lineHeight": "1.6",
             }
         )
@@ -172,7 +172,7 @@ def register_labeling_callbacks(app: Dash) -> None:
             ], style={
                 "fontFamily": "ui-monospace, 'SF Mono', monospace",
                 "fontSize": "14px",
-                "color": "#1d1d1f",
+                "color": "#4A4A4A",
                 "lineHeight": "1.8",
             }),
             dash.html.Div([
@@ -180,13 +180,13 @@ def register_labeling_callbacks(app: Dash) -> None:
                 dash.html.Span(f"{labeled_count:,} / {total_samples:,}", style={"fontWeight": "600"}),
                 dash.html.Span(f" ({labeled_pct:.1f}%)", style={
                     "fontWeight": "700",
-                    "color": "#007AFF",
+                    "color": "#C10A27",
                     "fontSize": "15px",
                 }),
             ], style={
                 "fontFamily": "ui-monospace, 'SF Mono', monospace",
                 "fontSize": "14px",
-                "color": "#1d1d1f",
+                "color": "#4A4A4A",
                 "lineHeight": "1.8",
             }),
             dash.html.Div([
@@ -195,7 +195,7 @@ def register_labeling_callbacks(app: Dash) -> None:
             ], style={
                 "fontFamily": "ui-monospace, 'SF Mono', monospace",
                 "fontSize": "14px",
-                "color": "#1d1d1f",
+                "color": "#4A4A4A",
                 "lineHeight": "1.8",
                 "marginBottom": "12px",
             }),
@@ -206,13 +206,13 @@ def register_labeling_callbacks(app: Dash) -> None:
             stats_lines.append(dash.html.Hr(style={
                 "margin": "16px 0",
                 "border": "none",
-                "borderTop": "1px solid #e5e5e5",
+                "borderTop": "1px solid #C6C6C6",
             }))
             
             stats_lines.append(dash.html.Div("Label Distribution", style={
                 "fontSize": "14px",
                 "fontWeight": "600",
-                "color": "#86868b",
+                "color": "#6F6F6F",
                 "marginBottom": "12px",
                 "textTransform": "uppercase",
                 "letterSpacing": "0.5px",
@@ -221,39 +221,41 @@ def register_labeling_callbacks(app: Dash) -> None:
             # Count labels per digit
             labeled_values = labels[labeled_mask].astype(int)
             counts = [int(np.sum(labeled_values == digit)) for digit in range(10)]
+            max_count = max(counts) if counts else 1
             
-            # Create horizontal bar chart with matching colors
+            # Create vertical bar chart with infoteam colors (rotated to horizontal display)
             fig = go.Figure()
             
             fig.add_trace(go.Bar(
-                x=counts,
-                y=[str(i) for i in range(10)],
-                orientation='h',
+                x=[str(i) for i in range(10)],
+                y=counts,
+                orientation='v',
                 marker=dict(
-                    color=[TABLEAU_10_EXTENDED[i] for i in range(10)],
+                    color=[INFOTEAM_PALETTE[i] for i in range(10)],
                     line=dict(width=0),
                 ),
                 text=counts,
                 textposition='outside',
-                textfont=dict(size=12, color='#1d1d1f', family='ui-monospace, monospace'),
-                hovertemplate='Digit %{y}: %{x} samples<extra></extra>',
+                textfont=dict(size=11, color='#4A4A4A', family='ui-monospace, monospace'),
+                hovertemplate='Digit %{x}: %{y} samples<extra></extra>',
             ))
             
             fig.update_layout(
                 template="plotly_white",
-                height=220,
-                margin=dict(l=30, r=40, t=5, b=30),
+                height=140,
+                margin=dict(l=30, r=30, t=25, b=30),
                 xaxis=dict(
-                    title="Count",
-                    titlefont=dict(size=12, color="#86868b"),
-                    showgrid=True,
-                    gridcolor="rgba(0, 0, 0, 0.05)",
-                    tickfont=dict(size=11, color="#86868b"),
+                    title="",
+                    tickfont=dict(size=12, color="#4A4A4A", family="ui-monospace, monospace"),
+                    showgrid=False,
                 ),
                 yaxis=dict(
-                    title="",
-                    tickfont=dict(size=12, color="#1d1d1f", family="ui-monospace, monospace"),
-                    autorange='reversed',  # 0 at top, 9 at bottom
+                    title="Count",
+                    titlefont=dict(size=11, color="#6F6F6F", family="'Open Sans', Verdana, sans-serif"),
+                    showgrid=True,
+                    gridcolor="rgba(0, 0, 0, 0.05)",
+                    tickfont=dict(size=10, color="#6F6F6F"),
+                    range=[0, max(max_count * 1.2, 5)],  # Minimum range of 5 for visibility
                 ),
                 showlegend=False,
                 paper_bgcolor='rgba(0,0,0,0)',

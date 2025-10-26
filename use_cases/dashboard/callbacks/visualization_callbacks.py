@@ -15,7 +15,7 @@ from use_cases.dashboard.utils import (
     _colorize_user_labels,
     _colorize_discrete_classes,
     compute_ema_smoothing,
-    TABLEAU_10_EXTENDED,
+    INFOTEAM_PALETTE,
 )
 
 _BASE_FIGURE_CACHE: Dict[int, go.Figure] = {}
@@ -112,8 +112,8 @@ def _build_base_figure(
     figure.update_layout(
         template="plotly_white",
         margin=dict(l=50, r=20, t=20, b=50),
-        xaxis_title=dict(text="Latent Dimension 1", font=dict(size=15, color="#1d1d1f", family="sans-serif")),
-        yaxis_title=dict(text="Latent Dimension 2", font=dict(size=15, color="#1d1d1f", family="sans-serif")),
+        xaxis_title=dict(text="Latent Dimension 1", font=dict(size=15, color="#000000", family="'Open Sans', Verdana, sans-serif")),
+        yaxis_title=dict(text="Latent Dimension 2", font=dict(size=15, color="#000000", family="'Open Sans', Verdana, sans-serif")),
         dragmode="pan",
         hovermode="closest",
         uirevision=f"latent-{latent_version}",
@@ -224,25 +224,27 @@ def register_visualization_callbacks(app: Dash) -> None:
     def update_legend(color_mode: str, _labels_store: dict | None):
         """Generate dynamic legend based on color mode."""
         if color_mode == "certainty":
-            # Continuous colorbar - show range
+            # Continuous colorbar - show range with infoteam-inspired gradient
             return html.Div(
                 [
                     html.Span("0% (uncertain)", style={
                         "fontSize": "14px",
-                        "color": "#86868b",
+                        "color": "#6F6F6F",
                         "marginRight": "8px",
+                        "fontFamily": "'Open Sans', Verdana, sans-serif",
                     }),
                     html.Div(style={
                         "flex": "1",
                         "height": "10px",
-                        "background": "linear-gradient(to right, #440154, #31688e, #35b779, #fde724)",
+                        "background": "linear-gradient(to right, #6F6F6F, #8BBFC2, #AFCC37, #C10A27)",
                         "borderRadius": "4px",
                         "maxWidth": "200px",
                     }),
                     html.Span("100% (confident)", style={
                         "fontSize": "14px",
-                        "color": "#86868b",
+                        "color": "#6F6F6F",
                         "marginLeft": "8px",
+                        "fontFamily": "'Open Sans', Verdana, sans-serif",
                     }),
                 ],
                 style={
@@ -262,13 +264,13 @@ def register_visualization_callbacks(app: Dash) -> None:
                         html.Div(style={
                             "width": "14px",
                             "height": "14px",
-                            "backgroundColor": TABLEAU_10_EXTENDED[i],
+                            "backgroundColor": INFOTEAM_PALETTE[i],
                             "borderRadius": "3px",
                             "marginRight": "6px",
                         }),
                         html.Span(str(i), style={
                             "fontSize": "15px",
-                            "color": "#1d1d1f",
+                            "color": "#4A4A4A",
                             "fontFamily": "ui-monospace, monospace",
                             "fontWeight": "500",
                         }),
@@ -288,13 +290,13 @@ def register_visualization_callbacks(app: Dash) -> None:
                         html.Div(style={
                             "width": "14px",
                             "height": "14px",
-                            "backgroundColor": TABLEAU_10_EXTENDED[10],  # Gray
+                            "backgroundColor": INFOTEAM_PALETTE[10],  # Gray
                             "borderRadius": "3px",
                             "marginRight": "6px",
                         }),
                         html.Span("unlabeled", style={
                             "fontSize": "14px",
-                            "color": "#86868b",
+                            "color": "#6F6F6F",
                             "fontFamily": "ui-monospace, monospace",
                         }),
                     ],
@@ -365,10 +367,10 @@ def register_visualization_callbacks(app: Dash) -> None:
         apply_smoothing = bool(smoothing_enabled)
 
         series_info = [
-            ("train_loss", "Train Loss", "#007AFF"),
-            ("val_loss", "Val Loss", "#FF3B30"),
-            ("train_reconstruction_loss", "Train Recon", "#34C759"),
-            ("val_reconstruction_loss", "Val Recon", "#FF9500"),
+            ("train_loss", "Train Loss", "#C10A27"),
+            ("val_loss", "Val Loss", "#45717A"),
+            ("train_reconstruction_loss", "Train Recon", "#AFCC37"),
+            ("val_reconstruction_loss", "Val Recon", "#F6C900"),
         ]
 
         for key, label, color in series_info:
