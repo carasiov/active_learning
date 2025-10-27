@@ -86,6 +86,7 @@ class TrainingStatus:
     target_epochs: int
     status_messages: List[str]  # Immutable list
     thread: Optional[object]  # Thread reference (not truly immutable, but handled carefully)
+    stop_requested: bool = False  # Flag to signal training should stop
     
     def is_active(self) -> bool:
         """Convenience method - delegates to state enum."""
@@ -107,7 +108,8 @@ class TrainingStatus:
         return replace(
             self,
             state=TrainingState.QUEUED,
-            target_epochs=target_epochs
+            target_epochs=target_epochs,
+            stop_requested=False
         ).with_message(f"Queued training for {target_epochs} epoch(s).")
     
     def with_running(self, thread: object) -> TrainingStatus:
@@ -123,7 +125,8 @@ class TrainingStatus:
         return replace(
             self,
             state=TrainingState.COMPLETE,
-            thread=None
+            thread=None,
+            stop_requested=False
         ).with_message("Training complete.")
     
     def with_error(self, error_message: str) -> TrainingStatus:
@@ -131,7 +134,8 @@ class TrainingStatus:
         return replace(
             self,
             state=TrainingState.ERROR,
-            thread=None
+            thread=None,
+            stop_requested=False
         ).with_message(f"Error: {error_message}")
     
     def with_idle(self) -> TrainingStatus:
@@ -140,8 +144,17 @@ class TrainingStatus:
             self,
             state=TrainingState.IDLE,
             thread=None,
-            target_epochs=0
+            target_epochs=0,
+            stop_requested=False
         )
+    
+    def with_stop_requested(self) -> TrainingStatus:
+        """Request training to stop."""
+        return replace(self, stop_requested=True).with_message("Stop requested - will halt after current epoch.")
+    
+    def with_cleared_messages(self) -> TrainingStatus:
+        """Clear all status messages."""
+        return replace(self, status_messages=[])
 
 
 @dataclass(frozen=True)

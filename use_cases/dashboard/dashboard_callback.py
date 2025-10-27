@@ -16,6 +16,12 @@ import numpy as np
 from callbacks import TrainingCallback
 
 
+# Custom exception for user-initiated stop
+class TrainingStoppedException(Exception):
+    """Raised when user requests training to stop."""
+    pass
+
+
 def _as_float(value) -> Optional[float]:
     if value is None:
         return None
@@ -29,11 +35,15 @@ def _as_float(value) -> Optional[float]:
 
 
 class DashboardMetricsCallback(TrainingCallback):
-    """Callback that forwards epoch-level metrics to a thread-safe queue."""
+    """Callback that forwards epoch-level metrics to a thread-safe queue.
+    
+    Also checks for user-initiated stop requests between epochs.
+    """
 
     def __init__(self, queue: Queue, target_epochs: int):
         self._queue = queue
         self._target_epochs = int(target_epochs)
+        self._stop_checked = False
 
     def on_epoch_end(
         self,
@@ -68,6 +78,25 @@ class DashboardMetricsCallback(TrainingCallback):
                 payload[key] = value
 
         self._queue.put(payload)
+        
+        # Check if user requested stop
+        if self._check_stop_request():
+            self._queue.put({"type": "training_stopped", "message": "Training stopped by user"})
+            # Raise exception to break training loop gracefully
+            raise TrainingStoppedException("User requested training stop")
+    
+    def _check_stop_request(self) -> bool:
+        """Check if user requested training to stop."""
+        try:
+            from use_cases.dashboard import state as dashboard_state
+            
+            with dashboard_state.state_lock:
+                if dashboard_state.app_state and dashboard_state.app_state.training.stop_requested:
+                    return True
+        except Exception:
+            # Don't crash training if check fails
+            pass
+        return False
 
     def on_train_end(self, history, trainer) -> None:
         self._queue.put({"type": "training_complete"})

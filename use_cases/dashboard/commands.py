@@ -363,3 +363,29 @@ class ChangeColorModeCommand(Command):
         """Update color mode."""
         new_state = state.with_ui(color_mode=self.color_mode)
         return new_state, f"Color mode changed to {self.color_mode}"
+
+
+@dataclass
+class StopTrainingCommand(Command):
+    """Command to stop ongoing training.
+    
+    Sets a flag that the training worker checks between epochs.
+    Training will complete the current epoch and then halt gracefully.
+    """
+    
+    def validate(self, state: AppState) -> Optional[str]:
+        """Validate training is actually running."""
+        if not state.training.is_active():
+            return "No training in progress to stop"
+        if state.training.stop_requested:
+            return "Stop already requested"
+        return None
+    
+    def execute(self, state: AppState) -> Tuple[AppState, str]:
+        """Set stop_requested flag."""
+        from dataclasses import replace
+        new_state = replace(
+            state,
+            training=state.training.with_stop_requested()
+        )
+        return new_state, "Training stop requested"

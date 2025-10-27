@@ -105,8 +105,40 @@ def train_worker(num_epochs: int) -> None:
         metrics_queue.put({"type": "latent_updated", "version": latent_version})
         metrics_queue.put({"type": "training_complete", "history": history})
     except Exception as exc:  # pragma: no cover - defensive
-        _append_status_message(f"Training error: {exc}")
-        metrics_queue.put({"type": "error", "message": str(exc)})
+        # Check if this is a user-initiated stop
+        from use_cases.dashboard.dashboard_callback import TrainingStoppedException
+        if isinstance(exc, TrainingStoppedException):
+            _append_status_message("Training stopped by user.")
+            # Still update predictions with current state
+            try:
+                with dashboard_state.state_lock:
+                    model = dashboard_state.app_state.model
+                    x_train_ref = dashboard_state.app_state.data.x_train
+                x_train = np.array(x_train_ref)
+                latent, recon, pred_classes, pred_certainty = model.predict(x_train)
+                
+                with dashboard_state.state_lock:
+                    labels_latest = np.array(dashboard_state.app_state.data.labels, copy=True)
+                    true_labels = dashboard_state.app_state.data.true_labels
+                hover_metadata = _build_hover_metadata(pred_classes, pred_certainty, labels_latest, true_labels)
+                
+                command = CompleteTrainingCommand(
+                    latent=latent,
+                    reconstructed=recon,
+                    pred_classes=pred_classes,
+                    pred_certainty=pred_certainty,
+                    hover_metadata=hover_metadata
+                )
+                dashboard_state.dispatcher.execute(command)
+                
+                with dashboard_state.state_lock:
+                    latent_version = dashboard_state.app_state.data.version
+                metrics_queue.put({"type": "latent_updated", "version": latent_version})
+            except Exception:
+                pass  # If update fails after stop, just continue
+        else:
+            _append_status_message(f"Training error: {exc}")
+            metrics_queue.put({"type": "error", "message": str(exc)})
     finally:
         with dashboard_state.state_lock:
             dashboard_state.app_state = replace(
@@ -153,6 +185,7 @@ def register_training_callbacks(app: Dash) -> None:
         
         # Start button opens modal with training info
         if triggered_id == "start-training-button":
+            _append_status_message(f"Train button clicked. Epochs: {num_epochs}")
             if num_epochs is None:
                 _append_status_message("Please specify the number of epochs before starting training.")
                 return False, no_update
@@ -330,8 +363,9 @@ def register_training_callbacks(app: Dash) -> None:
         latest_messages = tuple(str(msg) for msg in status_messages[-MAX_STATUS_MESSAGES:])
         status_changed = (
             _LAST_POLL_STATE["status_messages"] is None
-            or processed_messages
+            or processed_messages  # Always update if we processed messages from queue
             or latest_messages != _LAST_POLL_STATE["status_messages"]
+            or active  # Always update during active training to show latest status
         )
 
         if status_messages:

@@ -20,9 +20,11 @@ if str(APP_DIR) in sys.path:
 
 from use_cases.dashboard.layouts import build_dashboard_layout  # noqa: E402
 from use_cases.dashboard.pages_training import build_training_config_page, register_config_page_callbacks  # noqa: E402
+from use_cases.dashboard.pages_training_hub import build_training_hub_layout  # noqa: E402
 from use_cases.dashboard import state as dashboard_state
 from use_cases.dashboard.state import initialize_model_and_data  # noqa: E402
 from use_cases.dashboard.callbacks.training_callbacks import register_training_callbacks  # noqa: E402
+from use_cases.dashboard.callbacks.training_hub_callbacks import register_training_hub_callbacks  # noqa: E402
 from use_cases.dashboard.callbacks.visualization_callbacks import register_visualization_callbacks  # noqa: E402
 from use_cases.dashboard.callbacks.labeling_callbacks import register_labeling_callbacks  # noqa: E402
 from use_cases.dashboard.callbacks.config_callbacks import register_config_callbacks  # noqa: E402
@@ -116,20 +118,6 @@ input:focus {
     transform: translate(-50%, -50%);
     width: 3px;
     height: 40px;
-    background-color: #C6C6C6;
-    border-radius: 2px;
-    opacity: 0;
-    transition: opacity 0.2s;
-}
-
-#horizontal-resize-handle::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 40px;
-    height: 3px;
     background-color: #C6C6C6;
     border-radius: 2px;
     opacity: 0;
@@ -264,6 +252,8 @@ def create_app() -> Dash:
         
         if pathname == '/configure-training':
             return build_training_config_page(), config_dict
+        elif pathname == '/training-hub':
+            return build_training_hub_layout(), config_dict
         else:  # Default to main dashboard
             return build_dashboard_layout(), config_dict
 
@@ -278,17 +268,13 @@ def create_app() -> Dash:
             setTimeout(function() {
                 const leftHandle = document.getElementById('left-resize-handle');
                 const rightHandle = document.getElementById('right-resize-handle');
-                const horizontalHandle = document.getElementById('horizontal-resize-handle');
                 const leftPanel = document.getElementById('left-panel');
                 const centerPanel = document.getElementById('center-panel');
                 const rightPanel = document.getElementById('right-panel');
-                const latentContainer = document.getElementById('latent-plot-container');
-                const lossContainer = document.getElementById('loss-plot-container');
                 const container = document.getElementById('main-container');
                 
-                if (!leftHandle || !rightHandle || !horizontalHandle || 
-                    !leftPanel || !centerPanel || !rightPanel ||
-                    !latentContainer || !lossContainer || !container) {
+                if (!leftHandle || !rightHandle || 
+                    !leftPanel || !centerPanel || !rightPanel || !container) {
                     console.error('Resize elements not found');
                     return;
                 }
@@ -298,16 +284,14 @@ def create_app() -> Dash:
                 // State tracking
                 let isResizing = false;
                 let activeHandle = null;
-                let startX = 0, startY = 0;
+                let startX = 0;
                 let startWidths = {};
-                let startHeights = {};
-                let containerWidth = 0, containerHeight = 0;
+                let containerWidth = 0;
                 
-                // Constraints (percentages for vertical, pixels for horizontal)
+                // Constraints (percentages)
                 const MIN_LEFT = 15, MAX_LEFT = 35;
                 const MIN_CENTER = 40, MAX_CENTER = 70;
                 const MIN_RIGHT = 15, MAX_RIGHT = 35;
-                const MIN_LATENT = 300, MIN_LOSS = 120;
                 
                 function clamp(value, min, max) {
                     return Math.max(min, Math.min(max, value));
@@ -317,9 +301,7 @@ def create_app() -> Dash:
                     isResizing = true;
                     activeHandle = handle;
                     startX = e.clientX;
-                    startY = e.clientY;
                     containerWidth = container.offsetWidth;
-                    containerHeight = centerPanel.offsetHeight;
                     
                     // Capture current widths (in percentages)
                     startWidths = {
@@ -328,18 +310,8 @@ def create_app() -> Dash:
                         right: (rightPanel.offsetWidth / containerWidth) * 100,
                     };
                     
-                    // Capture current heights (in pixels)
-                    startHeights = {
-                        latent: latentContainer.offsetHeight,
-                        loss: lossContainer.offsetHeight,
-                    };
-                    
                     document.body.classList.add('resizing');
-                    if (handle === horizontalHandle) {
-                        document.body.style.cursor = 'row-resize';
-                    } else {
-                        document.body.style.cursor = 'col-resize';
-                    }
+                    document.body.style.cursor = 'col-resize';
                     e.preventDefault();
                 }
                 
@@ -433,24 +405,6 @@ def create_app() -> Dash:
                         leftPanel.style.width = newLeftWidth + '%';
                         centerPanel.style.width = newCenterWidth + '%';
                         rightPanel.style.width = newRightWidth + '%';
-                        
-                    } else if (activeHandle === horizontalHandle) {
-                        // Horizontal: resize latent vs loss
-                        const deltaY = e.clientY - startY;
-                        
-                        // Get current center height (minus header and handle)
-                        const availableHeight = centerPanel.offsetHeight - 70 - 5;
-                        
-                        let newLatentHeight = clamp(
-                            startHeights.latent + deltaY,
-                            MIN_LATENT,
-                            availableHeight - MIN_LOSS
-                        );
-                        
-                        let newLossHeight = availableHeight - newLatentHeight;
-                        
-                        latentContainer.style.height = newLatentHeight + 'px';
-                        lossContainer.style.height = newLossHeight + 'px';
                     }
                     
                     // Trigger Plotly resize
@@ -468,7 +422,6 @@ def create_app() -> Dash:
                 // Attach listeners
                 leftHandle.addEventListener('mousedown', (e) => startResize(e, leftHandle));
                 rightHandle.addEventListener('mousedown', (e) => startResize(e, rightHandle));
-                horizontalHandle.addEventListener('mousedown', (e) => startResize(e, horizontalHandle));
                 
                 document.addEventListener('mousemove', doResize);
                 document.addEventListener('mouseup', stopResize);
@@ -487,6 +440,7 @@ def create_app() -> Dash:
     )
 
     register_training_callbacks(app)
+    register_training_hub_callbacks(app)
     register_visualization_callbacks(app)
     register_labeling_callbacks(app)
     register_config_callbacks(app)

@@ -169,28 +169,92 @@ def build_dashboard_layout() -> html.Div:
                             html.Div(
                                 [
                                     _build_stats_section(),
-                                    _build_config_section(config, default_epochs),
-                                    _build_status_section(status_initial),
                                     
+                                    # Training section
                                     html.Div(
-                                        dbc.Button(
-                                            "Train Model",
-                                            id="start-training-button",
-                                            n_clicks=0,
-                                            style={
-                                                "width": "100%",
-                                                "height": "44px",
-                                                "backgroundColor": "#C10A27",
-                                                "border": "none",
-                                                "borderRadius": "8px",
+                                        [
+                                            html.Div("Training", style={
                                                 "fontSize": "15px",
                                                 "fontWeight": "700",
-                                                "color": "#ffffff",
-                                                "cursor": "pointer",
+                                                "color": "#000000",
+                                                "marginBottom": "16px",
                                                 "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                            },
-                                        ),
-                                        style={"marginTop": "auto", "paddingTop": "16px"},
+                                            }),
+                                            
+                                            # Epochs input
+                                            html.Div(
+                                                [
+                                                    html.Label("Epochs", style={
+                                                        "fontSize": "13px",
+                                                        "color": "#6F6F6F",
+                                                        "display": "block",
+                                                        "marginBottom": "6px",
+                                                        "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                                        "fontWeight": "600",
+                                                    }),
+                                                    dcc.Input(
+                                                        id="num-epochs-input",
+                                                        type="number",
+                                                        min=1,
+                                                        max=200,
+                                                        step=1,
+                                                        value=default_epochs,
+                                                        placeholder="e.g., 10",
+                                                        debounce=True,
+                                                        style={
+                                                            "width": "100%",
+                                                            "padding": "8px 10px",
+                                                            "fontSize": "13px",
+                                                            "border": "1px solid #C6C6C6",
+                                                            "borderRadius": "6px",
+                                                            "fontFamily": "ui-monospace, monospace",
+                                                        },
+                                                    ),
+                                                ],
+                                                style={"marginBottom": "16px"},
+                                            ),
+                                            
+                                            # Train button
+                                            dbc.Button(
+                                                "Train Model",
+                                                id="start-training-button",
+                                                n_clicks=0,
+                                                style={
+                                                    "width": "100%",
+                                                    "height": "44px",
+                                                    "backgroundColor": "#C10A27",
+                                                    "border": "none",
+                                                    "borderRadius": "6px",
+                                                    "fontSize": "14px",
+                                                    "fontWeight": "700",
+                                                    "color": "#ffffff",
+                                                    "cursor": "pointer",
+                                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                                    "marginBottom": "12px",
+                                                },
+                                            ),
+                                            
+                                            # Link to Training Hub
+                                            dcc.Link(
+                                                "Training Hub →",
+                                                href="/training-hub",
+                                                style={
+                                                    "display": "block",
+                                                    "textAlign": "center",
+                                                    "fontSize": "13px",
+                                                    "color": "#45717A",
+                                                    "textDecoration": "none",
+                                                    "fontWeight": "600",
+                                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                                    "padding": "8px",
+                                                },
+                                            ),
+                                        ],
+                                        style={
+                                            "marginTop": "auto",
+                                            "paddingTop": "16px",
+                                            "borderTop": "1px solid #C6C6C6",
+                                        },
                                     ),
                                 ],
                                 style={
@@ -303,65 +367,9 @@ def build_dashboard_layout() -> html.Div:
                                 id="latent-plot-container",
                                 style={
                                     "flex": "1",
-                                    "minHeight": "300px",
+                                    "minHeight": "400px",
                                     "backgroundColor": "#fafafa",
                                     "position": "relative",
-                                },
-                            ),
-                            
-                            # HORIZONTAL RESIZE HANDLE
-                            html.Div(
-                                id="horizontal-resize-handle",
-                                className="resize-handle",
-                                style={
-                                    "height": "5px",
-                                    "cursor": "row-resize",
-                                    "backgroundColor": "transparent",
-                                    "flexShrink": "0",
-                                },
-                            ),
-                            
-                            # Loss curves with smoothing toggle
-                            html.Div(
-                                [
-                                    html.Div(
-                                        [
-                                            html.Span("Training Progress", style={
-                                                "fontSize": "15px",
-                                                "fontWeight": "700",
-                                                "color": "#000000",
-                                                "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                            }),
-                                            dbc.Checkbox(
-                                                id="loss-smoothing-toggle",
-                                                label="Smooth",
-                                                value=[],
-                                                style={
-                                                    "marginLeft": "auto",
-                                                    "fontSize": "13px",
-                                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                                },
-                                            ),
-                                        ],
-                                        style={
-                                            "display": "flex",
-                                            "alignItems": "center",
-                                            "padding": "8px 16px",
-                                            "borderBottom": "1px solid #C6C6C6",
-                                        },
-                                    ),
-                                    dcc.Graph(
-                                        id="loss-curves",
-                                        style={"height": "calc(100% - 45px)", "width": "100%"},
-                                        config={"displayModeBar": False},
-                                    ),
-                                ],
-                                id="loss-plot-container",
-                                style={
-                                    "height": "220px",
-                                    "minHeight": "200px",
-                                    "borderTop": "1px solid #C6C6C6",
-                                    "backgroundColor": "#ffffff",
                                 },
                             ),
                         ],
