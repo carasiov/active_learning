@@ -28,6 +28,10 @@ from use_cases.dashboard.state import (
 from use_cases.dashboard.commands import StartTrainingCommand, CompleteTrainingCommand
 from use_cases.dashboard.utils import _build_hover_metadata
 
+
+# Performance optimization: Cache last poll state to avoid unnecessary Dash updates
+# when training status hasn't changed. Critical for the 2-second polling interval.
+# Trade-off: Global state (acceptable for single-user localhost app)
 _LAST_POLL_STATE: Dict[str, object] = {
     "status_messages": None,
     "controls_disabled": None,
