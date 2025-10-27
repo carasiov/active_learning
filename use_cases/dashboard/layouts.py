@@ -4,26 +4,28 @@ from dash import dcc, html
 import dash_bootstrap_components as dbc
 import numpy as np
 
-from use_cases.dashboard.state import app_state, state_lock, initialize_model_and_data
+from use_cases.dashboard import state as dashboard_state
 
 
 def build_dashboard_layout() -> html.Div:
     """Build dashboard with intelligent proportional panel resizing."""
-    initialize_model_and_data()
+    dashboard_state.initialize_model_and_data()
     
-    with state_lock:
-        config = app_state["config"]
-        default_epochs = max(1, int(app_state["training"]["target_epochs"] or 5))
-        latent_version = int(app_state["ui"]["latent_version"])
-        existing_status = list(app_state["training"]["status_messages"])
+    with dashboard_state.state_lock:
+        config = dashboard_state.app_state.config
+        default_epochs = max(1, dashboard_state.app_state.training.target_epochs or 5)
+        latent_version = dashboard_state.app_state.data.version
+        existing_status = list(dashboard_state.app_state.training.status_messages)
+        selected_sample = dashboard_state.app_state.ui.selected_sample
+        labels_version = dashboard_state.app_state.data.version
 
     status_initial = existing_status[-3:] if existing_status else ["Ready to train"]
 
     return html.Div(
         [
             # Hidden stores and intervals
-            dcc.Store(id="selected-sample-store", data=int(app_state["ui"]["selected_sample"])),
-            dcc.Store(id="labels-store", data={"version": int(app_state["ui"]["labels_version"])}),
+            dcc.Store(id="selected-sample-store", data=selected_sample),
+            dcc.Store(id="labels-store", data={"version": labels_version}),
             dcc.Store(id="training-control-store", data={"token": 0}),
             dcc.Store(id="latent-store", data={"version": latent_version}),
             dcc.Interval(id="training-poll", interval=2000, n_intervals=0, disabled=True),

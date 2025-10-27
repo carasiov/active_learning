@@ -6,7 +6,8 @@ import sys
 import threading
 from pathlib import Path
 from queue import Empty, Queue
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
+from dataclasses import replace
 
 import numpy as np
 import pandas as pd
@@ -29,6 +30,14 @@ from use_cases.dashboard.utils import (  # noqa: E402
     _build_hover_metadata,
     _format_hover_metadata_entry,
 )
+from use_cases.dashboard.state_models import (  # noqa: E402
+    AppState,
+    DataState,
+    TrainingStatus,
+    TrainingState,
+    UIState,
+    TrainingHistory,
+)
 
 
 CHECKPOINT_PATH = ROOT_DIR / "artifacts" / "checkpoints" / "ssvae.ckpt"
@@ -38,58 +47,19 @@ MAX_STATUS_MESSAGES = 10
 
 
 state_lock = threading.Lock()
+_init_lock = threading.Lock()  # Separate lock for initialization
 metrics_queue: Queue[Dict[str, float]] = Queue()
 
-app_state: Dict[str, object] = {
-    "model": None,
-    "trainer": None,
-    "config": None,
-    "data": {
-        "x_train": None,
-        "labels": None,
-        "true_labels": None,
-        "latent": None,
-        "reconstructed": None,
-        "pred_classes": None,
-        "pred_certainty": None,
-        "hover_metadata": None,
-    },
-    "training": {
-        "active": False,
-        "thread": None,
-        "target_epochs": 0,
-        "status_messages": [],
-    },
-    "ui": {
-        "selected_sample": 0,
-        "color_mode": "user_labels",
-        "labels_version": 0,
-        "latent_version": 0,
-    },
-    "cache": {
-        "base_figures": {},
-        "colors": {},
-    },
-    "history": {
-        "epochs": [],
-        "train_loss": [],
-        "val_loss": [],
-        "train_reconstruction_loss": [],
-        "val_reconstruction_loss": [],
-        "train_kl_loss": [],
-        "val_kl_loss": [],
-        "train_classification_loss": [],
-        "val_classification_loss": [],
-    },
-}
+app_state: Optional[AppState] = None
 
 
 def _append_status_message_locked(message: str) -> None:
-    messages = app_state["training"].setdefault("status_messages", [])
-    messages.append(message)
-    if len(messages) > MAX_STATUS_MESSAGES:
-        messages = messages[-MAX_STATUS_MESSAGES:]
-    app_state["training"]["status_messages"] = messages
+    """Append status message (must be called with state_lock held)."""
+    global app_state
+    app_state = replace(
+        app_state,
+        training=app_state.training.with_message(message, max_messages=MAX_STATUS_MESSAGES)
+    )
 
 
 def _append_status_message(message: str) -> None:
@@ -98,22 +68,12 @@ def _append_status_message(message: str) -> None:
 
 
 def _update_history_with_epoch(payload: Dict[str, float]) -> None:
+    """Update training history with epoch metrics."""
     with state_lock:
-        history = app_state["history"]
-        history["epochs"].append(int(payload["epoch"]))
-        for key in (
-            "train_loss",
-            "val_loss",
-            "train_reconstruction_loss",
-            "val_reconstruction_loss",
-            "train_kl_loss",
-            "val_kl_loss",
-            "train_classification_loss",
-            "val_classification_loss",
-        ):
-            value = payload.get(key)
-            if value is not None:
-                history.setdefault(key, []).append(float(value))
+        global app_state
+        epoch = int(payload["epoch"])
+        new_history = app_state.history.with_epoch(epoch, payload)
+        app_state = app_state.with_history(new_history)
 
 
 def _clear_metrics_queue() -> None:
@@ -125,58 +85,95 @@ def _clear_metrics_queue() -> None:
 
 
 def initialize_model_and_data() -> None:
-    """Load model, dataset, labels, and derived predictions into memory."""
-    with state_lock:
-        if app_state["model"] is not None:
+    """Load model, dataset, labels, and derived predictions into memory.
+    
+    Uses a separate initialization lock to ensure only one thread initializes,
+    while other threads wait for completion.
+    """
+    global app_state
+    
+    # Quick check without lock - if already initialized, return immediately
+    if app_state is not None:
+        return
+    
+    # Use initialization lock to serialize initialization attempts
+    with _init_lock:
+        # Double-check after acquiring init lock
+        if app_state is not None:
             return
-    CHECKPOINT_PATH.parent.mkdir(parents=True, exist_ok=True)
+        
+        # We're the initializing thread - do the work
+        CHECKPOINT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-    config = SSVAEConfig()
-    model = SSVAE(input_dim=(28, 28), config=config)
+        config = SSVAEConfig()
+        model = SSVAE(input_dim=(28, 28), config=config)
 
-    if CHECKPOINT_PATH.exists():
-        model.load_model_weights(str(CHECKPOINT_PATH))
-        model.weights_path = str(CHECKPOINT_PATH)
+        if CHECKPOINT_PATH.exists():
+            model.load_model_weights(str(CHECKPOINT_PATH))
+            model.weights_path = str(CHECKPOINT_PATH)
 
-    trainer = InteractiveTrainer(model)
+        trainer = InteractiveTrainer(model)
 
-    x_train = load_train_images_for_ssvae(dtype=np.float32)
-    (_, true_labels), _ = load_mnist_splits(normalize=True, reshape=False, dtype=np.float32)
-    true_labels = np.asarray(true_labels, dtype=np.int32)
+        x_train = load_train_images_for_ssvae(dtype=np.float32)
+        (_, true_labels), _ = load_mnist_splits(normalize=True, reshape=False, dtype=np.float32)
+        true_labels = np.asarray(true_labels, dtype=np.int32)
 
-    latent, recon, pred_classes, pred_certainty = model.predict(x_train)
+        latent, recon, pred_classes, pred_certainty = model.predict(x_train)
 
-    labels_array = np.full(shape=(x_train.shape[0],), fill_value=np.nan, dtype=float)
-    stored_labels = _load_labels_dataframe()
-    if not stored_labels.empty:
-        serials = stored_labels.index.to_numpy()
-        label_values = stored_labels["label"].astype(int).to_numpy()
-        valid_mask = (serials >= 0) & (serials < x_train.shape[0])
-        labels_array[serials[valid_mask]] = label_values[valid_mask].astype(float)
+        labels_array = np.full(shape=(x_train.shape[0],), fill_value=np.nan, dtype=float)
+        stored_labels = _load_labels_dataframe()
+        if not stored_labels.empty:
+            serials = stored_labels.index.to_numpy()
+            label_values = stored_labels["label"].astype(int).to_numpy()
+            valid_mask = (serials >= 0) & (serials < x_train.shape[0])
+            labels_array[serials[valid_mask]] = label_values[valid_mask].astype(float)
 
-    hover_metadata = _build_hover_metadata(pred_classes, pred_certainty, labels_array, true_labels)
+        hover_metadata = _build_hover_metadata(pred_classes, pred_certainty, labels_array, true_labels)
 
-    with state_lock:
-        app_state["model"] = model
-        app_state["trainer"] = trainer
-        app_state["config"] = config
-        app_state["data"]["x_train"] = x_train
-        app_state["data"]["labels"] = labels_array
-        app_state["data"]["true_labels"] = true_labels
-        app_state["data"]["latent"] = latent
-        app_state["data"]["reconstructed"] = recon
-        app_state["data"]["pred_classes"] = pred_classes
-        app_state["data"]["pred_certainty"] = pred_certainty
-        app_state["data"]["hover_metadata"] = hover_metadata
-        app_state["ui"]["selected_sample"] = int(app_state["ui"]["selected_sample"])
-        app_state["training"]["active"] = False
-        app_state["training"]["thread"] = None
-        app_state["training"]["target_epochs"] = 0
-        app_state["training"]["status_messages"] = []
-        app_state["ui"]["latent_version"] = 0
-        # Initialize cache if not present
-        if "cache" not in app_state:
-            app_state["cache"] = {"base_figures": {}, "colors": {}}
+        # Build immutable state tree
+        data_state = DataState(
+            x_train=x_train,
+            labels=labels_array,
+            true_labels=true_labels,
+            latent=latent,
+            reconstructed=recon,
+            pred_classes=pred_classes,
+            pred_certainty=pred_certainty,
+            hover_metadata=hover_metadata,
+            version=0
+        )
+        
+        training_status = TrainingStatus(
+            state=TrainingState.IDLE,
+            target_epochs=0,
+            status_messages=[],
+            thread=None
+        )
+        
+        ui_state = UIState(
+            selected_sample=0,
+            color_mode="user_labels"
+        )
+        
+        history = TrainingHistory.empty()
+        
+        cache: Dict[str, object] = {"base_figures": {}, "colors": {}}
+        
+        # Create AppState FIRST
+        new_state = AppState(
+            model=model,
+            trainer=trainer,
+            config=config,
+            data=data_state,
+            training=training_status,
+            ui=ui_state,
+            cache=cache,
+            history=history
+        )
+        
+        # Then atomically assign it under state_lock
+        with state_lock:
+            app_state = new_state
 
 
 def _load_labels_dataframe() -> pd.DataFrame:
@@ -214,12 +211,16 @@ def _persist_labels_dataframe(df: pd.DataFrame) -> None:
 def _update_label(sample_idx: int, new_label: float | None) -> Tuple[dict, str]:
     """Update label state and CSV, returning store payload and status message."""
     with state_lock:
-        labels_array: np.ndarray = app_state["data"]["labels"]
+        global app_state
+        
+        # Copy labels array and update
+        labels_array = app_state.data.labels.copy()
         if new_label is None:
             labels_array[sample_idx] = np.nan
         else:
             labels_array[sample_idx] = float(new_label)
-
+        
+        # Update CSV persistence
         df = _load_labels_dataframe()
         if new_label is None:
             if sample_idx in df.index:
@@ -227,24 +228,22 @@ def _update_label(sample_idx: int, new_label: float | None) -> Tuple[dict, str]:
         else:
             df.loc[sample_idx, "label"] = int(new_label)
         _persist_labels_dataframe(df)
-
-        app_state["data"]["labels"] = labels_array
-        pred_classes = np.array(app_state["data"]["pred_classes"], dtype=np.int32)
-        pred_certainty = np.array(app_state["data"]["pred_certainty"], dtype=np.float64)
-        true_labels = app_state["data"]["true_labels"]
-        hover_metadata = list(app_state["data"].get("hover_metadata", []))
-        true_label_value = int(true_labels[sample_idx]) if true_labels is not None else None
+        
+        # Update hover metadata
+        hover_metadata = list(app_state.data.hover_metadata)
+        true_label_value = int(app_state.data.true_labels[sample_idx])
         hover_metadata[sample_idx] = _format_hover_metadata_entry(
             sample_idx,
-            int(pred_classes[sample_idx]),
-            float(pred_certainty[sample_idx]),
+            int(app_state.data.pred_classes[sample_idx]),
+            float(app_state.data.pred_certainty[sample_idx]),
             float(labels_array[sample_idx]),
             true_label_value,
         )
-        app_state["data"]["hover_metadata"] = hover_metadata
-        app_state["ui"]["labels_version"] = int(app_state["ui"]["labels_version"]) + 1
-        version_payload = {"version": app_state["ui"]["labels_version"]}
-
+        
+        # Atomic state update
+        app_state = app_state.with_label_update(labels_array, hover_metadata)
+        version_payload = {"version": app_state.data.version}
+    
     if new_label is None:
         message = f"Removed label for sample {sample_idx}"
     else:

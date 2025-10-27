@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from dataclasses import replace
 from typing import Dict, List, Optional, Tuple
 
 import dash
@@ -14,12 +15,11 @@ from queue import Empty
 from training.interactive_trainer import InteractiveTrainer
 
 from use_cases.dashboard.dashboard_callback import DashboardMetricsCallback
+from use_cases.dashboard import state as dashboard_state
 from use_cases.dashboard.state import (
     CHECKPOINT_PATH,
     MAX_STATUS_MESSAGES,
-    app_state,
     metrics_queue,
-    state_lock,
     _append_status_message,
     _append_status_message_locked,
     _clear_metrics_queue,
@@ -52,12 +52,13 @@ def _configure_trainer_callbacks(trainer: InteractiveTrainer, target_epochs: int
 
 def train_worker(num_epochs: int) -> None:
     """Background worker that runs incremental training and pushes updates to the UI."""
+
     try:
-        with state_lock:
-            trainer: InteractiveTrainer = app_state["trainer"]
-            x_train_ref = app_state["data"]["x_train"]
-            labels_ref = app_state["data"]["labels"]
-            target_epochs = int(app_state["training"]["target_epochs"] or num_epochs)
+        with dashboard_state.state_lock:
+            trainer: InteractiveTrainer = dashboard_state.app_state.trainer
+            x_train_ref = dashboard_state.app_state.data.x_train
+            labels_ref = dashboard_state.app_state.data.labels
+            target_epochs = int(dashboard_state.app_state.training.target_epochs or num_epochs)
             _configure_trainer_callbacks(trainer, target_epochs)
 
         if x_train_ref is None or labels_ref is None:
@@ -75,32 +76,35 @@ def train_worker(num_epochs: int) -> None:
             weights_path=str(CHECKPOINT_PATH),
         )
 
-        with state_lock:
-            model = app_state["model"]
+        with dashboard_state.state_lock:
+            model = dashboard_state.app_state.model
         latent, recon, pred_classes, pred_certainty = model.predict(x_train)
 
-        with state_lock:
-            labels_latest = np.array(app_state["data"]["labels"], copy=True)
-            true_labels = app_state["data"]["true_labels"]
+        with dashboard_state.state_lock:
+            labels_latest = np.array(dashboard_state.app_state.data.labels, copy=True)
+            true_labels = dashboard_state.app_state.data.true_labels
         hover_metadata = _build_hover_metadata(pred_classes, pred_certainty, labels_latest, true_labels)
 
-        with state_lock:
-            app_state["data"]["latent"] = latent
-            app_state["data"]["reconstructed"] = recon
-            app_state["data"]["pred_classes"] = pred_classes
-            app_state["data"]["pred_certainty"] = pred_certainty
-            app_state["data"]["hover_metadata"] = hover_metadata
-            app_state["ui"]["latent_version"] = int(app_state["ui"]["latent_version"]) + 1
-            latent_version = app_state["ui"]["latent_version"]
+        with dashboard_state.state_lock:
+            dashboard_state.app_state = dashboard_state.app_state.with_training_complete(
+                latent=latent,
+                reconstructed=recon,
+                pred_classes=pred_classes,
+                pred_certainty=pred_certainty,
+                hover_metadata=hover_metadata
+            )
+            latent_version = dashboard_state.app_state.data.version
         metrics_queue.put({"type": "latent_updated", "version": latent_version})
         metrics_queue.put({"type": "training_complete", "history": history})
     except Exception as exc:  # pragma: no cover - defensive
         _append_status_message(f"Training error: {exc}")
         metrics_queue.put({"type": "error", "message": str(exc)})
     finally:
-        with state_lock:
-            app_state["training"]["active"] = False
-            app_state["training"]["thread"] = None
+        with dashboard_state.state_lock:
+            dashboard_state.app_state = replace(
+                dashboard_state.app_state,
+                training=dashboard_state.app_state.training.with_idle()
+            )
 
 
 def register_training_callbacks(app: Dash) -> None:
@@ -161,8 +165,8 @@ def register_training_callbacks(app: Dash) -> None:
             estimated_minutes = (epochs * 30) / 60
             eta_text = f"~{int(estimated_minutes)} min" if estimated_minutes >= 1 else "<1 min"
             
-            with state_lock:
-                labels = np.array(app_state["data"]["labels"])
+            with dashboard_state.state_lock:
+                labels = np.array(dashboard_state.app_state.data.labels)
                 labeled_count = int(np.sum(~np.isnan(labels)))
             
             info_text = [
@@ -208,6 +212,7 @@ def register_training_callbacks(app: Dash) -> None:
         num_epochs: Optional[float],
         control_store: Optional[Dict[str, int]],
     ) -> object:
+
         if not confirm_clicks:
             raise PreventUpdate
 
@@ -231,39 +236,46 @@ def register_training_callbacks(app: Dash) -> None:
             return dash.no_update
 
         try:
-            with state_lock:
-                if app_state["training"]["active"]:
+            with dashboard_state.state_lock:
+                if dashboard_state.app_state.training.is_active():
                     _append_status_message_locked("Training already in progress.")
                     return dash.no_update
 
-                config = app_state["config"]
-                config.recon_weight = float(recon_weight)
-                config.kl_weight = float(kl_weight)
-                config.learning_rate = float(learning_rate)
+                # Update config (mutable for now)
+                dashboard_state.app_state.config.recon_weight = float(recon_weight)
+                dashboard_state.app_state.config.kl_weight = float(kl_weight)
+                dashboard_state.app_state.config.learning_rate = float(learning_rate)
 
-                model = app_state["model"]
-                model.config.recon_weight = float(recon_weight)
-                model.config.kl_weight = float(kl_weight)
-                model.config.learning_rate = float(learning_rate)
+                # Update model config
+                dashboard_state.app_state.model.config.recon_weight = float(recon_weight)
+                dashboard_state.app_state.model.config.kl_weight = float(kl_weight)
+                dashboard_state.app_state.model.config.learning_rate = float(learning_rate)
 
-                trainer = app_state["trainer"]
-                trainer.config.recon_weight = float(recon_weight)
-                trainer.config.kl_weight = float(kl_weight)
-                trainer.config.learning_rate = float(learning_rate)
+                # Update trainer config
+                dashboard_state.app_state.trainer.config.recon_weight = float(recon_weight)
+                dashboard_state.app_state.trainer.config.kl_weight = float(kl_weight)
+                dashboard_state.app_state.trainer.config.learning_rate = float(learning_rate)
 
-                app_state["training"]["target_epochs"] = epochs
-                app_state["training"]["active"] = True
-                app_state["training"]["status_messages"] = [f"Queued training for {epochs} epoch(s)."]
+                # Atomic training state update
+                dashboard_state.app_state = replace(
+                    dashboard_state.app_state,
+                    training=dashboard_state.app_state.training.with_queued(epochs)
+                )
 
             _clear_metrics_queue()
             worker = threading.Thread(target=train_worker, args=(epochs,), daemon=True)
-            with state_lock:
-                app_state["training"]["thread"] = worker
+            with dashboard_state.state_lock:
+                dashboard_state.app_state = replace(
+                    dashboard_state.app_state,
+                    training=dashboard_state.app_state.training.with_running(worker)
+                )
             worker.start()
         except Exception as exc:
-            with state_lock:
-                app_state["training"]["active"] = False
-                app_state["training"]["thread"] = None
+            with dashboard_state.state_lock:
+                dashboard_state.app_state = replace(
+                    dashboard_state.app_state,
+                    training=dashboard_state.app_state.training.with_idle()
+                )
             _append_status_message(f"Error starting training: {exc}")
             return dash.no_update
 
@@ -317,9 +329,9 @@ def register_training_callbacks(app: Dash) -> None:
             elif msg_type == "error":
                 _append_status_message(f"Error: {message.get('message', 'Unknown error')}")
 
-        with state_lock:
-            active = app_state["training"]["active"]
-            status_messages = list(app_state["training"].get("status_messages", []))
+        with dashboard_state.state_lock:
+            active = dashboard_state.app_state.training.is_active()
+            status_messages = list(dashboard_state.app_state.training.status_messages)
 
         latest_messages = tuple(str(msg) for msg in status_messages[-MAX_STATUS_MESSAGES:])
         status_changed = (

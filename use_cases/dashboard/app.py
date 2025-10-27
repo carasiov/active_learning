@@ -20,7 +20,8 @@ if str(APP_DIR) in sys.path:
 
 from use_cases.dashboard.layouts import build_dashboard_layout  # noqa: E402
 from use_cases.dashboard.pages_training import build_training_config_page, register_config_page_callbacks  # noqa: E402
-from use_cases.dashboard.state import initialize_model_and_data, app_state, state_lock  # noqa: E402
+from use_cases.dashboard import state as dashboard_state
+from use_cases.dashboard.state import initialize_model_and_data  # noqa: E402
 from use_cases.dashboard.callbacks.training_callbacks import register_training_callbacks  # noqa: E402
 from use_cases.dashboard.callbacks.visualization_callbacks import register_visualization_callbacks  # noqa: E402
 from use_cases.dashboard.callbacks.labeling_callbacks import register_labeling_callbacks  # noqa: E402
@@ -251,8 +252,15 @@ def create_app() -> Dash:
     )
     def display_page(pathname):
         import dataclasses
-        with state_lock:
-            config_dict = dataclasses.asdict(app_state['config'])
+        # Ensure state is initialized before accessing
+        initialize_model_and_data()
+        with dashboard_state.state_lock:
+            if dashboard_state.app_state is None:
+                # Fallback if initialization somehow failed
+                from ssvae import SSVAEConfig
+                config_dict = dataclasses.asdict(SSVAEConfig())
+            else:
+                config_dict = dataclasses.asdict(dashboard_state.app_state.config)
         
         if pathname == '/configure-training':
             return build_training_config_page(), config_dict

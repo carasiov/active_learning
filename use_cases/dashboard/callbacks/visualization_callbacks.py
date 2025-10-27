@@ -9,7 +9,7 @@ from dash.exceptions import PreventUpdate
 import numpy as np
 import plotly.graph_objects as go
 
-from use_cases.dashboard.state import app_state, state_lock
+from use_cases.dashboard import state as dashboard_state
 from use_cases.dashboard.utils import (
     _colorize_numeric,
     _colorize_user_labels,
@@ -149,21 +149,21 @@ def register_visualization_callbacks(app: Dash) -> None:
         latent_version = int((latent_store or {}).get("version", 0))
         label_version = int((labels_store or {}).get("version", 0))
 
-        with state_lock:
-            latent = np.array(app_state["data"]["latent"], dtype=np.float32)
-            labels = np.array(app_state["data"]["labels"], dtype=np.float64)
+        with dashboard_state.state_lock:
+            latent = np.array(dashboard_state.app_state.data.latent, dtype=np.float32)
+            labels = np.array(dashboard_state.app_state.data.labels, dtype=np.float64)
             true_labels = (
-                np.array(app_state["data"]["true_labels"], dtype=np.float64)
-                if app_state["data"]["true_labels"] is not None
+                np.array(dashboard_state.app_state.data.true_labels, dtype=np.float64)
+                if dashboard_state.app_state.data.true_labels is not None
                 else None
             )
-            pred_classes = np.array(app_state["data"]["pred_classes"], dtype=np.int32)
-            pred_certainty = np.array(app_state["data"]["pred_certainty"], dtype=np.float64)
-            hover_metadata = list(app_state["data"].get("hover_metadata", []))
+            pred_classes = np.array(dashboard_state.app_state.data.pred_classes, dtype=np.int32)
+            pred_certainty = np.array(dashboard_state.app_state.data.pred_certainty, dtype=np.float64)
+            hover_metadata = list(dashboard_state.app_state.data.hover_metadata)
             
-            # Get persistent caches from app_state
-            base_figure_cache = app_state["cache"]["base_figures"]
-            color_cache = app_state["cache"]["colors"]
+            # Get persistent caches from dashboard_state.app_state
+            base_figure_cache = dashboard_state.app_state.cache["base_figures"]
+            color_cache = dashboard_state.app_state.cache["colors"]
 
         if latent is None or latent.size == 0:
             return go.Figure()
@@ -177,7 +177,7 @@ def register_visualization_callbacks(app: Dash) -> None:
         colors = color_cache.get(cache_key)
         if colors is None:
             colors = _compute_colors(color_mode, labels, pred_classes, pred_certainty, true_labels)
-            with state_lock:
+            with dashboard_state.state_lock:
                 color_cache[cache_key] = colors
                 # Limit color cache size to prevent memory growth
                 if len(color_cache) > 50:
@@ -211,7 +211,7 @@ def register_visualization_callbacks(app: Dash) -> None:
         figure._last_selected_idx = selected_idx
         
         # Cache the built figure
-        with state_lock:
+        with dashboard_state.state_lock:
             base_figure_cache[figure_cache_key] = figure
             # Limit cache size to prevent memory growth (keep last 20 variants)
             if len(base_figure_cache) > 20:
@@ -327,11 +327,12 @@ def register_visualization_callbacks(app: Dash) -> None:
         prevent_initial_call=True,
     )
     def handle_point_selection(click_data: Dict) -> int:
+
         if not click_data or "points" not in click_data or not click_data["points"]:
             raise PreventUpdate
         point_index = int(click_data["points"][0]["pointIndex"])
-        with state_lock:
-            app_state["ui"]["selected_sample"] = point_index
+        with dashboard_state.state_lock:
+            dashboard_state.app_state = dashboard_state.app_state.with_ui(selected_sample=point_index)
         return point_index
 
     @app.callback(
@@ -339,8 +340,9 @@ def register_visualization_callbacks(app: Dash) -> None:
         Input("color-mode-radio", "value"),
     )
     def sync_color_mode(color_mode: str) -> str:
-        with state_lock:
-            app_state["ui"]["color_mode"] = color_mode
+
+        with dashboard_state.state_lock:
+            dashboard_state.app_state = dashboard_state.app_state.with_ui(color_mode=color_mode)
         return color_mode
 
     @app.callback(
@@ -349,9 +351,9 @@ def register_visualization_callbacks(app: Dash) -> None:
         Input("loss-smoothing-toggle", "value"),
     )
     def update_loss_curves(_latent_store: dict | None, smoothing_enabled: list):
-        with state_lock:
-            history = app_state["history"]
-            epochs = list(history.get("epochs", []))
+        with dashboard_state.state_lock:
+            history = dashboard_state.app_state.history
+            epochs = list(history.epochs)
 
         figure = go.Figure()
         if not epochs:
@@ -378,7 +380,7 @@ def register_visualization_callbacks(app: Dash) -> None:
         ]
 
         for key, label, color in series_info:
-            values = history.get(key)
+            values = getattr(history, key, [])
             if values and len(values) == len(epochs):
                 raw_values = list(values)
                 

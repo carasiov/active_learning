@@ -10,7 +10,11 @@ from dash.exceptions import PreventUpdate
 import numpy as np
 import plotly.graph_objects as go
 
-from use_cases.dashboard.state import app_state, state_lock, _update_label
+from use_cases.dashboard import state as dashboard_state
+from use_cases.dashboard.state import (
+    LABELS_PATH,
+    _update_label,
+)
 from use_cases.dashboard.utils import array_to_base64, INFOTEAM_PALETTE
 
 
@@ -30,16 +34,16 @@ def register_labeling_callbacks(app: Dash) -> None:
         if selected_idx is None:
             raise PreventUpdate
 
-        with state_lock:
+        with dashboard_state.state_lock:
             idx = int(selected_idx)
-            x_train = np.array(app_state["data"]["x_train"])
-            recon = np.array(app_state["data"]["reconstructed"])
-            pred_classes = np.array(app_state["data"]["pred_classes"])
-            pred_certainty = np.array(app_state["data"]["pred_certainty"])
-            labels = np.array(app_state["data"]["labels"])
+            x_train = np.array(dashboard_state.app_state.data.x_train)
+            recon = np.array(dashboard_state.app_state.data.reconstructed)
+            pred_classes = np.array(dashboard_state.app_state.data.pred_classes)
+            pred_certainty = np.array(dashboard_state.app_state.data.pred_certainty)
+            labels = np.array(dashboard_state.app_state.data.labels)
             true_labels = (
-                np.array(app_state["data"]["true_labels"], dtype=np.int32)
-                if app_state["data"]["true_labels"] is not None
+                np.array(dashboard_state.app_state.data.true_labels, dtype=np.int32)
+                if dashboard_state.app_state.data.true_labels is not None
                 else None
             )
 
@@ -155,8 +159,8 @@ def register_labeling_callbacks(app: Dash) -> None:
         Input("labels-store", "data"),
     )
     def update_dataset_stats(_labels_store: dict | None):
-        with state_lock:
-            labels = np.array(app_state["data"]["labels"], dtype=float)
+        with dashboard_state.state_lock:
+            labels = np.array(dashboard_state.app_state.data.labels, dtype=float)
 
         total_samples = int(labels.size)
         labeled_mask = ~np.isnan(labels)
