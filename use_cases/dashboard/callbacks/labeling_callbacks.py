@@ -13,8 +13,8 @@ import plotly.graph_objects as go
 from use_cases.dashboard import state as dashboard_state
 from use_cases.dashboard.state import (
     LABELS_PATH,
-    _update_label,
 )
+from use_cases.dashboard.commands import LabelSampleCommand
 from use_cases.dashboard.utils import array_to_base64, INFOTEAM_PALETTE
 
 
@@ -94,14 +94,24 @@ def register_labeling_callbacks(app: Dash) -> None:
         if not ctx.triggered:
             raise PreventUpdate
         triggered_id = ctx.triggered_id
+        
+        # Determine command based on trigger
         if triggered_id == "delete-label-button":
-            version_payload, message = _update_label(int(selected_idx), None)
-            return version_payload, message
-        if isinstance(triggered_id, dict) and "label" in triggered_id:
+            command = LabelSampleCommand(sample_idx=int(selected_idx), label=None)
+        elif isinstance(triggered_id, dict) and "label" in triggered_id:
             label_value = int(triggered_id["label"])
-            version_payload, message = _update_label(int(selected_idx), label_value)
-            return version_payload, message
-        raise PreventUpdate
+            command = LabelSampleCommand(sample_idx=int(selected_idx), label=label_value)
+        else:
+            raise PreventUpdate
+        
+        # Execute command
+        success, message = dashboard_state.dispatcher.execute(command)
+        
+        # Return updated version
+        with dashboard_state.state_lock:
+            version_payload = {"version": dashboard_state.app_state.data.version}
+        
+        return version_payload, message
 
     @app.callback(
         Output("labels-store", "data", allow_duplicate=True),
@@ -116,7 +126,15 @@ def register_labeling_callbacks(app: Dash) -> None:
         digit = event.get("digit")
         if digit is None or not (0 <= int(digit) <= 9):
             raise PreventUpdate
-        version_payload, message = _update_label(int(selected_idx), int(digit))
+        
+        # Execute command
+        command = LabelSampleCommand(sample_idx=int(selected_idx), label=int(digit))
+        success, message = dashboard_state.dispatcher.execute(command)
+        
+        # Return updated version
+        with dashboard_state.state_lock:
+            version_payload = {"version": dashboard_state.app_state.data.version}
+        
         return version_payload, message
 
     app.clientside_callback(

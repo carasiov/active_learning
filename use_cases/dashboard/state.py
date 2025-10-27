@@ -38,6 +38,7 @@ from use_cases.dashboard.state_models import (  # noqa: E402
     UIState,
     TrainingHistory,
 )
+from use_cases.dashboard.commands import CommandDispatcher  # noqa: E402
 
 
 CHECKPOINT_PATH = ROOT_DIR / "artifacts" / "checkpoints" / "ssvae.ckpt"
@@ -51,6 +52,9 @@ _init_lock = threading.Lock()  # Separate lock for initialization
 metrics_queue: Queue[Dict[str, float]] = Queue()
 
 app_state: Optional[AppState] = None
+
+# Global command dispatcher (initialized with state_lock)
+dispatcher = CommandDispatcher(state_lock)
 
 
 def _append_status_message_locked(message: str) -> None:
@@ -206,46 +210,3 @@ def _persist_labels_dataframe(df: pd.DataFrame) -> None:
         persisted["label"] = persisted["label"].astype("Int64")
     persisted.index.name = "Serial"
     persisted.to_csv(LABELS_PATH)
-
-
-def _update_label(sample_idx: int, new_label: float | None) -> Tuple[dict, str]:
-    """Update label state and CSV, returning store payload and status message."""
-    with state_lock:
-        global app_state
-        
-        # Copy labels array and update
-        labels_array = app_state.data.labels.copy()
-        if new_label is None:
-            labels_array[sample_idx] = np.nan
-        else:
-            labels_array[sample_idx] = float(new_label)
-        
-        # Update CSV persistence
-        df = _load_labels_dataframe()
-        if new_label is None:
-            if sample_idx in df.index:
-                df = df.drop(sample_idx)
-        else:
-            df.loc[sample_idx, "label"] = int(new_label)
-        _persist_labels_dataframe(df)
-        
-        # Update hover metadata
-        hover_metadata = list(app_state.data.hover_metadata)
-        true_label_value = int(app_state.data.true_labels[sample_idx])
-        hover_metadata[sample_idx] = _format_hover_metadata_entry(
-            sample_idx,
-            int(app_state.data.pred_classes[sample_idx]),
-            float(app_state.data.pred_certainty[sample_idx]),
-            float(labels_array[sample_idx]),
-            true_label_value,
-        )
-        
-        # Atomic state update
-        app_state = app_state.with_label_update(labels_array, hover_metadata)
-        version_payload = {"version": app_state.data.version}
-    
-    if new_label is None:
-        message = f"Removed label for sample {sample_idx}"
-    else:
-        message = f"Labeled sample {sample_idx} as {int(new_label)}"
-    return version_payload, message

@@ -10,6 +10,7 @@ import numpy as np
 import plotly.graph_objects as go
 
 from use_cases.dashboard import state as dashboard_state
+from use_cases.dashboard.commands import SelectSampleCommand, ChangeColorModeCommand
 from use_cases.dashboard.utils import (
     _colorize_numeric,
     _colorize_user_labels,
@@ -331,8 +332,10 @@ def register_visualization_callbacks(app: Dash) -> None:
         if not click_data or "points" not in click_data or not click_data["points"]:
             raise PreventUpdate
         point_index = int(click_data["points"][0]["pointIndex"])
-        with dashboard_state.state_lock:
-            dashboard_state.app_state = dashboard_state.app_state.with_ui(selected_sample=point_index)
+        
+        command = SelectSampleCommand(sample_idx=point_index)
+        success, message = dashboard_state.dispatcher.execute(command)
+        
         return point_index
 
     @app.callback(
@@ -341,8 +344,8 @@ def register_visualization_callbacks(app: Dash) -> None:
     )
     def sync_color_mode(color_mode: str) -> str:
 
-        with dashboard_state.state_lock:
-            dashboard_state.app_state = dashboard_state.app_state.with_ui(color_mode=color_mode)
+        command = ChangeColorModeCommand(color_mode=color_mode)
+        dashboard_state.dispatcher.execute(command)
         return color_mode
 
     @app.callback(

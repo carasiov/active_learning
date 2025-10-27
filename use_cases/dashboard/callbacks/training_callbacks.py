@@ -25,6 +25,7 @@ from use_cases.dashboard.state import (
     _clear_metrics_queue,
     _update_history_with_epoch,
 )
+from use_cases.dashboard.commands import StartTrainingCommand, CompleteTrainingCommand
 from use_cases.dashboard.utils import _build_hover_metadata
 
 _LAST_POLL_STATE: Dict[str, object] = {
@@ -85,14 +86,17 @@ def train_worker(num_epochs: int) -> None:
             true_labels = dashboard_state.app_state.data.true_labels
         hover_metadata = _build_hover_metadata(pred_classes, pred_certainty, labels_latest, true_labels)
 
+        # Use command to update state with training results
+        command = CompleteTrainingCommand(
+            latent=latent,
+            reconstructed=recon,
+            pred_classes=pred_classes,
+            pred_certainty=pred_certainty,
+            hover_metadata=hover_metadata
+        )
+        success, message = dashboard_state.dispatcher.execute(command)
+
         with dashboard_state.state_lock:
-            dashboard_state.app_state = dashboard_state.app_state.with_training_complete(
-                latent=latent,
-                reconstructed=recon,
-                pred_classes=pred_classes,
-                pred_certainty=pred_certainty,
-                hover_metadata=hover_metadata
-            )
             latent_version = dashboard_state.app_state.data.version
         metrics_queue.put({"type": "latent_updated", "version": latent_version})
         metrics_queue.put({"type": "training_complete", "history": history})
@@ -216,6 +220,7 @@ def register_training_callbacks(app: Dash) -> None:
         if not confirm_clicks:
             raise PreventUpdate
 
+        # Basic input validation
         if num_epochs is None:
             _append_status_message("Please specify the number of epochs before starting training.")
             return dash.no_update
@@ -226,42 +231,27 @@ def register_training_callbacks(app: Dash) -> None:
             _append_status_message("Epochs must be a whole number between 1 and 200.")
             return dash.no_update
 
-        if epochs <= 0:
-            _append_status_message("Epochs must be greater than zero.")
-            return dash.no_update
         epochs = max(1, min(epochs, 200))
 
         if recon_weight is None or kl_weight is None or learning_rate is None:
             _append_status_message("Please configure all hyperparameters before training.")
             return dash.no_update
 
+        # Create and execute command
+        command = StartTrainingCommand(
+            num_epochs=epochs,
+            recon_weight=float(recon_weight),
+            kl_weight=float(kl_weight),
+            learning_rate=float(learning_rate)
+        )
+
+        success, message = dashboard_state.dispatcher.execute(command)
+
+        if not success:
+            _append_status_message(message)
+            return dash.no_update
+
         try:
-            with dashboard_state.state_lock:
-                if dashboard_state.app_state.training.is_active():
-                    _append_status_message_locked("Training already in progress.")
-                    return dash.no_update
-
-                # Update config (mutable for now)
-                dashboard_state.app_state.config.recon_weight = float(recon_weight)
-                dashboard_state.app_state.config.kl_weight = float(kl_weight)
-                dashboard_state.app_state.config.learning_rate = float(learning_rate)
-
-                # Update model config
-                dashboard_state.app_state.model.config.recon_weight = float(recon_weight)
-                dashboard_state.app_state.model.config.kl_weight = float(kl_weight)
-                dashboard_state.app_state.model.config.learning_rate = float(learning_rate)
-
-                # Update trainer config
-                dashboard_state.app_state.trainer.config.recon_weight = float(recon_weight)
-                dashboard_state.app_state.trainer.config.kl_weight = float(kl_weight)
-                dashboard_state.app_state.trainer.config.learning_rate = float(learning_rate)
-
-                # Atomic training state update
-                dashboard_state.app_state = replace(
-                    dashboard_state.app_state,
-                    training=dashboard_state.app_state.training.with_queued(epochs)
-                )
-
             _clear_metrics_queue()
             worker = threading.Thread(target=train_worker, args=(epochs,), daemon=True)
             with dashboard_state.state_lock:
