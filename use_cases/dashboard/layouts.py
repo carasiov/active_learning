@@ -641,6 +641,23 @@ def _build_stats_section() -> html.Div:
 def _build_config_section(config, default_epochs: int) -> html.Div:
     return html.Div(
         [
+            # Link to advanced configuration page
+            html.Div(
+                dcc.Link(
+                    "⚙️ Advanced Configuration",
+                    href="/configure-training",
+                    style={
+                        "fontSize": "13px",
+                        "color": "#C10A27",
+                        "textDecoration": "none",
+                        "fontWeight": "600",
+                        "display": "block",
+                        "marginBottom": "16px",
+                        "fontFamily": "'Open Sans', Verdana, sans-serif",
+                    },
+                ),
+            ),
+            
             html.Div("Training Configuration", style={
                 "fontSize": "15px",
                 "fontWeight": "700",

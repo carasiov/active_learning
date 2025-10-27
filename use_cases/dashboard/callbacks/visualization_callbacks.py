@@ -1,4 +1,4 @@
-"""Visualization callbacks for latent space interactions."""
+"""Visualization callbacks for latent space interactions - OPTIMIZED VERSION."""
 
 from __future__ import annotations
 
@@ -18,15 +18,11 @@ from use_cases.dashboard.utils import (
     INFOTEAM_PALETTE,
 )
 
-_BASE_FIGURE_CACHE: Dict[int, go.Figure] = {}
-_COLOR_CACHE: Dict[Tuple[int, str, int], list[str]] = {}
-
+# Simplified hover template for faster rendering
 _LATENT_HOVER_TEMPLATE = (
     "Index: %{customdata[0]}<br>"
-    "Prediction: %{customdata[1]}<br>"
-    "Confidence: %{customdata[2]:.1f}%<br>"
-    "User Label: %{customdata[3]}<br>"
-    "True Label: %{customdata[4]}<extra></extra>"
+    "Pred: %{customdata[1]} (%{customdata[2]:.0f}%)<br>"
+    "Label: %{customdata[3]} | True: %{customdata[4]}<extra></extra>"
 )
 
 
@@ -109,30 +105,26 @@ def _build_base_figure(
         )
     )
 
+    # Consolidated layout update for better performance
     figure.update_layout(
         template="plotly_white",
         margin=dict(l=50, r=20, t=20, b=50),
-        xaxis_title=dict(text="Latent Dimension 1", font=dict(size=15, color="#000000", family="'Open Sans', Verdana, sans-serif")),
-        yaxis_title=dict(text="Latent Dimension 2", font=dict(size=15, color="#000000", family="'Open Sans', Verdana, sans-serif")),
+        xaxis=dict(
+            title=dict(text="Latent Dimension 1", font=dict(size=15)),
+            showgrid=True,
+            gridcolor="rgba(0, 0, 0, 0.1)",
+            tickfont=dict(size=13),
+        ),
+        yaxis=dict(
+            title=dict(text="Latent Dimension 2", font=dict(size=15)),
+            showgrid=True,
+            gridcolor="rgba(0, 0, 0, 0.1)",
+            tickfont=dict(size=13),
+        ),
         dragmode="pan",
         hovermode="closest",
         uirevision=f"latent-{latent_version}",
-        transition={"duration": 0},
-        font=dict(size=13),  # Increase tick label font size
-    )
-    
-    # Add visible grid lines
-    figure.update_xaxes(
-        showgrid=True,
-        gridcolor="rgba(0, 0, 0, 0.1)",
-        gridwidth=1,
-        tickfont=dict(size=13),
-    )
-    figure.update_yaxes(
-        showgrid=True,
-        gridcolor="rgba(0, 0, 0, 0.1)",
-        gridwidth=1,
-        tickfont=dict(size=13),
+        font=dict(size=13),
     )
     
     return figure
@@ -168,6 +160,10 @@ def register_visualization_callbacks(app: Dash) -> None:
             pred_classes = np.array(app_state["data"]["pred_classes"], dtype=np.int32)
             pred_certainty = np.array(app_state["data"]["pred_certainty"], dtype=np.float64)
             hover_metadata = list(app_state["data"].get("hover_metadata", []))
+            
+            # Get persistent caches from app_state
+            base_figure_cache = app_state["cache"]["base_figures"]
+            color_cache = app_state["cache"]["colors"]
 
         if latent is None or latent.size == 0:
             return go.Figure()
@@ -176,45 +172,53 @@ def register_visualization_callbacks(app: Dash) -> None:
                 [idx, 0, 0.0, "Unlabeled", "?"] for idx in range(latent.shape[0])
             ]
 
-        # Clear old caches when latent changes
-        if latent_version not in _BASE_FIGURE_CACHE:
-            stale_keys = [key for key in _COLOR_CACHE if key[0] != latent_version]
-            for key in stale_keys:
-                _COLOR_CACHE.pop(key, None)
-
+        # Compute or retrieve cached colors
         cache_key = (latent_version, color_mode, label_version)
-        colors = _COLOR_CACHE.get(cache_key)
+        colors = color_cache.get(cache_key)
         if colors is None:
             colors = _compute_colors(color_mode, labels, pred_classes, pred_certainty, true_labels)
-            _COLOR_CACHE[cache_key] = colors
+            with state_lock:
+                color_cache[cache_key] = colors
+                # Limit color cache size to prevent memory growth
+                if len(color_cache) > 50:
+                    oldest_key = next(iter(color_cache))
+                    color_cache.pop(oldest_key)
 
-        if latent_version not in _BASE_FIGURE_CACHE:
-            figure = _build_base_figure(
-                latent,
-                hover_metadata,
-                color_mode,
-                colors,
-                selected_idx,
-                latent_version,
-            )
-            _BASE_FIGURE_CACHE[latent_version] = figure
-            return figure
-
-        highlight_x, highlight_y, visible = _build_highlight(latent, selected_idx)
-        patch = Patch()
-        patch["data"][0]["marker"] = _build_marker(color_mode, colors)
-        patch["data"][0]["customdata"] = hover_metadata
-        patch["data"][1]["x"] = highlight_x
-        patch["data"][1]["y"] = highlight_y
-        patch["data"][1]["visible"] = visible
-        patch["data"][1]["marker"] = {
-            "color": "#ff0000",
-            "size": 14,
-            "symbol": "x",
-            "line": {"width": 2, "color": "#ffffff"},
-        }
-        patch["layout"] = {"uirevision": f"latent-{latent_version}"}
-        return patch
+        # Create figure cache key (exclude selected_idx for better cache reuse)
+        figure_cache_key = (latent_version, color_mode, label_version)
+        
+        # FAST PATH: Return cached figure if available
+        cached_figure = base_figure_cache.get(figure_cache_key)
+        if cached_figure is not None:
+            # Only update highlight marker if selection changed (very fast)
+            if selected_idx != getattr(cached_figure, '_last_selected_idx', None):
+                highlight_x, highlight_y, visible = _build_highlight(latent, selected_idx)
+                cached_figure.data[1].x = highlight_x
+                cached_figure.data[1].y = highlight_y
+                cached_figure.data[1].visible = visible
+                cached_figure._last_selected_idx = selected_idx
+            return cached_figure
+        
+        # SLOW PATH: Build new figure (only on first render or cache miss)
+        figure = _build_base_figure(
+            latent,
+            hover_metadata,
+            color_mode,
+            colors,
+            selected_idx,
+            latent_version,
+        )
+        figure._last_selected_idx = selected_idx
+        
+        # Cache the built figure
+        with state_lock:
+            base_figure_cache[figure_cache_key] = figure
+            # Limit cache size to prevent memory growth (keep last 20 variants)
+            if len(base_figure_cache) > 20:
+                oldest_key = next(iter(base_figure_cache))
+                base_figure_cache.pop(oldest_key)
+        
+        return figure
 
     @app.callback(
         Output("scatter-legend", "children"),
@@ -224,7 +228,7 @@ def register_visualization_callbacks(app: Dash) -> None:
     def update_legend(color_mode: str, _labels_store: dict | None):
         """Generate dynamic legend based on color mode."""
         if color_mode == "certainty":
-            # Continuous colorbar - show range with infoteam-inspired gradient
+            # Continuous colorbar - show range with viridis gradient (matches actual plot)
             return html.Div(
                 [
                     html.Span("0% (uncertain)", style={
@@ -236,7 +240,7 @@ def register_visualization_callbacks(app: Dash) -> None:
                     html.Div(style={
                         "flex": "1",
                         "height": "10px",
-                        "background": "linear-gradient(to right, #6F6F6F, #8BBFC2, #AFCC37, #C10A27)",
+                        "background": "linear-gradient(to right, #440154, #31688e, #35b779, #fde724)",
                         "borderRadius": "4px",
                         "maxWidth": "200px",
                     }),

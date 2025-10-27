@@ -66,6 +66,10 @@ app_state: Dict[str, object] = {
         "labels_version": 0,
         "latent_version": 0,
     },
+    "cache": {
+        "base_figures": {},
+        "colors": {},
+    },
     "history": {
         "epochs": [],
         "train_loss": [],
@@ -170,6 +174,9 @@ def initialize_model_and_data() -> None:
         app_state["training"]["target_epochs"] = 0
         app_state["training"]["status_messages"] = []
         app_state["ui"]["latent_version"] = 0
+        # Initialize cache if not present
+        if "cache" not in app_state:
+            app_state["cache"] = {"base_figures": {}, "colors": {}}
 
 
 def _load_labels_dataframe() -> pd.DataFrame:

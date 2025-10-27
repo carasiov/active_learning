@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from dash import Dash, Input, Output
+from dash import Dash, Input, Output, dcc, html
 import dash_bootstrap_components as dbc
 
 APP_DIR = Path(__file__).resolve().parent
@@ -19,10 +19,12 @@ if str(APP_DIR) in sys.path:
     sys.path = [p for p in sys.path if p != str(APP_DIR)]
 
 from use_cases.dashboard.layouts import build_dashboard_layout  # noqa: E402
-from use_cases.dashboard.state import initialize_model_and_data  # noqa: E402
+from use_cases.dashboard.pages_training import build_training_config_page, register_config_page_callbacks  # noqa: E402
+from use_cases.dashboard.state import initialize_model_and_data, app_state, state_lock  # noqa: E402
 from use_cases.dashboard.callbacks.training_callbacks import register_training_callbacks  # noqa: E402
 from use_cases.dashboard.callbacks.visualization_callbacks import register_visualization_callbacks  # noqa: E402
 from use_cases.dashboard.callbacks.labeling_callbacks import register_labeling_callbacks  # noqa: E402
+from use_cases.dashboard.callbacks.config_callbacks import register_config_callbacks  # noqa: E402
 
 
 CUSTOM_CSS = """
@@ -207,7 +209,7 @@ def create_app() -> Dash:
     app = Dash(
         __name__,
         external_stylesheets=[dbc.themes.BOOTSTRAP],
-        suppress_callback_exceptions=False,
+        suppress_callback_exceptions=True,  # Required for multi-page apps
     )
     app.title = "SSVAE Active Learning"
     
@@ -234,7 +236,28 @@ def create_app() -> Dash:
     </html>
     '''
     
-    app.layout = build_dashboard_layout()
+    # Multi-page layout with routing
+    app.layout = html.Div([
+        dcc.Location(id='url', refresh=False),
+        dcc.Store(id='training-config-store'),
+        html.Div(id='page-content', style={'height': '100%', 'overflow': 'auto'})
+    ], style={'height': '100vh', 'overflow': 'hidden'})
+    
+    # Page router callback
+    @app.callback(
+        Output('page-content', 'children'),
+        Output('training-config-store', 'data'),
+        Input('url', 'pathname'),
+    )
+    def display_page(pathname):
+        import dataclasses
+        with state_lock:
+            config_dict = dataclasses.asdict(app_state['config'])
+        
+        if pathname == '/configure-training':
+            return build_training_config_page(), config_dict
+        else:  # Default to main dashboard
+            return build_dashboard_layout(), config_dict
 
     # Smart proportional resize handler
     app.clientside_callback(
@@ -458,6 +481,8 @@ def create_app() -> Dash:
     register_training_callbacks(app)
     register_visualization_callbacks(app)
     register_labeling_callbacks(app)
+    register_config_callbacks(app)
+    register_config_page_callbacks(app)
     
     return app
 
