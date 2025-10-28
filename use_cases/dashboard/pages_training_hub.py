@@ -47,9 +47,9 @@ def build_training_hub_layout() -> html.Div:
     
     return html.Div(
         [
-            # Hidden stores and intervals
-            dcc.Store(id="training-hub-control-store", data={"token": 0}),
-            dcc.Store(id="training-hub-latent-store", data={"version": latent_version}),
+            # Hidden stores and intervals - use session storage to persist across navigation
+            dcc.Store(id="training-hub-control-store", data={"token": 0}, storage_type='session'),
+            dcc.Store(id="training-hub-latent-store", data={"version": latent_version}, storage_type='session'),
             dcc.Interval(id="training-hub-poll", interval=2000, n_intervals=0, disabled=False),
             
             # Training confirmation modal

@@ -158,9 +158,6 @@ def register_training_callbacks(app: Dash) -> None:
         Input("modal-cancel-button", "n_clicks"),
         State("training-confirm-modal", "is_open"),
         State("num-epochs-input", "value"),
-        State("recon-weight-slider", "value"),
-        State("kl-weight-slider", "value"),
-        State("learning-rate-slider", "value"),
         prevent_initial_call=True,
     )
     def toggle_modal(
@@ -169,9 +166,6 @@ def register_training_callbacks(app: Dash) -> None:
         cancel_clicks: int,
         is_open: bool,
         num_epochs: Optional[float],
-        recon_weight: float,
-        kl_weight: float,
-        learning_rate: float,
     ) -> Tuple[bool, object]:
         ctx = dash.callback_context
         if not ctx.triggered:
@@ -209,6 +203,11 @@ def register_training_callbacks(app: Dash) -> None:
             with dashboard_state.state_lock:
                 labels = np.array(dashboard_state.app_state.data.labels)
                 labeled_count = int(np.sum(~np.isnan(labels)))
+                # Get current config values for display
+                config = dashboard_state.app_state.config
+                learning_rate = config.learning_rate
+                recon_weight = config.recon_weight
+                kl_weight = config.kl_weight
             
             info_text = [
                 html.Div(f"Train for {epochs} epoch(s) (estimated: {eta_text})", style={
@@ -238,18 +237,12 @@ def register_training_callbacks(app: Dash) -> None:
     @app.callback(
         Output("training-control-store", "data"),
         Input("modal-confirm-button", "n_clicks"),
-        State("recon-weight-slider", "value"),
-        State("kl-weight-slider", "value"),
-        State("learning-rate-slider", "value"),
         State("num-epochs-input", "value"),
         State("training-control-store", "data"),
         prevent_initial_call=True,
     )
     def handle_training_confirmation(
         confirm_clicks: int,
-        recon_weight: float,
-        kl_weight: float,
-        learning_rate: float,
         num_epochs: Optional[float],
         control_store: Optional[Dict[str, int]],
     ) -> object:
@@ -270,16 +263,19 @@ def register_training_callbacks(app: Dash) -> None:
 
         epochs = max(1, min(epochs, 200))
 
-        if recon_weight is None or kl_weight is None or learning_rate is None:
-            _append_status_message("Please configure all hyperparameters before training.")
-            return dash.no_update
+        # Get current config from state
+        with dashboard_state.state_lock:
+            config = dashboard_state.app_state.config
+            recon_weight = float(config.recon_weight)
+            kl_weight = float(config.kl_weight)
+            learning_rate = float(config.learning_rate)
 
         # Create and execute command
         command = StartTrainingCommand(
             num_epochs=epochs,
-            recon_weight=float(recon_weight),
-            kl_weight=float(kl_weight),
-            learning_rate=float(learning_rate)
+            recon_weight=recon_weight,
+            kl_weight=kl_weight,
+            learning_rate=learning_rate
         )
 
         success, message = dashboard_state.dispatcher.execute(command)
@@ -312,9 +308,6 @@ def register_training_callbacks(app: Dash) -> None:
     @app.callback(
         Output("training-status", "children"),
         Output("start-training-button", "disabled"),
-        Output("recon-weight-slider", "disabled"),
-        Output("kl-weight-slider", "disabled"),
-        Output("learning-rate-slider", "disabled"),
         Output("num-epochs-input", "disabled"),
         Output("latent-store", "data"),
         Output("training-poll", "disabled"),
@@ -326,7 +319,7 @@ def register_training_callbacks(app: Dash) -> None:
         _n_intervals: int,
         _control_store: Optional[Dict[str, int]],
         latent_store: Optional[Dict[str, int]],
-    ) -> Tuple[object, bool, bool, bool, bool, bool, Dict[str, int], bool]:  # type: ignore[valid-type]
+    ) -> Tuple[object, bool, bool, Dict[str, int], bool]:  # type: ignore[valid-type]
         latent_version = (latent_store or {}).get("version", 0)
         processed_messages = False
         while True:
@@ -435,9 +428,6 @@ def register_training_callbacks(app: Dash) -> None:
 
         return (
             status_output,
-            control_output,
-            control_output,
-            control_output,
             control_output,
             control_output,
             latent_output,

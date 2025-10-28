@@ -232,6 +232,10 @@ class AppState:
     cache: Dict[str, object]  # Keep as dict for now (can refine later)
     history: TrainingHistory
     
+    def _clear_cache(self) -> AppState:
+        """Clear visualization caches - use when data changes."""
+        return replace(self, cache={"base_figures": {}, "colors": {}})
+    
     # Atomic update helpers
     
     def with_data(self, **changes) -> AppState:
@@ -259,7 +263,8 @@ class AppState:
     ) -> AppState:
         """Update labels and increment data version."""
         new_data = self.data.with_updated_labels(new_labels, new_hover_metadata)
-        return replace(self, data=new_data)
+        # Clear cache since hover metadata changed
+        return replace(self, data=new_data)._clear_cache()
     
     def with_training_complete(
         self,
@@ -274,4 +279,5 @@ class AppState:
             latent, reconstructed, pred_classes, pred_certainty, hover_metadata
         )
         new_training = self.training.with_complete()
-        return replace(self, data=new_data, training=new_training)
+        # Clear cache since latent space changed completely
+        return replace(self, data=new_data, training=new_training)._clear_cache()

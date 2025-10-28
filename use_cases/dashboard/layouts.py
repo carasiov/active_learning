@@ -23,11 +23,11 @@ def build_dashboard_layout() -> html.Div:
 
     return html.Div(
         [
-            # Hidden stores and intervals
-            dcc.Store(id="selected-sample-store", data=selected_sample),
-            dcc.Store(id="labels-store", data={"version": labels_version}),
-            dcc.Store(id="training-control-store", data={"token": 0}),
-            dcc.Store(id="latent-store", data={"version": latent_version}),
+            # Hidden stores and intervals - use session storage to persist across navigation
+            dcc.Store(id="selected-sample-store", data=selected_sample, storage_type='session'),
+            dcc.Store(id="labels-store", data={"version": labels_version}, storage_type='session'),
+            dcc.Store(id="training-control-store", data={"token": 0}, storage_type='session'),
+            dcc.Store(id="latent-store", data={"version": latent_version}, storage_type='session'),
             dcc.Interval(id="training-poll", interval=2000, n_intervals=0, disabled=True),
             dcc.Store(id="keyboard-label-store"),
             dcc.Interval(id="keyboard-poll", interval=300, n_intervals=0, disabled=False),

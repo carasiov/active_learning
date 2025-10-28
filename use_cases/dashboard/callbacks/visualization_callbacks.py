@@ -150,6 +150,7 @@ def register_visualization_callbacks(app: Dash) -> None:
         latent_version = int((latent_store or {}).get("version", 0))
         label_version = int((labels_store or {}).get("version", 0))
 
+        # CRITICAL: Hold lock for entire cache check and data copy
         with dashboard_state.state_lock:
             latent = np.array(dashboard_state.app_state.data.latent, dtype=np.float32)
             labels = np.array(dashboard_state.app_state.data.labels, dtype=np.float64)
@@ -162,45 +163,47 @@ def register_visualization_callbacks(app: Dash) -> None:
             pred_certainty = np.array(dashboard_state.app_state.data.pred_certainty, dtype=np.float64)
             hover_metadata = list(dashboard_state.app_state.data.hover_metadata)
             
-            # Get persistent caches from dashboard_state.app_state
+            # Get cache references under lock
             base_figure_cache = dashboard_state.app_state.cache["base_figures"]
             color_cache = dashboard_state.app_state.cache["colors"]
-
+            
+            # Create figure cache key
+            figure_cache_key = (latent_version, color_mode, label_version)
+            
+            # FAST PATH: Check cached figure while holding lock
+            cached_figure = base_figure_cache.get(figure_cache_key)
+            if cached_figure is not None:
+                # Only update highlight marker if selection changed (very fast)
+                if selected_idx != getattr(cached_figure, '_last_selected_idx', None):
+                    highlight_x, highlight_y, visible = _build_highlight(latent, selected_idx)
+                    cached_figure.data[1].x = highlight_x
+                    cached_figure.data[1].y = highlight_y
+                    cached_figure.data[1].visible = visible
+                    cached_figure._last_selected_idx = selected_idx
+                return cached_figure
+            
+            # Compute or retrieve colors (still under lock for consistency)
+            cache_key = (latent_version, color_mode, label_version)
+            colors = color_cache.get(cache_key)
+            if colors is None:
+                colors = _compute_colors(color_mode, labels, pred_classes, pred_certainty, true_labels)
+                color_cache[cache_key] = colors
+                # Limit color cache size
+                if len(color_cache) > 50:
+                    oldest_key = next(iter(color_cache))
+                    color_cache.pop(oldest_key)
+        
+        # Release lock before expensive figure building
+        # (we have local copies of all data we need)
+        
         if latent is None or latent.size == 0:
             return go.Figure()
         if not hover_metadata:
             hover_metadata = [
                 [idx, 0, 0.0, "Unlabeled", "?"] for idx in range(latent.shape[0])
             ]
-
-        # Compute or retrieve cached colors
-        cache_key = (latent_version, color_mode, label_version)
-        colors = color_cache.get(cache_key)
-        if colors is None:
-            colors = _compute_colors(color_mode, labels, pred_classes, pred_certainty, true_labels)
-            with dashboard_state.state_lock:
-                color_cache[cache_key] = colors
-                # Limit color cache size to prevent memory growth
-                if len(color_cache) > 50:
-                    oldest_key = next(iter(color_cache))
-                    color_cache.pop(oldest_key)
-
-        # Create figure cache key (exclude selected_idx for better cache reuse)
-        figure_cache_key = (latent_version, color_mode, label_version)
         
-        # FAST PATH: Return cached figure if available
-        cached_figure = base_figure_cache.get(figure_cache_key)
-        if cached_figure is not None:
-            # Only update highlight marker if selection changed (very fast)
-            if selected_idx != getattr(cached_figure, '_last_selected_idx', None):
-                highlight_x, highlight_y, visible = _build_highlight(latent, selected_idx)
-                cached_figure.data[1].x = highlight_x
-                cached_figure.data[1].y = highlight_y
-                cached_figure.data[1].visible = visible
-                cached_figure._last_selected_idx = selected_idx
-            return cached_figure
-        
-        # SLOW PATH: Build new figure (only on first render or cache miss)
+        # SLOW PATH: Build new figure (expensive, but outside lock)
         figure = _build_base_figure(
             latent,
             hover_metadata,
@@ -211,13 +214,13 @@ def register_visualization_callbacks(app: Dash) -> None:
         )
         figure._last_selected_idx = selected_idx
         
-        # Cache the built figure
+        # Cache the built figure (need lock again)
         with dashboard_state.state_lock:
-            base_figure_cache[figure_cache_key] = figure
-            # Limit cache size to prevent memory growth (keep last 20 variants)
-            if len(base_figure_cache) > 20:
-                oldest_key = next(iter(base_figure_cache))
-                base_figure_cache.pop(oldest_key)
+            dashboard_state.app_state.cache["base_figures"][figure_cache_key] = figure
+            # Limit cache size to prevent memory growth
+            if len(dashboard_state.app_state.cache["base_figures"]) > 20:
+                oldest_key = next(iter(dashboard_state.app_state.cache["base_figures"]))
+                dashboard_state.app_state.cache["base_figures"].pop(oldest_key)
         
         return figure
 
