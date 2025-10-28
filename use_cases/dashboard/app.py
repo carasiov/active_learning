@@ -18,16 +18,24 @@ if str(ROOT_DIR) not in sys.path:
 if str(APP_DIR) in sys.path:
     sys.path = [p for p in sys.path if p != str(APP_DIR)]
 
-from use_cases.dashboard.layouts import build_dashboard_layout  # noqa: E402
-from use_cases.dashboard.pages_training import build_training_config_page, register_config_page_callbacks  # noqa: E402
-from use_cases.dashboard.pages_training_hub import build_training_hub_layout  # noqa: E402
-from use_cases.dashboard import state as dashboard_state
-from use_cases.dashboard.state import initialize_model_and_data  # noqa: E402
+# Initialize logging FIRST before any other imports
+from use_cases.dashboard.core.logging_config import DashboardLogger  # noqa: E402
+import logging
+DashboardLogger.setup(console_level=logging.INFO)  # Change to DEBUG for verbose output
+logger = DashboardLogger.get_logger('app')
+
+from use_cases.dashboard.pages.layouts import build_dashboard_layout  # noqa: E402
+from use_cases.dashboard.pages.training import build_training_config_page, register_config_page_callbacks  # noqa: E402
+from use_cases.dashboard.pages.training_hub import build_training_hub_layout  # noqa: E402
+from use_cases.dashboard.pages.home import build_home_layout  # noqa: E402
+from use_cases.dashboard.core import state as dashboard_state
+from use_cases.dashboard.core.state import initialize_model_and_data, initialize_app_state  # noqa: E402
 from use_cases.dashboard.callbacks.training_callbacks import register_training_callbacks  # noqa: E402
 from use_cases.dashboard.callbacks.training_hub_callbacks import register_training_hub_callbacks  # noqa: E402
 from use_cases.dashboard.callbacks.visualization_callbacks import register_visualization_callbacks  # noqa: E402
 from use_cases.dashboard.callbacks.labeling_callbacks import register_labeling_callbacks  # noqa: E402
 from use_cases.dashboard.callbacks.config_callbacks import register_config_callbacks  # noqa: E402
+from use_cases.dashboard.callbacks.home_callbacks import register_home_callbacks  # noqa: E402
 
 
 CUSTOM_CSS = """
@@ -43,6 +51,12 @@ body {
     overflow: hidden;
     font-family: 'Open Sans', Verdana, sans-serif;
     color: #4A4A4A;
+}
+
+/* Stop click propagation on delete buttons */
+.delete-button-stop-propagation {
+    position: relative;
+    z-index: 10;
 }
 
 /* Focus rings for accessibility - infoteam red */
@@ -101,6 +115,12 @@ input:focus {
 
 ::-webkit-scrollbar-thumb:hover {
     background: #6F6F6F;
+}
+
+/* Prevent delete button clicks from bubbling to parent */
+.delete-button-stop-propagation {
+    position: relative;
+    z-index: 10;
 }
 
 /* Resize handles */
@@ -193,7 +213,7 @@ button, input {
 
 def create_app() -> Dash:
     """Create and configure the Dash application."""
-    initialize_model_and_data()
+    initialize_app_state()  # Load model registry, not specific model
 
     app = Dash(
         __name__,
@@ -239,23 +259,78 @@ def create_app() -> Dash:
         Input('url', 'pathname'),
     )
     def display_page(pathname):
+        """Route to appropriate page."""
+        import re
         import dataclasses
-        # Ensure state is initialized before accessing
-        initialize_model_and_data()
-        with dashboard_state.state_lock:
-            if dashboard_state.app_state is None:
-                # Fallback if initialization somehow failed
-                from ssvae import SSVAEConfig
-                config_dict = dataclasses.asdict(SSVAEConfig())
-            else:
-                config_dict = dataclasses.asdict(dashboard_state.app_state.config)
+        from ssvae import SSVAEConfig
         
-        if pathname == '/configure-training':
-            return build_training_config_page(), config_dict
-        elif pathname == '/training-hub':
-            return build_training_hub_layout(), config_dict
-        else:  # Default to main dashboard
-            return build_dashboard_layout(), config_dict
+        logger.info(f"DISPLAY_PAGE CALLED: pathname={pathname}")
+        
+        # Initialize app state (registry only)
+        initialize_app_state()
+        
+        # Log current models
+        with dashboard_state.state_lock:
+            model_count = len(dashboard_state.app_state.models)
+            model_ids = list(dashboard_state.app_state.models.keys())
+        logger.info(f"Current models in state: {model_ids} ({model_count} total)")
+        
+        # Home page
+        if pathname == '/' or pathname is None:
+            logger.info("Rendering home page")
+            return build_home_layout(), {}
+        
+        # Strip query parameters for routing
+        pathname = pathname.split('?')[0] if pathname else pathname
+        
+        # Model-scoped pages: /model/{id}, /model/{id}/training-hub, etc.
+        model_match = re.match(r'^/model/([^/]+)(/.*)?$', pathname)
+        if model_match:
+            model_id = model_match.group(1)
+            sub_path = model_match.group(2) or ''
+            
+            print(f"[ROUTING] Model ID: {model_id}, Sub-path: '{sub_path}'")
+            
+            # Check if model needs to be loaded
+            needs_load = False
+            with dashboard_state.state_lock:
+                if not dashboard_state.app_state.active_model or \
+                   dashboard_state.app_state.active_model.model_id != model_id:
+                    needs_load = True
+            
+            # Load model if needed (outside the lock check)
+            if needs_load:
+                try:
+                    from use_cases.dashboard.core.commands import LoadModelCommand
+                    command = LoadModelCommand(model_id=model_id)
+                    success, message = dashboard_state.dispatcher.execute(command)
+                    if not success:
+                        # Model not found or load failed, redirect to home
+                        return build_home_layout(), {}
+                except Exception as e:
+                    # Model not found or load failed, redirect to home
+                    return build_home_layout(), {}
+            
+            # Get config for the page
+            with dashboard_state.state_lock:
+                if dashboard_state.app_state.active_model:
+                    config_dict = dataclasses.asdict(dashboard_state.app_state.active_model.config)
+                else:
+                    return build_home_layout(), {}
+            
+            # Route to sub-page
+            if sub_path == '/training-hub':
+                print(f"[ROUTING] Routing to training hub")
+                return build_training_hub_layout(), config_dict
+            elif sub_path == '/configure-training':
+                print(f"[ROUTING] Routing to config page")
+                return build_training_config_page(), config_dict
+            else:  # Default to main dashboard
+                print(f"[ROUTING] Routing to main dashboard")
+                return build_dashboard_layout(), config_dict
+        
+        # Fallback to home
+        return build_home_layout(), {}
 
     # Smart proportional resize handler
     app.clientside_callback(
@@ -439,6 +514,7 @@ def create_app() -> Dash:
         prevent_initial_call=False,
     )
 
+    register_home_callbacks(app)
     register_training_callbacks(app)
     register_training_hub_callbacks(app)
     register_visualization_callbacks(app)
@@ -453,5 +529,5 @@ app = create_app()
 
 
 if __name__ == "__main__":
-    initialize_model_and_data()
+    initialize_app_state()
     app.run_server(debug=False, host="0.0.0.0", port=8050)

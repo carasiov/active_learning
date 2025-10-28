@@ -1,154 +1,157 @@
-# SSVAE Dashboard
+# SSVAE Dashboard - Multi-Model Architecture
 
-One interface for the complete active learning cycle: explore, label, train, evaluate.
-The dashboard replaces scattered scripts and manual CSV editing with a unified UI where you can see your latent space, label uncertain samples, train your model, and immediately see results—all without touching the terminal.
+Interactive dashboard for semi-supervised learning with multiple independent model experiments.
 
 ## Quick Start
 ```bash
+cd /workspaces/active_learning
 poetry run python use_cases/dashboard/app.py
 ```
-
 Open http://localhost:8050
 
-## Features
+## Key Features
 
-- Interactive 60k-point latent space visualization
-- Instant color-by toggles (user labels, predicted, true, certainty)
-- Click-to-label workflow (updates CSV immediately)
-- Advanced training configuration page with 17+ hyperparameters
-- Launch background training runs with live status updates
-- Real-time loss curve visualization with optional smoothing
-- Dataset statistics panel with label counts
-- Keyboard shortcuts (0-9) for rapid labeling
+- **Multi-Model Management:** Create, switch, and delete models with isolated state
+- **Interactive Labeling:** 60k-point WebGL visualization with click-to-label
+- **Background Training:** Live progress updates with graceful stop
+- **Configuration:** 17+ hyperparameters with presets
 
-## Product Vision
+## Project Structure
+```
+use_cases/dashboard/
+├── app.py                 # Entry point
+├── core/                  # Infrastructure (state, commands, I/O)
+├── pages/                 # Page layouts
+├── callbacks/             # Event handlers
+├── utils/                 # Helpers (visualization, logging)
+├── assets/                # Static files
+└── docs/                  # Documentation
 
-- Audience: single-user ML researchers on localhost.
-- Goal: one interface to label, train, and evaluate without touching the terminal.
-- Full label–train–evaluate cycles happen inside the dashboard; 60k‑point scatter feels smooth.
-
-## Design Principles
-
-- Localhost only: no auth, no separate backend services.
-- UI layer only: model, training loops, and callbacks in `src/` remain.
-- Compatibility first: share `labels.csv` and checkpoints with the CLI without migrations.
-- Fast interactions: cache visuals and patch updates to keep the app responsive.
-
-## Non‑Goals
-
-- Multi‑user deployments, authentication, or remote hosting.
-- Changing data formats or checkpoint schema.
-
-## Workflow
-
-1. Browse latent space, click uncertain points
-2. Label them (0-9 via keyboard or buttons)
-3. Adjust training parameters via "⚙️ Advanced Configuration" if desired
-4. Click "Start Training"
-5. Watch status updates and loss curves as training progresses
-6. Repeat
-
-## Data & Persistence
-
-- Labels live in `data/mnist/labels.csv` with columns `Serial,label`.
-- Label updates persist immediately; unlabeled entries are stored as NaN or absent.
-- Model checkpoints are read/written under `artifacts/checkpoints/ssvae.ckpt` (Flax format).
-
-## Architecture
-
-- Single-user localhost deployment
-- Background threading for training
-- State preserved across training sessions
-- Multi-page app: main dashboard (`/`) and config page (`/configure-training`)
-- Integrates with existing CLI tools (train.py, infer.py still work)
-- Modular layout:
-  - `app.py` orchestrates initialization, layout, and callback registration
-  - `state.py` owns shared model/data state, locks, and labeling helpers
-  - `layouts.py` builds the main dashboard layout
-  - `pages_training.py` builds the advanced configuration page
-  - `callbacks/` groups training, visualization, labeling, and config callbacks
-  - `utils.py` hosts colorization and image encoding helpers
-
-### How It Works
-
-- State stores the full dataset (images, latent, recon, predictions, labels) in memory.
-- Training runs in a background thread; progress/events flow through a `Queue`.
-- Callbacks poll for messages, update history, and refresh the scatter when latent changes.
-- Scatter uses Plotly WebGL with smart caching for fast rendering.
-
-## Performance
-
-### Scatter Plot Optimization
-The dashboard uses intelligent figure caching to minimize render time:
-
-| Scenario | Performance | Notes |
-|----------|-------------|-------|
-| **First load** | 2-4s | Initial figure build with 60k points |
-| **Navigation** | 50-100ms | Cached figure reused |
-| **Color mode change** | 50-100ms | Cached colors reused |
-| **Point selection** | <10ms | Only highlight marker updates |
-
-**Why it's fast:**
-- Figures cached in `app_state["cache"]` persist across navigation
-- Color computations cached separately (60k color strings)
-- Cache limits (20 figures, 50 color sets) prevent memory growth
-- Simplified hover template reduces JSON payload size
-
-**First-load optimization tips:**
-- First render must build the figure (unavoidable ~2-4s)
-- Subsequent interactions are near-instant due to caching
-- Browser refresh clears cache, requiring rebuild
-
-## Troubleshooting
-
-### Scatter plot not showing points
-**Symptom:** Empty plot after navigation or reload.
-
-**Cause:** Cache not initialized properly in `app_state`.
-
-**Fix:** Ensure `state.py` initializes cache in `initialize_model_and_data()`:
-```python
-if "cache" not in app_state:
-    app_state["cache"] = {"base_figures": {}, "colors": {}}
+artifacts/models/{model_id}/
+├── checkpoint.ckpt    # Weights
+├── labels.csv         # Labels
+├── history.json       # Loss curves
+└── metadata.json      # Stats
 ```
 
-### Slow scatter updates
-**Symptom:** 2-4 second delay on every interaction.
+## Routes
+- `/` - Model list
+- `/model/{id}` - Dashboard
+- `/model/{id}/training-hub` - Training
+- `/model/{id}/configure-training` - Config
 
-**Cause:** Figure cache not being reused (rebuilding on every callback).
+## Development
+```bash
+# Logs
+tail -f /tmp/ssvae_dashboard.log
 
-**Check:** `visualization_callbacks.py` should have fast path:
-```python
-cached_figure = base_figure_cache.get(figure_cache_key)
-if cached_figure is not None:
-    return cached_figure  # Fast path
+# Tests
+poetry run python tests/run_dashboard_tests.py
+
+# Debug mode (app.py line 23)
+DashboardLogger.setup(console_level=logging.DEBUG)
 ```
 
-## Tech Stack
+---
 
-**Framework:** Dash + Plotly (Python)
+## 📚 Documentation Guide
 
-**Why Dash?**
-- Pure Python (no context switching)
-- Excellent ML integration (JAX/NumPy)
-- WebGL support for 60k points
-- Perfect for single-user localhost dashboards
+This dashboard has comprehensive documentation organized by use case and abstraction level. **AI agents and developers should consult these documents in the following order based on their task:**
 
-**Considered alternatives:**
-- React + FastAPI: More flexible but higher engineering overhead
-- Streamlit: Simpler but less control, full page reruns
-- Jupyter Widgets: Prototyping only, poor large-data performance
+### For Understanding the System
+**Start here if:** You're new to the codebase or need to understand how it works internally.
 
-**Verdict:** Dash is appropriate for this use case.
+📖 **[Developer Guide](docs/DEVELOPER_GUIDE.md)**
+- **Purpose:** Explains internal architecture, state management, and debugging
+- **Key topics:** Immutable state architecture, thread safety, command pattern, training system, performance considerations
+- **Use when:** Understanding existing code, debugging issues, tracing data flow, investigating bugs
+- **Abstraction level:** Low-level implementation details
 
-## Constraints & Scale
+### For Adding Features
+**Start here if:** You need to extend the dashboard with new functionality.
 
-- MNIST scale (~60k points) for the latent scatter via WebGL.
-- Single background training thread; queue-based metrics to the UI.
-- Memory: ~500MB for full dataset + predictions + cache.
+🤖 **[Agent Extension Guide](docs/AGENT_GUIDE.md)**
+- **Purpose:** Patterns and templates for adding features safely and consistently
+- **Key topics:** Command pattern templates, UI component patterns, callback organization, testing workflows
+- **Use when:** Implementing new commands, adding UI components, creating callbacks, modifying state
+- **Abstraction level:** Mid-level patterns and practical templates
+- **Special note:** Written specifically for AI coding agents with emphasis on consistency and safety
 
-## Compatibility
+### Behavioral Relationship
 
-- The dashboard and CLI share the labels CSV and checkpoint format.
-- You can switch between CLI and dashboard without migration steps.
-- Training config changes requiring architecture restart (encoder/decoder type, latent dim) show a warning.
+```
+User Request (Feature/Bug)
+         ↓
+    [Agent Guide] ← Start here for implementation
+         ↓
+    Understand patterns & templates
+         ↓
+    [Developer Guide] ← Consult when you need implementation details
+         ↓
+    Make changes following established patterns
+         ↓
+    Test & verify
+```
+
+### Quick Reference by Task
+
+| Task | Primary Doc | Secondary Doc |
+|------|-------------|---------------|
+| Add new command | [Agent Guide](docs/AGENT_GUIDE.md) § Pattern 1 | [Developer Guide](docs/DEVELOPER_GUIDE.md) § Command Pattern |
+| Add UI component | [Agent Guide](docs/AGENT_GUIDE.md) § Pattern 3 | - |
+| Debug state issue | [Developer Guide](docs/DEVELOPER_GUIDE.md) § Debugging State | - |
+| Add visualization | [Agent Guide](docs/AGENT_GUIDE.md) § Pattern 4 | [Developer Guide](docs/DEVELOPER_GUIDE.md) § Callback Organization |
+| Fix training bug | [Developer Guide](docs/DEVELOPER_GUIDE.md) § Training System | [Agent Guide](docs/AGENT_GUIDE.md) § Pattern 2 |
+| Understand architecture | [Developer Guide](docs/DEVELOPER_GUIDE.md) § State Management | - |
+| Add new page | [Agent Guide](docs/AGENT_GUIDE.md) § FAQ | [Developer Guide](docs/DEVELOPER_GUIDE.md) § Page Architecture |
+| Performance issue | [Developer Guide](docs/DEVELOPER_GUIDE.md) § Performance | - |
+
+### For AI Agents: Heuristic Selection Rules
+
+**Use this decision tree to fetch the right documentation:**
+
+1. **Is this a NEW feature request?**
+   - YES → Read [Agent Guide](docs/AGENT_GUIDE.md) first
+   - NO → Continue to step 2
+
+2. **Is this a BUG or unexpected behavior?**
+   - YES → Read [Developer Guide](docs/DEVELOPER_GUIDE.md) § Common Issues
+   - NO → Continue to step 3
+
+3. **Do you need to understand HOW something works?**
+   - YES → Read [Developer Guide](docs/DEVELOPER_GUIDE.md) relevant section
+   - NO → Continue to step 4
+
+4. **Do you need a PATTERN or TEMPLATE?**
+   - YES → Read [Agent Guide](docs/AGENT_GUIDE.md) relevant pattern
+   - NO → Read both guides
+
+**Pattern matching heuristics:**
+- Keywords like "add", "create", "new", "implement" → [Agent Guide](docs/AGENT_GUIDE.md)
+- Keywords like "why", "how", "understand", "architecture" → [Developer Guide](docs/DEVELOPER_GUIDE.md)
+- Keywords like "broken", "not working", "debug", "error" → [Developer Guide](docs/DEVELOPER_GUIDE.md) § Common Issues
+- Keywords like "command", "callback", "UI component" → [Agent Guide](docs/AGENT_GUIDE.md) relevant pattern
+
+---
+
+## System Architecture Overview
+
+**State Management:** Immutable dataclasses with command pattern for all modifications  
+**Threading:** Background training worker with queue-based progress updates  
+**UI Framework:** Dash/Plotly with page-based routing  
+**Performance:** Aggressive caching for 60k-point scatter plots
+
+For details, see [Developer Guide](docs/DEVELOPER_GUIDE.md).
+
+---
+
+## Contributing
+
+When extending this dashboard:
+
+1. ✅ **Follow established patterns** from the [Agent Guide](docs/AGENT_GUIDE.md)
+2. ✅ **Use commands for state changes** (never mutate directly)
+3. ✅ **Test your changes** (both automated and manual)
+4. ✅ **Consult the guides** when unsure
+
+The architecture is designed to be AI-agent-friendly with clear separation of concerns and consistent patterns throughout.

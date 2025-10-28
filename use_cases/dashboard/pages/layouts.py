@@ -4,7 +4,7 @@ from dash import dcc, html
 import dash_bootstrap_components as dbc
 import numpy as np
 
-from use_cases.dashboard import state as dashboard_state
+from use_cases.dashboard.core import state as dashboard_state
 
 
 def build_dashboard_layout() -> html.Div:
@@ -12,12 +12,22 @@ def build_dashboard_layout() -> html.Div:
     dashboard_state.initialize_model_and_data()
     
     with dashboard_state.state_lock:
-        config = dashboard_state.app_state.config
-        default_epochs = max(1, dashboard_state.app_state.training.target_epochs or 5)
-        latent_version = dashboard_state.app_state.data.version
-        existing_status = list(dashboard_state.app_state.training.status_messages)
-        selected_sample = dashboard_state.app_state.ui.selected_sample
-        labels_version = dashboard_state.app_state.data.version
+        # Check if we have an active model
+        if dashboard_state.app_state.active_model is None:
+            # Return a simple message if no model loaded
+            return html.Div([
+                html.H3("No Model Loaded", style={"textAlign": "center", "marginTop": "100px"}),
+                html.P("Please select a model from the home page.", style={"textAlign": "center"}),
+                html.A("Go to Home", href="/", style={"display": "block", "textAlign": "center"})
+            ])
+        
+        config = dashboard_state.app_state.active_model.config
+        default_epochs = max(1, dashboard_state.app_state.active_model.training.target_epochs or 5)
+        latent_version = dashboard_state.app_state.active_model.data.version
+        existing_status = list(dashboard_state.app_state.active_model.training.status_messages)
+        selected_sample = dashboard_state.app_state.active_model.ui.selected_sample
+        labels_version = dashboard_state.app_state.active_model.data.version
+        model_id = dashboard_state.app_state.active_model.model_id
 
     status_initial = existing_status[-3:] if existing_status else ["Ready to train"]
 
@@ -237,7 +247,7 @@ def build_dashboard_layout() -> html.Div:
                                             # Link to Training Hub
                                             dcc.Link(
                                                 "Training Hub →",
-                                                href="/training-hub",
+                                                href=f"/model/{model_id}/training-hub",
                                                 style={
                                                     "display": "block",
                                                     "textAlign": "center",
@@ -655,7 +665,7 @@ def _build_config_section(config, default_epochs: int) -> html.Div:
             html.Div(
                 dcc.Link(
                     "⚙️ Advanced Configuration",
-                    href="/configure-training",
+                    href=f"/model/{model_id}/configure-training",
                     style={
                         "fontSize": "13px",
                         "color": "#C10A27",

@@ -17,7 +17,7 @@ if str(SRC_DIR) not in sys.path:
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from use_cases.dashboard import state as dashboard_state
+from use_cases.dashboard.core import state as dashboard_state
 
 
 def build_training_hub_layout() -> html.Div:
@@ -25,11 +25,19 @@ def build_training_hub_layout() -> html.Div:
     dashboard_state.initialize_model_and_data()
     
     with dashboard_state.state_lock:
-        config = dashboard_state.app_state.config
-        training_state = dashboard_state.app_state.training.state
-        target_epochs = dashboard_state.app_state.training.target_epochs or 10
-        status_messages = list(dashboard_state.app_state.training.status_messages)
-        latent_version = dashboard_state.app_state.data.version
+        # Check if we have an active model
+        if dashboard_state.app_state.active_model is None:
+            return html.Div([
+                html.H3("No Model Loaded", style={"textAlign": "center", "marginTop": "100px"}),
+                html.P("Please select a model from the home page.", style={"textAlign": "center"}),
+                html.A("Go to Home", href="/", style={"display": "block", "textAlign": "center"})
+            ])
+        
+        config = dashboard_state.app_state.active_model.config
+        training_state = dashboard_state.app_state.active_model.training.state
+        target_epochs = dashboard_state.app_state.active_model.training.target_epochs or 10
+        status_messages = list(dashboard_state.app_state.active_model.training.status_messages)
+        latent_version = dashboard_state.app_state.active_model.data.version
     
     # Determine status for hero bar
     if training_state.name == "RUNNING":

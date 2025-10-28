@@ -9,8 +9,8 @@ import dash
 from dash import Dash, Input, Output, State, no_update
 from dash.exceptions import PreventUpdate
 
-from use_cases.dashboard import state as dashboard_state
-from use_cases.dashboard.state import _append_status_message
+from use_cases.dashboard.core import state as dashboard_state
+from use_cases.dashboard.core.state import _append_status_message
 
 
 def register_config_callbacks(app: Dash) -> None:
@@ -128,7 +128,13 @@ def register_config_callbacks(app: Dash) -> None:
 
         # Check for architecture changes
         with dashboard_state.state_lock:
-            current_config = dashboard_state.app_state.config
+            if dashboard_state.app_state.active_model is None:
+                error_msg = dash.html.Div(
+                    "No model loaded",
+                    style={"color": "#C10A27", "fontWeight": "600"},
+                )
+                return no_update, error_msg
+            current_config = dashboard_state.app_state.active_model.config
             architecture_changed = (
                 current_config.encoder_type != encoder_type
                 or current_config.decoder_type != decoder_type
@@ -139,47 +145,54 @@ def register_config_callbacks(app: Dash) -> None:
         # Update dashboard_state.app_state config
         try:
             with dashboard_state.state_lock:
+                if dashboard_state.app_state.active_model is None:
+                    error_msg = dash.html.Div(
+                        "No model loaded",
+                        style={"color": "#C10A27", "fontWeight": "600"},
+                    )
+                    return no_update, error_msg
+                
                 # Update config (mutable for now - optimization for later)
-                dashboard_state.app_state.config.batch_size = int(batch_size)
-                dashboard_state.app_state.config.max_epochs = int(max_epochs)
-                dashboard_state.app_state.config.patience = int(patience)
-                dashboard_state.app_state.config.learning_rate = float(learning_rate)
-                dashboard_state.app_state.config.encoder_type = str(encoder_type)
-                dashboard_state.app_state.config.decoder_type = str(decoder_type)
-                dashboard_state.app_state.config.latent_dim = int(latent_dim)
-                dashboard_state.app_state.config.hidden_dims = hidden_dims_tuple
-                dashboard_state.app_state.config.recon_weight = float(recon_weight)
-                dashboard_state.app_state.config.kl_weight = float(kl_weight)
-                dashboard_state.app_state.config.label_weight = float(label_weight)
-                dashboard_state.app_state.config.weight_decay = float(weight_decay)
-                dashboard_state.app_state.config.dropout_rate = float(dropout_rate)
-                dashboard_state.app_state.config.grad_clip_norm = grad_clip_norm_final
-                dashboard_state.app_state.config.monitor_metric = str(monitor_metric)
-                dashboard_state.app_state.config.use_contrastive = use_contrastive_bool
-                dashboard_state.app_state.config.contrastive_weight = float(contrastive_weight)
+                dashboard_state.app_state.active_model.config.batch_size = int(batch_size)
+                dashboard_state.app_state.active_model.config.max_epochs = int(max_epochs)
+                dashboard_state.app_state.active_model.config.patience = int(patience)
+                dashboard_state.app_state.active_model.config.learning_rate = float(learning_rate)
+                dashboard_state.app_state.active_model.config.encoder_type = str(encoder_type)
+                dashboard_state.app_state.active_model.config.decoder_type = str(decoder_type)
+                dashboard_state.app_state.active_model.config.latent_dim = int(latent_dim)
+                dashboard_state.app_state.active_model.config.hidden_dims = hidden_dims_tuple
+                dashboard_state.app_state.active_model.config.recon_weight = float(recon_weight)
+                dashboard_state.app_state.active_model.config.kl_weight = float(kl_weight)
+                dashboard_state.app_state.active_model.config.label_weight = float(label_weight)
+                dashboard_state.app_state.active_model.config.weight_decay = float(weight_decay)
+                dashboard_state.app_state.active_model.config.dropout_rate = float(dropout_rate)
+                dashboard_state.app_state.active_model.config.grad_clip_norm = grad_clip_norm_final
+                dashboard_state.app_state.active_model.config.monitor_metric = str(monitor_metric)
+                dashboard_state.app_state.active_model.config.use_contrastive = use_contrastive_bool
+                dashboard_state.app_state.active_model.config.contrastive_weight = float(contrastive_weight)
 
                 # Sync to model and trainer configs (for non-architecture params)
-                dashboard_state.app_state.model.config.batch_size = dashboard_state.app_state.config.batch_size
-                dashboard_state.app_state.model.config.learning_rate = dashboard_state.app_state.config.learning_rate
-                dashboard_state.app_state.model.config.recon_weight = dashboard_state.app_state.config.recon_weight
-                dashboard_state.app_state.model.config.kl_weight = dashboard_state.app_state.config.kl_weight
-                dashboard_state.app_state.model.config.label_weight = dashboard_state.app_state.config.label_weight
-                dashboard_state.app_state.model.config.weight_decay = dashboard_state.app_state.config.weight_decay
-                dashboard_state.app_state.model.config.dropout_rate = dashboard_state.app_state.config.dropout_rate
-                dashboard_state.app_state.model.config.grad_clip_norm = dashboard_state.app_state.config.grad_clip_norm
-                dashboard_state.app_state.model.config.use_contrastive = dashboard_state.app_state.config.use_contrastive
-                dashboard_state.app_state.model.config.contrastive_weight = dashboard_state.app_state.config.contrastive_weight
+                dashboard_state.app_state.active_model.model.config.batch_size = dashboard_state.app_state.active_model.config.batch_size
+                dashboard_state.app_state.active_model.model.config.learning_rate = dashboard_state.app_state.active_model.config.learning_rate
+                dashboard_state.app_state.active_model.model.config.recon_weight = dashboard_state.app_state.active_model.config.recon_weight
+                dashboard_state.app_state.active_model.model.config.kl_weight = dashboard_state.app_state.active_model.config.kl_weight
+                dashboard_state.app_state.active_model.model.config.label_weight = dashboard_state.app_state.active_model.config.label_weight
+                dashboard_state.app_state.active_model.model.config.weight_decay = dashboard_state.app_state.active_model.config.weight_decay
+                dashboard_state.app_state.active_model.model.config.dropout_rate = dashboard_state.app_state.active_model.config.dropout_rate
+                dashboard_state.app_state.active_model.model.config.grad_clip_norm = dashboard_state.app_state.active_model.config.grad_clip_norm
+                dashboard_state.app_state.active_model.model.config.use_contrastive = dashboard_state.app_state.active_model.config.use_contrastive
+                dashboard_state.app_state.active_model.model.config.contrastive_weight = dashboard_state.app_state.active_model.config.contrastive_weight
 
-                dashboard_state.app_state.trainer.config.batch_size = dashboard_state.app_state.config.batch_size
-                dashboard_state.app_state.trainer.config.learning_rate = dashboard_state.app_state.config.learning_rate
-                dashboard_state.app_state.trainer.config.recon_weight = dashboard_state.app_state.config.recon_weight
-                dashboard_state.app_state.trainer.config.kl_weight = dashboard_state.app_state.config.kl_weight
-                dashboard_state.app_state.trainer.config.label_weight = dashboard_state.app_state.config.label_weight
-                dashboard_state.app_state.trainer.config.weight_decay = dashboard_state.app_state.config.weight_decay
-                dashboard_state.app_state.trainer.config.dropout_rate = dashboard_state.app_state.config.dropout_rate
-                dashboard_state.app_state.trainer.config.grad_clip_norm = dashboard_state.app_state.config.grad_clip_norm
-                dashboard_state.app_state.trainer.config.use_contrastive = dashboard_state.app_state.config.use_contrastive
-                dashboard_state.app_state.trainer.config.contrastive_weight = dashboard_state.app_state.config.contrastive_weight
+                dashboard_state.app_state.active_model.trainer.config.batch_size = dashboard_state.app_state.active_model.config.batch_size
+                dashboard_state.app_state.active_model.trainer.config.learning_rate = dashboard_state.app_state.active_model.config.learning_rate
+                dashboard_state.app_state.active_model.trainer.config.recon_weight = dashboard_state.app_state.active_model.config.recon_weight
+                dashboard_state.app_state.active_model.trainer.config.kl_weight = dashboard_state.app_state.active_model.config.kl_weight
+                dashboard_state.app_state.active_model.trainer.config.label_weight = dashboard_state.app_state.active_model.config.label_weight
+                dashboard_state.app_state.active_model.trainer.config.weight_decay = dashboard_state.app_state.active_model.config.weight_decay
+                dashboard_state.app_state.active_model.trainer.config.dropout_rate = dashboard_state.app_state.active_model.config.dropout_rate
+                dashboard_state.app_state.active_model.trainer.config.grad_clip_norm = dashboard_state.app_state.active_model.config.grad_clip_norm
+                dashboard_state.app_state.active_model.trainer.config.use_contrastive = dashboard_state.app_state.active_model.config.use_contrastive
+                dashboard_state.app_state.active_model.trainer.config.contrastive_weight = dashboard_state.app_state.active_model.config.contrastive_weight
 
             if architecture_changed:
                 _append_status_message(
