@@ -152,6 +152,7 @@ class CommandDispatcher:
 # ============================================================================
 
 import numpy as np
+import pandas as pd
 
 
 @dataclass
@@ -275,11 +276,6 @@ class StartTrainingCommand(Command):
         if self.num_epochs < 1 or self.num_epochs > 200:
             return f"Epochs must be between 1 and 200, got {self.num_epochs}"
         
-        # Check has labeled samples
-        labeled_count = int(np.sum(~np.isnan(state.active_model.data.labels)))
-        if labeled_count == 0:
-            return "No labeled samples available for training"
-        
         # Validate hyperparameters
         if self.recon_weight < 0:
             return "Reconstruction weight must be non-negative"
@@ -294,6 +290,13 @@ class StartTrainingCommand(Command):
         """Queue training with updated config."""
         if state.active_model is None:
             return state, "No model loaded"
+        
+        labeled_count = int(np.sum(~np.isnan(state.active_model.data.labels)))
+        if labeled_count == 0:
+            logger.warning(
+                "Starting training with zero labeled samples for model %s",
+                state.active_model.model_id,
+            )
         
         # Update config (mutable for now - configs remain mutable)
         state.active_model.config.recon_weight = float(self.recon_weight)
@@ -321,7 +324,16 @@ class StartTrainingCommand(Command):
         # Update app state
         new_state = state.with_active_model(updated_model)
         
-        message = f"Queued training for {self.num_epochs} epoch(s)"
+        if labeled_count == 0:
+            message = (
+                f"Queued training for {self.num_epochs} epoch(s). "
+                "Warning: 0 labeled samples; supervised loss will be skipped."
+            )
+        else:
+            message = (
+                f"Queued training for {self.num_epochs} epoch(s) "
+                f"with {labeled_count:,} labeled sample(s)."
+            )
         return new_state, message
 
 

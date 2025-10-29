@@ -5,6 +5,7 @@ import dash_bootstrap_components as dbc
 import numpy as np
 
 from use_cases.dashboard.core import state as dashboard_state
+from use_cases.dashboard.core.model_manager import ModelManager
 
 
 def build_dashboard_layout() -> html.Div:
@@ -30,6 +31,11 @@ def build_dashboard_layout() -> html.Div:
         model_id = dashboard_state.app_state.active_model.model_id
 
     status_initial = existing_status[-3:] if existing_status else ["Ready to train"]
+    checkpoint_path = ModelManager.checkpoint_path(model_id)
+    try:
+        checkpoint_display = str(checkpoint_path.relative_to(dashboard_state.ROOT_DIR))
+    except ValueError:
+        checkpoint_display = str(checkpoint_path)
 
     return html.Div(
         [
@@ -56,7 +62,7 @@ def build_dashboard_layout() -> html.Div:
                                 "fontFamily": "'Open Sans', Verdana, sans-serif",
                             }),
                             html.Div(
-                                "⚠️ This will overwrite the current checkpoint at ssvae.ckpt",
+                                f"⚠️ This will overwrite the current checkpoint at {checkpoint_display}",
                                 style={
                                     "marginTop": "16px",
                                     "padding": "12px",

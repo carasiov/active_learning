@@ -608,6 +608,7 @@ def register_training_hub_callbacks(app: Dash) -> None:
                     )
                     dashboard_state.app_state = dashboard_state.app_state.with_active_model(updated_model)
             worker.start()
+            _append_status_message(message)
         except Exception as exc:
             with dashboard_state.state_lock:
                 if dashboard_state.app_state.active_model:
@@ -690,7 +691,8 @@ def register_training_hub_callbacks(app: Dash) -> None:
                     parts.append(f"val {float(val_loss):.4f}")
                 _append_status_message(" | ".join(parts))
             elif msg_type == "training_complete":
-                _append_status_message("Training complete.")
+                # TrainingStatus already includes a completion message
+                pass
             elif msg_type == "training_stopped":
                 _append_status_message(message.get("message", "Training stopped."))
             elif msg_type == "latent_updated":
@@ -701,8 +703,13 @@ def register_training_hub_callbacks(app: Dash) -> None:
         with dashboard_state.state_lock:
             if dashboard_state.app_state.active_model:
                 active = dashboard_state.app_state.active_model.training.is_active()
+                state_latent_version = int(dashboard_state.app_state.active_model.data.version)
             else:
                 active = False
+                state_latent_version = int(latent_version)
+
+        # Ensure hub picks up latent updates even if another poll drained the queue
+        latent_version = max(int(latent_version), state_latent_version)
 
         controls_disabled = bool(active)
         controls_changed = (

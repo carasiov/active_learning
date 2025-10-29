@@ -346,6 +346,7 @@ def register_training_callbacks(app: Dash) -> None:
                     # Keep state as RUNNING (set by StartTrainingCommand)
                     dashboard_state.app_state = dashboard_state.app_state.with_active_model(updated_model)
             worker.start()
+            _append_status_message(message)
         except Exception as exc:
             with dashboard_state.state_lock:
                 if dashboard_state.app_state.active_model:
@@ -402,7 +403,8 @@ def register_training_callbacks(app: Dash) -> None:
                     parts.append(f"val {float(val_loss):.4f}")
                 _append_status_message(" | ".join(parts))
             elif msg_type == "training_complete":
-                _append_status_message("Training complete.")
+                # CompleteTrainingCommand already logged this in TrainingStatus
+                pass
             elif msg_type == "latent_updated":
                 latent_version = max(latent_version, int(message.get("version", latent_version + 1)))
             elif msg_type == "error":
@@ -412,9 +414,14 @@ def register_training_callbacks(app: Dash) -> None:
             if dashboard_state.app_state.active_model:
                 active = dashboard_state.app_state.active_model.training.is_active()
                 status_messages = list(dashboard_state.app_state.active_model.training.status_messages)
+                state_latent_version = int(dashboard_state.app_state.active_model.data.version)
             else:
                 active = False
                 status_messages = ["No model loaded"]
+                state_latent_version = int(latent_version)
+
+        # Ensure we pick up latent updates even if another poll drained the queue
+        latent_version = max(int(latent_version), state_latent_version)
 
         latest_messages = tuple(str(msg) for msg in status_messages[-MAX_STATUS_MESSAGES:])
         status_changed = (

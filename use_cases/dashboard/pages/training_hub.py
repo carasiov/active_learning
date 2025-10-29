@@ -18,6 +18,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from use_cases.dashboard.core import state as dashboard_state
+from use_cases.dashboard.core.model_manager import ModelManager
 
 
 def build_training_hub_layout() -> html.Div:
@@ -38,6 +39,7 @@ def build_training_hub_layout() -> html.Div:
         target_epochs = dashboard_state.app_state.active_model.training.target_epochs or 10
         status_messages = list(dashboard_state.app_state.active_model.training.status_messages)
         latent_version = dashboard_state.app_state.active_model.data.version
+        model_id = dashboard_state.app_state.active_model.model_id
     
     # Determine status for hero bar
     if training_state.name == "RUNNING":
@@ -53,6 +55,12 @@ def build_training_hub_layout() -> html.Div:
         status_color = "#6F6F6F"  # Gray
         status_text = "IDLE"
     
+    checkpoint_path = ModelManager.checkpoint_path(model_id)
+    try:
+        checkpoint_display = str(checkpoint_path.relative_to(ROOT_DIR))
+    except ValueError:
+        checkpoint_display = str(checkpoint_path)
+
     return html.Div(
         [
             # Hidden stores and intervals - use session storage to persist across navigation
@@ -73,7 +81,7 @@ def build_training_hub_layout() -> html.Div:
                                 "fontFamily": "'Open Sans', Verdana, sans-serif",
                             }),
                             html.Div(
-                                "⚠️ This will overwrite the current checkpoint at ssvae.ckpt",
+                                f"⚠️ This will overwrite the current checkpoint at {checkpoint_display}",
                                 style={
                                     "marginTop": "16px",
                                     "padding": "12px",

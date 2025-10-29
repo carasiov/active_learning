@@ -86,6 +86,15 @@ def build_home_layout() -> html.Div:
                 style={"padding": "24px 48px", "backgroundColor": "#f5f5f5"},
             ),
             
+            # Delete feedback placeholder
+            html.Div(
+                id="home-delete-feedback",
+                style={
+                    "padding": "0 48px",
+                    "backgroundColor": "#fafafa",
+                },
+            ),
+            
             # Model grid
             html.Div(
                 model_cards,
@@ -190,6 +199,15 @@ def _build_empty_state() -> html.Div:
                 style={
                     "textAlign": "center",
                     "padding": "120px 48px",
+                    "backgroundColor": "#fafafa",
+                },
+            ),
+            
+            # Delete feedback placeholder (keeps callbacks happy)
+            html.Div(
+                id="home-delete-feedback",
+                style={
+                    "padding": "0 48px",
                     "backgroundColor": "#fafafa",
                 },
             ),

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dash import Dash, Input, Output, State, ALL, html, no_update
 from dash.exceptions import PreventUpdate
 import dash
+import dash_bootstrap_components as dbc
 
 from use_cases.dashboard.core import state as dashboard_state
 from use_cases.dashboard.core.commands import CreateModelCommand, LoadModelCommand, DeleteModelCommand
@@ -34,9 +35,15 @@ def register_home_callbacks(app: Dash) -> None:
         triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
         
         if triggered_id == "home-new-model-btn":
+            # Open modal and reset inputs
             return True, "", "default"
-        elif triggered_id in ["home-confirm-create", "home-cancel-create"]:
+        elif triggered_id == "home-cancel-create":
+            # Explicit cancel closes modal
             return False, "", "default"
+        elif triggered_id == "home-confirm-create":
+            # Keep modal open; create callback will navigate on success
+            # or show feedback on failure
+            return is_open, "", "default"
         
         raise PreventUpdate
     
@@ -114,6 +121,7 @@ def register_home_callbacks(app: Dash) -> None:
     
     @app.callback(
         Output("url", "pathname", allow_duplicate=True),
+        Output("home-delete-feedback", "children"),
         Input({"type": "home-delete-model", "model_id": ALL}, "n_clicks"),
         prevent_initial_call=True,
     )
@@ -140,8 +148,15 @@ def register_home_callbacks(app: Dash) -> None:
         
         if not success:
             # Don't navigate on failure
-            raise PreventUpdate
+            feedback = dbc.Alert(
+                message,
+                color="warning",
+                dismissable=True,
+                is_open=True,
+                style={"marginBottom": "16px"},
+            )
+            return no_update, feedback
         
         # Force page reload - navigate away and back to force refresh
         # Dash doesn't re-render if we're already on the same path
-        return "/?refresh=1"
+        return "/?refresh=1", ""
