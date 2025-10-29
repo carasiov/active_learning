@@ -318,16 +318,20 @@ def create_app() -> Dash:
                 else:
                     return build_home_layout(), {}
             
+            # Include model context in config payload for downstream callbacks
+            config_payload = dict(config_dict)
+            config_payload["_model_id"] = model_id
+            
             # Route to sub-page
             if sub_path == '/training-hub':
                 print(f"[ROUTING] Routing to training hub")
-                return build_training_hub_layout(), config_dict
+                return build_training_hub_layout(), config_payload
             elif sub_path == '/configure-training':
                 print(f"[ROUTING] Routing to config page")
-                return build_training_config_page(), config_dict
+                return build_training_config_page(model_id=model_id), config_payload
             else:  # Default to main dashboard
                 print(f"[ROUTING] Routing to main dashboard")
-                return build_dashboard_layout(), config_dict
+                return build_dashboard_layout(), config_payload
         
         # Fallback to home
         return build_home_layout(), {}

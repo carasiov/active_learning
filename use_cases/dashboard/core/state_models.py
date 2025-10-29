@@ -311,6 +311,10 @@ class ModelState:
         """Replace entire history."""
         return replace(self, history=new_history)
     
+    def with_config(self, config: SSVAEConfig) -> ModelState:
+        """Replace configuration snapshot."""
+        return replace(self, config=config)
+    
     # Domain-specific updates
     
     def with_label_update(

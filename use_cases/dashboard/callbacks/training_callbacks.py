@@ -195,24 +195,18 @@ def register_training_callbacks(app: Dash) -> None:
         is_open: bool,
         num_epochs: Optional[float],
     ) -> Tuple[bool, object]:
-        print(f"[DEBUG] toggle_modal called: start={start_clicks}, confirm={confirm_clicks}, cancel={cancel_clicks}, is_open={is_open}, epochs={num_epochs}")
-        
         ctx = dash.callback_context
         if not ctx.triggered:
-            print("[DEBUG] No trigger, raising PreventUpdate")
             raise PreventUpdate
         
         triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
-        print(f"[DEBUG] triggered_id: {triggered_id}")
         
         # Cancel button closes modal
         if triggered_id == "modal-cancel-button":
-            print("[DEBUG] Cancel button pressed")
             return False, no_update
         
         # Start button opens modal with training info
         if triggered_id == "start-training-button":
-            print(f"[DEBUG] Start button pressed, epochs={num_epochs}")
             _append_status_message(f"Train button clicked. Epochs: {num_epochs}")
             if num_epochs is None:
                 _append_status_message("Please specify the number of epochs before starting training.")
@@ -282,40 +276,31 @@ def register_training_callbacks(app: Dash) -> None:
         num_epochs: Optional[float],
         control_store: Optional[Dict[str, int]],
     ) -> object:
-        print(f"[DEBUG] handle_training_confirmation called: confirm_clicks={confirm_clicks}, epochs={num_epochs}")
-
         if not confirm_clicks:
-            print("[DEBUG] No confirm clicks, raising PreventUpdate")
             raise PreventUpdate
 
         # Basic input validation
         if num_epochs is None:
-            print("[DEBUG] No epochs specified")
             _append_status_message("Please specify the number of epochs before starting training.")
             return dash.no_update
 
         try:
             epochs = int(num_epochs)
         except (TypeError, ValueError):
-            print("[DEBUG] Invalid epochs value")
             _append_status_message("Epochs must be a whole number between 1 and 200.")
             return dash.no_update
 
         epochs = max(1, min(epochs, 200))
-        print(f"[DEBUG] Validated epochs: {epochs}")
 
         # Get current config from state
         with dashboard_state.state_lock:
             if dashboard_state.app_state.active_model is None:
-                print("[DEBUG] No active model")
                 _append_status_message("No model loaded")
                 return dash.no_update
             config = dashboard_state.app_state.active_model.config
             recon_weight = float(config.recon_weight)
             kl_weight = float(config.kl_weight)
             learning_rate = float(config.learning_rate)
-
-        print(f"[DEBUG] Config: recon={recon_weight}, kl={kl_weight}, lr={learning_rate}")
 
         # Create and execute command
         command = StartTrainingCommand(
@@ -325,17 +310,13 @@ def register_training_callbacks(app: Dash) -> None:
             learning_rate=learning_rate
         )
 
-        print("[DEBUG] Executing StartTrainingCommand")
         success, message = dashboard_state.dispatcher.execute(command)
-        print(f"[DEBUG] Command result: success={success}, message={message}")
 
         if not success:
             _append_status_message(message)
             return dash.no_update
 
-        print("[DEBUG] Starting training worker thread")
         try:
-            print(f"[TRAINING DEBUG] Starting worker thread for {epochs} epochs")
             _clear_metrics_queue()
             worker = threading.Thread(target=train_worker, args=(epochs,), daemon=True)
             with dashboard_state.state_lock:

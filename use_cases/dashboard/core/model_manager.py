@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from pathlib import Path
 from typing import Optional, Dict, Any
 import json
 
 from use_cases.dashboard.core.state_models import ModelMetadata, TrainingHistory
+from ssvae import SSVAEConfig
 
 MODELS_DIR = Path(__file__).resolve().parents[2] / "artifacts" / "models"
 
@@ -116,6 +118,36 @@ class ModelManager:
     def labels_path(model_id: str) -> Path:
         """Get labels CSV path for model."""
         return ModelManager.model_dir(model_id) / "labels.csv"
+    
+    @staticmethod
+    def config_path(model_id: str) -> Path:
+        """Get configuration file path for model."""
+        return ModelManager.model_dir(model_id) / "config.json"
+    
+    @staticmethod
+    def save_config(model_id: str, config: SSVAEConfig) -> None:
+        """Persist model configuration to config.json."""
+        path = ModelManager.config_path(model_id)
+        data = asdict(config)
+        # Convert tuples to lists for JSON compatibility
+        if isinstance(data.get("hidden_dims"), tuple):
+            data["hidden_dims"] = list(data["hidden_dims"])
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+    
+    @staticmethod
+    def load_config(model_id: str) -> Optional[SSVAEConfig]:
+        """Load model configuration from disk."""
+        path = ModelManager.config_path(model_id)
+        if not path.exists():
+            return None
+        with open(path, "r") as f:
+            data = json.load(f)
+        # Normalize list fields back to tuples
+        hidden_dims = data.get("hidden_dims")
+        if hidden_dims is not None and not isinstance(hidden_dims, tuple):
+            data["hidden_dims"] = tuple(int(dim) for dim in hidden_dims)
+        return SSVAEConfig(**data)
     
     @staticmethod
     def list_all_models() -> Dict[str, ModelMetadata]:

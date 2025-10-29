@@ -664,14 +664,17 @@ def _build_stats_section() -> html.Div:
     )
 
 
-def _build_config_section(config, default_epochs: int) -> html.Div:
+def _build_config_section(config, default_epochs: int, model_id: str | None = None) -> html.Div:
+    advanced_config_href = (
+        f"/model/{model_id}/configure-training" if model_id else "/configure-training"
+    )
     return html.Div(
         [
             # Link to advanced configuration page
             html.Div(
                 dcc.Link(
                     "⚙️ Advanced Configuration",
-                    href=f"/model/{model_id}/configure-training",
+                    href=advanced_config_href,
                     style={
                         "fontSize": "13px",
                         "color": "#C10A27",

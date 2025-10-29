@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Tuple
 import threading
 
 from use_cases.dashboard.core.state_models import AppState
@@ -483,6 +483,204 @@ class StopTrainingCommand(Command):
         return new_state, "Training stop requested"
 
 
+@dataclass
+class UpdateModelConfigCommand(Command):
+    """Update model configuration and persist changes to disk."""
+    batch_size: Optional[int]
+    max_epochs: Optional[int]
+    patience: Optional[int]
+    learning_rate: Optional[float]
+    encoder_type: Optional[str]
+    decoder_type: Optional[str]
+    latent_dim: Optional[int]
+    hidden_dims: Optional[str]
+    recon_weight: Optional[float]
+    kl_weight: Optional[float]
+    label_weight: Optional[float]
+    weight_decay: Optional[float]
+    dropout_rate: Optional[float]
+    grad_clip_norm: Optional[float]
+    monitor_metric: Optional[str]
+    use_contrastive: List[object]
+    contrastive_weight: Optional[float]
+    
+    _normalized: Dict[str, object] = field(init=False, default_factory=dict)
+    
+    def validate(self, state: AppState) -> Optional[str]:
+        """Validate configuration parameters."""
+        if state.active_model is None:
+            return "No model loaded"
+        
+        errors: List[str] = []
+        
+        def _int_in_range(value, name: str, minimum: int, maximum: int) -> Optional[int]:
+            try:
+                converted = int(value)
+            except (TypeError, ValueError):
+                errors.append(f"{name} must be between {minimum} and {maximum}")
+                return None
+            if converted < minimum or converted > maximum:
+                errors.append(f"{name} must be between {minimum} and {maximum}")
+                return None
+            return converted
+        
+        def _float_in_range(value, name: str, minimum: float, maximum: float | None = None) -> Optional[float]:
+            try:
+                converted = float(value)
+            except (TypeError, ValueError):
+                errors.append(f"{name} must be a number")
+                return None
+            if converted < minimum or (maximum is not None and converted > maximum):
+                max_clause = f" and at most {maximum}" if maximum is not None else ""
+                errors.append(f"{name} must be at least {minimum}{max_clause}")
+                return None
+            return converted
+        
+        batch_size = _int_in_range(self.batch_size, "Batch size", 32, 2048)
+        max_epochs = _int_in_range(self.max_epochs, "Max epochs", 1, 500)
+        patience = _int_in_range(self.patience, "Patience", 1, 100)
+        latent_dim = _int_in_range(self.latent_dim, "Latent dimension", 2, 512)
+        
+        learning_rate = _float_in_range(self.learning_rate, "Learning rate", 1e-5, 1e-1)
+        recon_weight = _float_in_range(self.recon_weight, "Reconstruction weight", 0.0)
+        kl_weight = _float_in_range(self.kl_weight, "KL weight", 0.0, 10.0)
+        label_weight = _float_in_range(self.label_weight, "Label weight", 0.0)
+        weight_decay = _float_in_range(self.weight_decay, "Weight decay", 0.0)
+        dropout_rate = _float_in_range(self.dropout_rate, "Dropout rate", 0.0, 0.5)
+        contrastive_weight = _float_in_range(self.contrastive_weight, "Contrastive weight", 0.0)
+        
+        if self.encoder_type not in {"dense", "conv"}:
+            errors.append("Encoder type must be 'dense' or 'conv'")
+        if self.decoder_type not in {"dense", "conv"}:
+            errors.append("Decoder type must be 'dense' or 'conv'")
+        if self.monitor_metric not in {"loss", "classification_loss"}:
+            errors.append("Monitor metric must be 'loss' or 'classification_loss'")
+        
+        hidden_dims_tuple: Optional[Tuple[int, ...]] = None
+        hidden_dims_str = self.hidden_dims or ""
+        if not hidden_dims_str.strip():
+            errors.append("Hidden dimensions must be specified")
+        else:
+            try:
+                dims = [int(part.strip()) for part in hidden_dims_str.split(",") if part.strip()]
+            except ValueError:
+                dims = []
+            if not dims or any(dim <= 0 for dim in dims):
+                errors.append("Hidden dimensions must be positive integers (e.g., '256,128,64')")
+            else:
+                hidden_dims_tuple = tuple(dims)
+        
+        grad_clip_norm_value: Optional[float]
+        if self.grad_clip_norm is None:
+            grad_clip_norm_value = None
+        else:
+            norm_value = _float_in_range(self.grad_clip_norm, "Gradient clip norm", 0.0)
+            if norm_value is None:
+                grad_clip_norm_value = None
+            elif norm_value == 0.0:
+                grad_clip_norm_value = None
+            else:
+                grad_clip_norm_value = norm_value
+        
+        use_contrastive_bool = bool(self.use_contrastive)
+        
+        if errors:
+            return "; ".join(errors)
+        
+        self._normalized = {
+            "batch_size": batch_size,
+            "max_epochs": max_epochs,
+            "patience": patience,
+            "learning_rate": learning_rate,
+            "encoder_type": self.encoder_type,
+            "decoder_type": self.decoder_type,
+            "latent_dim": latent_dim,
+            "hidden_dims": hidden_dims_tuple,
+            "recon_weight": recon_weight,
+            "kl_weight": kl_weight,
+            "label_weight": label_weight,
+            "weight_decay": weight_decay,
+            "dropout_rate": dropout_rate,
+            "grad_clip_norm": grad_clip_norm_value,
+            "monitor_metric": self.monitor_metric,
+            "use_contrastive": use_contrastive_bool,
+            "contrastive_weight": contrastive_weight,
+        }
+        return None
+    
+    def execute(self, state: AppState) -> Tuple[AppState, str]:
+        """Apply configuration update and persist it."""
+        if state.active_model is None:
+            return state, "No model loaded"
+        if not self._normalized:
+            # Should not happen if dispatcher calls validate first.
+            error = self.validate(state)
+            if error:
+                return state, error
+        
+        from dataclasses import replace as dc_replace
+        from datetime import datetime
+        from use_cases.dashboard.core.model_manager import ModelManager
+        
+        normalized = self._normalized
+        current_model = state.active_model
+        current_config = current_model.config
+        
+        new_config = dc_replace(
+            current_config,
+            batch_size=normalized["batch_size"],
+            max_epochs=normalized["max_epochs"],
+            patience=normalized["patience"],
+            learning_rate=normalized["learning_rate"],
+            encoder_type=normalized["encoder_type"],
+            decoder_type=normalized["decoder_type"],
+            latent_dim=normalized["latent_dim"],
+            hidden_dims=normalized["hidden_dims"],
+            recon_weight=normalized["recon_weight"],
+            kl_weight=normalized["kl_weight"],
+            label_weight=normalized["label_weight"],
+            weight_decay=normalized["weight_decay"],
+            dropout_rate=normalized["dropout_rate"],
+            grad_clip_norm=normalized["grad_clip_norm"],
+            monitor_metric=normalized["monitor_metric"],
+            use_contrastive=normalized["use_contrastive"],
+            contrastive_weight=normalized["contrastive_weight"],
+        )
+        
+        architecture_changed = any([
+            current_config.encoder_type != new_config.encoder_type,
+            current_config.decoder_type != new_config.decoder_type,
+            current_config.latent_dim != new_config.latent_dim,
+            current_config.hidden_dims != new_config.hidden_dims,
+        ])
+        
+        # Update live objects
+        model = current_model.model
+        trainer = current_model.trainer
+        model.config = new_config
+        trainer.config = new_config
+        if hasattr(trainer, "_trainer"):
+            trainer._trainer.config = new_config  # type: ignore[attr-defined]
+        
+        updated_model = current_model.with_config(new_config)
+        updated_model = updated_model.with_updated_metadata(
+            last_modified=datetime.utcnow().isoformat()
+        )
+        
+        # Persist changes
+        ModelManager.save_config(current_model.model_id, new_config)
+        ModelManager.save_metadata(updated_model.metadata)
+        
+        new_state = state.with_active_model(updated_model)
+        if architecture_changed:
+            message = (
+                "Configuration saved. Architecture changes require restarting the dashboard."
+            )
+        else:
+            message = "Configuration updated successfully."
+        return new_state, message
+
+
 # ============================================================================
 # Model Management Commands (Multi-Model Support)
 # ============================================================================
@@ -563,6 +761,7 @@ class CreateModelCommand(Command):
         ModelManager.save_metadata(metadata)
         from use_cases.dashboard.core.state_models import TrainingHistory
         ModelManager.save_history(model_id, TrainingHistory.empty())
+        ModelManager.save_config(model_id, config)
         
         # Note: Don't save model weights yet - they'll be saved after first training
         # The model directory and metadata are created, that's enough for now
@@ -602,7 +801,7 @@ class LoadModelCommand(Command):
         # Load model components (we're already inside state_lock from dispatcher)
         from use_cases.dashboard.core.model_manager import ModelManager
         from use_cases.dashboard.core.state_models import (
-            ModelState, DataState, TrainingStatus, TrainingState, UIState
+            ModelState, DataState, TrainingStatus, TrainingState, UIState, SSVAEConfig
         )
         from use_cases.dashboard.utils.visualization import _build_hover_metadata
         from data.mnist.mnist import load_train_images_for_ssvae, load_mnist_splits
@@ -617,7 +816,7 @@ class LoadModelCommand(Command):
             raise ValueError(f"Model {self.model_id} not found")
         
         # Load config
-        config = SSVAEConfig()
+        config = ModelManager.load_config(self.model_id) or SSVAEConfig()
         
         # Load model
         model = SSVAE(input_dim=(28, 28), config=config)

@@ -169,7 +169,7 @@ def build_training_hub_layout() -> html.Div:
                         html.Div(
                             dcc.Link(
                                 "← Back to Latent Viewer",
-                                href="/",
+                                href=f"/model/{model_id}",
                                 style={
                                     "fontSize": "14px",
                                     "color": "#45717A",
@@ -455,7 +455,7 @@ def build_training_hub_layout() -> html.Div:
                                     # Link to Advanced Config
                                     dcc.Link(
                                         "Model Architecture & Advanced Settings →",
-                                        href="/configure-training",
+                                        href=f"/model/{model_id}/configure-training",
                                         style={
                                             "display": "block",
                                             "textAlign": "center",
