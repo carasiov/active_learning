@@ -1,17 +1,28 @@
 Active Learning – Semi-Supervised VAE (JAX/Flax)
 ================================================
 
-This repository delivers a modular Semi-Supervised Variational Autoencoder (SSVAE) built on JAX, Flax, and Optax. It demonstrates how to learn useful latent structure from predominantly unlabeled data and fine-tune a classifier with only a handful of labels. 
+This repository delivers a modular Semi-Supervised Variational Autoencoder (SSVAE) built on JAX, Flax, and Optax. It demonstrates how to learn useful latent structure from predominantly unlabeled data and fine-tune a classifier with only a handful of labels.
 
-Highlights
----------
+## Quick Start
+
+Launch the interactive dashboard to explore, label, train, and evaluate:
+
+```bash
+poetry run python use_cases/dashboard/app.py
+```
+
+Open http://localhost:8050 to access the full active learning workflow in one unified interface.
+
+See the [Dashboard README](use_cases/dashboard/README.md) for detailed features and usage.
+
+## Architecture Highlights
+
 - **Canonical JAX/Flax implementation:** `src/ssvae/` exposes the public API.
 - **Composable architecture:** encoder/decoder/classifier components live under `src/ssvae/components/`, enabling easy swaps via config.
 - **Modular observability:** `src/callbacks/` provides training callbacks for console logging, CSV export, and loss plotting.
 - **Runtime helpers:** `src/utils/` centralizes cross-cutting utilities such as JAX device detection.
 - **Pure training loop:** `src/training/` houses loss functions, the trainer, train state wrapper, and an interactive trainer for incremental labeling sessions.
-- **Use-case bundles:** CLI entry points under `use_cases/scripts/` feed generated outputs into `artifacts/` (checkpoints, run histories, showcase figures).
-- **End-to-end showcase notebook:** `use_cases/notebooks/showcase_ssvae.ipynb` walks through the three stages of semi-supervised learning.
+- **Interactive dashboard:** `use_cases/dashboard/` provides a web-based interface for the complete active learning cycle—replacing scattered scripts with a unified UI.
 
 
 
@@ -64,16 +75,25 @@ poetry run python use_cases/scripts/train.py
 ```
 
 
-Configuration
--------------
+## Usage
 
-`src/ssvae/config.py` defines `SSVAEConfig`, covering:
+### Interactive Dashboard (Recommended)
 
-- Architecture: `latent_dim`, `hidden_dims`, `encoder_type`, `decoder_type`, `classifier_type`.
-- Loss weights: `recon_weight`, `kl_weight`, `label_weight`, optional `use_contrastive`, `contrastive_weight`.
-- Training: `batch_size`, `learning_rate`, `max_epochs`, `patience`,  `grad_clip_norm`, `weight_decay`.
+The dashboard provides a complete active learning interface:
 
-Example:
+- **Visualize:** Explore 60k-point latent space with interactive WebGL scatter plots
+- **Label:** Click uncertain samples and label them with keyboard shortcuts (0-9)
+- **Configure:** Adjust 17+ hyperparameters through the advanced configuration UI
+- **Train:** Launch background training with real-time progress monitoring
+- **Evaluate:** Track loss curves and metrics as training progresses
+
+All training happens inside the dashboard—no need to touch the terminal for the label→train→evaluate cycle.
+
+See the [Dashboard README](use_cases/dashboard/README.md) for detailed features, architecture, and troubleshooting.
+
+### Programmatic API
+
+For custom workflows or integration into other tools:
 
 ```python
 from ssvae import SSVAE, SSVAEConfig
@@ -83,82 +103,42 @@ config = SSVAEConfig(
     hidden_dims=(256, 128, 64, 32),
     max_epochs=75,
     patience=10,
+    learning_rate=1e-3,
 )
 vae = SSVAE(input_dim=(28, 28), config=config)
 ```
 
-The refactored training loop honors `patience` and checkpoint paths exactly once per improvement, ensuring weight formats stay consistent.
+Configuration options in `src/ssvae/config.py`:
 
+- **Architecture:** `latent_dim`, `hidden_dims`, `encoder_type`, `decoder_type`, `classifier_type`
+- **Loss weights:** `recon_weight`, `kl_weight`, `label_weight`, `use_contrastive`, `contrastive_weight`
+- **Training:** `batch_size`, `learning_rate`, `max_epochs`, `patience`, `grad_clip_norm`, `weight_decay`
 
----
+### CLI Scripts (Advanced)
 
-Training & Inference Scripts
-----------------------------
+Command-line tools for batch processing and automation are available in `use_cases/scripts/`:
 
-### 1. Prepare Labels
-
-Labels live in `data/mnist/labels.csv` with columns `Serial` and `label`. Unlabeled data can either be absent or marked as NaN. The interactive viewer updates this CSV directly.
-
-### 2. Train
-
+**Train:**
 ```bash
 poetry run python use_cases/scripts/train.py \
   --labels data/mnist/labels.csv \
   --weights artifacts/checkpoints/ssvae.ckpt
 ```
 
-- Preprocessing: `MinMaxScaler` followed by binarization (`> 0.5 -> 1.0`).
-- Outputs (saved alongside the `--weights` path):
-  - Checkpoint: `artifacts/checkpoints/ssvae.ckpt` (Flax serialization of params/opt state/step).
-  - History CSV: `artifacts/checkpoints/ssvae_history.csv`.
-  - Training plot: `artifacts/checkpoints/ssvae_loss.png`.
-
-### 3. Inference
-
+**Inference:**
 ```bash
 poetry run python use_cases/scripts/infer.py \
   --weights artifacts/checkpoints/ssvae.ckpt \
   --output data/output_latent.npz \
-  --split train  # or test
+  --split train
 ```
 
-`data/output_latent.npz` (consumed by the viewer) contains:
-
-- `input` – normalized/binarized images.
-- `latent` – 2D latent means.
-- `tsne` – currently identical to `latent` (placeholder for future t-SNE).
-- `reconstruted` – reconstructed images.
-- `labels` – true MNIST digits.
-- `pred_classes`, `pred_certainty` – classifier predictions and confidences.
-
-### 4. Interactive Viewer
-
+**Legacy Interactive Viewer:**
 ```bash
 poetry run python use_cases/scripts/view_latent.py
 ```
 
-Features:
-
-- Scatter plot of the latent space.
-- Click to select a point; view original and reconstruction.
-- Press `0`–`9` to label, `d` to remove label.
-- Color by user labels, predicted classes, true classes, or certainty.
-- Updates `data/mnist/labels.csv` immediately.
-
-### 5. Incremental Training (Optional)
-
-`training/interactive_trainer.py` supports label–train cycles without reinitializing optimizers:
-
-```python
-from training.interactive_trainer import InteractiveTrainer
-trainer = InteractiveTrainer(vae)
-history = trainer.train_epochs(num_epochs=10, data=x_train, labels=labels)
-latent = trainer.get_latent_space(x_train)
-```
-
-This is ideal for dashboards or manual labeling sessions where you add labels iteratively.
-
-When you need custom observability (e.g., streaming to dashboards), pass a list of callbacks to `InteractiveTrainer` or directly to `Trainer.train()`. The default stack (console logging + CSV + plotting) is built in `SSVAE._build_callbacks`.
+Labels are stored in `data/mnist/labels.csv` (columns: `Serial`, `label`). Both the dashboard and CLI scripts share this format, so you can switch between them without migration.
 
 ---
 
