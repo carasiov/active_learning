@@ -92,6 +92,12 @@ def register_labeling_callbacks(app: Dash) -> None:
         ctx = dash.callback_context
         if not ctx.triggered:
             raise PreventUpdate
+        
+        # Check if this was an actual click (not initial render)
+        triggered_value = ctx.triggered[0]["value"]
+        if triggered_value is None or triggered_value == 0:
+            raise PreventUpdate
+        
         triggered_id = ctx.triggered_id
         
         # Determine command based on trigger

@@ -797,6 +797,49 @@ style={
 
 **Why it matters**: Visual consistency makes the dashboard look professional and helps users build mental models.
 
+### Pitfall 6: Pattern-Matching Callbacks Without Value Checks
+
+When using Dash's pattern-matching callbacks with `ALL` and `n_clicks`, callbacks trigger on initial render with values of `0` or `None`.
+
+```python
+# WRONG - triggers on page load with n_clicks=[0, 0, 0]
+@app.callback(
+    Output("result", "children"),
+    Input({"type": "delete-btn", "id": ALL}, "n_clicks"),
+    prevent_initial_call=True
+)
+def handle_delete(n_clicks_list):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+    # This executes even on initial render! 🐛
+    triggered_id = ctx.triggered[0]["prop_id"]
+    # ... delete logic ...
+
+# RIGHT - check if actual click occurred
+@app.callback(
+    Output("result", "children"),
+    Input({"type": "delete-btn", "id": ALL}, "n_clicks"),
+    prevent_initial_call=True
+)
+def handle_delete(n_clicks_list):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+    
+    # Check if this was an actual click (not initial render)
+    triggered_value = ctx.triggered[0]["value"]
+    if triggered_value is None or triggered_value == 0:
+        raise PreventUpdate  # Ignore initial render
+    
+    triggered_id = ctx.triggered[0]["prop_id"]
+    # ... safe to proceed with delete logic ...
+```
+
+**Why it matters**: Without the value check, callbacks execute on page load, potentially triggering unintended actions like deletions or state changes. This was the source of a critical bug where models were being deleted unexpectedly.
+
+**Rule of thumb**: Always check `ctx.triggered[0]["value"]` in pattern-matching callbacks with `n_clicks` to distinguish actual user clicks from initial component renders.
+
 ---
 
 ## FAQ: Questions You Might Have

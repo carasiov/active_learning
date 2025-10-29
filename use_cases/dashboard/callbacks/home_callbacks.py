@@ -100,6 +100,11 @@ def register_home_callbacks(app: Dash) -> None:
         if ".n_clicks" not in triggered_id:
             raise PreventUpdate
         
+        # Check if this was an actual click (value changed and > 0)
+        triggered_value = ctx.triggered[0]["value"]
+        if triggered_value is None or triggered_value == 0:
+            raise PreventUpdate
+        
         # Extract model_id from triggered_id JSON
         import json
         try:
@@ -135,6 +140,11 @@ def register_home_callbacks(app: Dash) -> None:
         # Find which button was clicked
         triggered_id = ctx.triggered[0]["prop_id"]
         if ".n_clicks" not in triggered_id:
+            raise PreventUpdate
+        
+        # Check if this was an actual click (value changed and > 0)
+        triggered_value = ctx.triggered[0]["value"]
+        if triggered_value is None or triggered_value == 0:
             raise PreventUpdate
         
         # Extract model_id
