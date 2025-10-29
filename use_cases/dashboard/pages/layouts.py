@@ -4,7 +4,8 @@ from dash import dcc, html
 import dash_bootstrap_components as dbc
 import numpy as np
 
-from use_cases.dashboard import state as dashboard_state
+from use_cases.dashboard.core import state as dashboard_state
+from use_cases.dashboard.core.model_manager import ModelManager
 
 
 def build_dashboard_layout() -> html.Div:
@@ -12,14 +13,29 @@ def build_dashboard_layout() -> html.Div:
     dashboard_state.initialize_model_and_data()
     
     with dashboard_state.state_lock:
-        config = dashboard_state.app_state.config
-        default_epochs = max(1, dashboard_state.app_state.training.target_epochs or 5)
-        latent_version = dashboard_state.app_state.data.version
-        existing_status = list(dashboard_state.app_state.training.status_messages)
-        selected_sample = dashboard_state.app_state.ui.selected_sample
-        labels_version = dashboard_state.app_state.data.version
+        # Check if we have an active model
+        if dashboard_state.app_state.active_model is None:
+            # Return a simple message if no model loaded
+            return html.Div([
+                html.H3("No Model Loaded", style={"textAlign": "center", "marginTop": "100px"}),
+                html.P("Please select a model from the home page.", style={"textAlign": "center"}),
+                html.A("Go to Home", href="/", style={"display": "block", "textAlign": "center"})
+            ])
+        
+        config = dashboard_state.app_state.active_model.config
+        default_epochs = max(1, dashboard_state.app_state.active_model.training.target_epochs or 5)
+        latent_version = dashboard_state.app_state.active_model.data.version
+        existing_status = list(dashboard_state.app_state.active_model.training.status_messages)
+        selected_sample = dashboard_state.app_state.active_model.ui.selected_sample
+        labels_version = dashboard_state.app_state.active_model.data.version
+        model_id = dashboard_state.app_state.active_model.model_id
 
     status_initial = existing_status[-3:] if existing_status else ["Ready to train"]
+    checkpoint_path = ModelManager.checkpoint_path(model_id)
+    try:
+        checkpoint_display = str(checkpoint_path.relative_to(dashboard_state.ROOT_DIR))
+    except ValueError:
+        checkpoint_display = str(checkpoint_path)
 
     return html.Div(
         [
@@ -46,7 +62,7 @@ def build_dashboard_layout() -> html.Div:
                                 "fontFamily": "'Open Sans', Verdana, sans-serif",
                             }),
                             html.Div(
-                                "⚠️ This will overwrite the current checkpoint at ssvae.ckpt",
+                                f"⚠️ This will overwrite the current checkpoint at {checkpoint_display}",
                                 style={
                                     "marginTop": "16px",
                                     "padding": "12px",
@@ -237,7 +253,7 @@ def build_dashboard_layout() -> html.Div:
                                             # Link to Training Hub
                                             dcc.Link(
                                                 "Training Hub →",
-                                                href="/training-hub",
+                                                href=f"/model/{model_id}/training-hub",
                                                 style={
                                                     "display": "block",
                                                     "textAlign": "center",
@@ -648,14 +664,17 @@ def _build_stats_section() -> html.Div:
     )
 
 
-def _build_config_section(config, default_epochs: int) -> html.Div:
+def _build_config_section(config, default_epochs: int, model_id: str | None = None) -> html.Div:
+    advanced_config_href = (
+        f"/model/{model_id}/configure-training" if model_id else "/configure-training"
+    )
     return html.Div(
         [
             # Link to advanced configuration page
             html.Div(
                 dcc.Link(
                     "⚙️ Advanced Configuration",
-                    href="/configure-training",
+                    href=advanced_config_href,
                     style={
                         "fontSize": "13px",
                         "color": "#C10A27",

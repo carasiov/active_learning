@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import dataclasses
 from typing import Dict, Optional, Tuple
 
 import dash
 from dash import Dash, Input, Output, State, no_update
 from dash.exceptions import PreventUpdate
 
-from use_cases.dashboard import state as dashboard_state
-from use_cases.dashboard.state import _append_status_message
+from use_cases.dashboard.core import state as dashboard_state
+from use_cases.dashboard.core.state import _append_status_message
+from use_cases.dashboard.core.commands import UpdateModelConfigCommand
 
 
 def register_config_callbacks(app: Dash) -> None:
@@ -37,6 +37,7 @@ def register_config_callbacks(app: Dash) -> None:
         State("tc-monitor-metric", "value"),
         State("tc-use-contrastive", "value"),
         State("tc-contrastive-weight", "value"),
+        State("training-config-store", "data"),
         prevent_initial_call=True,
     )
     def save_training_config(
@@ -58,143 +59,51 @@ def register_config_callbacks(app: Dash) -> None:
         monitor_metric: Optional[str],
         use_contrastive: list,
         contrastive_weight: Optional[float],
+        config_store: Optional[Dict],
     ) -> Tuple[str, object]:
         """Save training configuration and navigate back to main dashboard."""
         if not n_clicks:
             raise PreventUpdate
-
-        # Validate inputs
-        errors = []
-
-        if batch_size is None or batch_size < 32 or batch_size > 2048:
-            errors.append("Batch size must be between 32 and 2048")
-        if max_epochs is None or max_epochs < 1 or max_epochs > 500:
-            errors.append("Max epochs must be between 1 and 500")
-        if patience is None or patience < 1 or patience > 100:
-            errors.append("Patience must be between 1 and 100")
-        if learning_rate is None or learning_rate <= 0 or learning_rate > 0.1:
-            errors.append("Learning rate must be between 0.00001 and 0.1")
-        if encoder_type not in ["dense", "conv"]:
-            errors.append("Encoder type must be 'dense' or 'conv'")
-        if decoder_type not in ["dense", "conv"]:
-            errors.append("Decoder type must be 'dense' or 'conv'")
-        if latent_dim is None or latent_dim < 2:
-            errors.append("Latent dimension must be at least 2")
-        if hidden_dims is None or not hidden_dims.strip():
-            errors.append("Hidden dimensions must be specified")
-        if recon_weight is None or recon_weight < 0:
-            errors.append("Reconstruction weight must be non-negative")
-        if kl_weight is None or kl_weight < 0:
-            errors.append("KL weight must be non-negative")
-        if label_weight is None or label_weight < 0:
-            errors.append("Label weight must be non-negative")
-        if weight_decay is None or weight_decay < 0:
-            errors.append("Weight decay must be non-negative")
-        if dropout_rate is None or dropout_rate < 0 or dropout_rate > 0.5:
-            errors.append("Dropout rate must be between 0.0 and 0.5")
-        if grad_clip_norm is not None and grad_clip_norm < 0:
-            errors.append("Gradient clip norm must be non-negative or None")
-        if monitor_metric not in ["loss", "classification_loss"]:
-            errors.append("Monitor metric must be 'loss' or 'classification_loss'")
-        if contrastive_weight is None or contrastive_weight < 0:
-            errors.append("Contrastive weight must be non-negative")
-
-        if errors:
-            error_msg = dash.html.Div(
-                "; ".join(errors),
-                style={"color": "#C10A27", "fontWeight": "600"},
-            )
-            _append_status_message(f"Configuration validation failed: {'; '.join(errors)}")
-            return no_update, error_msg
-
-        # Parse hidden_dims
-        try:
-            hidden_dims_tuple = tuple(int(x.strip()) for x in hidden_dims.split(","))
-            if not hidden_dims_tuple or any(d <= 0 for d in hidden_dims_tuple):
-                raise ValueError("Invalid hidden dimensions")
-        except (ValueError, AttributeError):
-            error_msg = dash.html.Div(
-                "Hidden dimensions must be comma-separated positive integers (e.g., '256,128,64')",
-                style={"color": "#C10A27", "fontWeight": "600"},
-            )
-            _append_status_message("Invalid hidden dimensions format")
-            return no_update, error_msg
-
-        # Convert grad_clip_norm: 0 means disabled (None)
-        grad_clip_norm_final = None if grad_clip_norm == 0 else grad_clip_norm
-
-        # Convert use_contrastive checkbox list to bool
-        use_contrastive_bool = bool(use_contrastive)
-
-        # Check for architecture changes
-        with dashboard_state.state_lock:
-            current_config = dashboard_state.app_state.config
-            architecture_changed = (
-                current_config.encoder_type != encoder_type
-                or current_config.decoder_type != decoder_type
-                or current_config.latent_dim != latent_dim
-                or current_config.hidden_dims != hidden_dims_tuple
-            )
-
-        # Update dashboard_state.app_state config
-        try:
+        
+        model_id = None
+        if isinstance(config_store, dict):
+            model_id = config_store.get("_model_id")
+        
+        if not model_id:
             with dashboard_state.state_lock:
-                # Update config (mutable for now - optimization for later)
-                dashboard_state.app_state.config.batch_size = int(batch_size)
-                dashboard_state.app_state.config.max_epochs = int(max_epochs)
-                dashboard_state.app_state.config.patience = int(patience)
-                dashboard_state.app_state.config.learning_rate = float(learning_rate)
-                dashboard_state.app_state.config.encoder_type = str(encoder_type)
-                dashboard_state.app_state.config.decoder_type = str(decoder_type)
-                dashboard_state.app_state.config.latent_dim = int(latent_dim)
-                dashboard_state.app_state.config.hidden_dims = hidden_dims_tuple
-                dashboard_state.app_state.config.recon_weight = float(recon_weight)
-                dashboard_state.app_state.config.kl_weight = float(kl_weight)
-                dashboard_state.app_state.config.label_weight = float(label_weight)
-                dashboard_state.app_state.config.weight_decay = float(weight_decay)
-                dashboard_state.app_state.config.dropout_rate = float(dropout_rate)
-                dashboard_state.app_state.config.grad_clip_norm = grad_clip_norm_final
-                dashboard_state.app_state.config.monitor_metric = str(monitor_metric)
-                dashboard_state.app_state.config.use_contrastive = use_contrastive_bool
-                dashboard_state.app_state.config.contrastive_weight = float(contrastive_weight)
+                if dashboard_state.app_state.active_model:
+                    model_id = dashboard_state.app_state.active_model.model_id
+        
+        redirect_path = f"/model/{model_id}" if model_id else "/"
 
-                # Sync to model and trainer configs (for non-architecture params)
-                dashboard_state.app_state.model.config.batch_size = dashboard_state.app_state.config.batch_size
-                dashboard_state.app_state.model.config.learning_rate = dashboard_state.app_state.config.learning_rate
-                dashboard_state.app_state.model.config.recon_weight = dashboard_state.app_state.config.recon_weight
-                dashboard_state.app_state.model.config.kl_weight = dashboard_state.app_state.config.kl_weight
-                dashboard_state.app_state.model.config.label_weight = dashboard_state.app_state.config.label_weight
-                dashboard_state.app_state.model.config.weight_decay = dashboard_state.app_state.config.weight_decay
-                dashboard_state.app_state.model.config.dropout_rate = dashboard_state.app_state.config.dropout_rate
-                dashboard_state.app_state.model.config.grad_clip_norm = dashboard_state.app_state.config.grad_clip_norm
-                dashboard_state.app_state.model.config.use_contrastive = dashboard_state.app_state.config.use_contrastive
-                dashboard_state.app_state.model.config.contrastive_weight = dashboard_state.app_state.config.contrastive_weight
-
-                dashboard_state.app_state.trainer.config.batch_size = dashboard_state.app_state.config.batch_size
-                dashboard_state.app_state.trainer.config.learning_rate = dashboard_state.app_state.config.learning_rate
-                dashboard_state.app_state.trainer.config.recon_weight = dashboard_state.app_state.config.recon_weight
-                dashboard_state.app_state.trainer.config.kl_weight = dashboard_state.app_state.config.kl_weight
-                dashboard_state.app_state.trainer.config.label_weight = dashboard_state.app_state.config.label_weight
-                dashboard_state.app_state.trainer.config.weight_decay = dashboard_state.app_state.config.weight_decay
-                dashboard_state.app_state.trainer.config.dropout_rate = dashboard_state.app_state.config.dropout_rate
-                dashboard_state.app_state.trainer.config.grad_clip_norm = dashboard_state.app_state.config.grad_clip_norm
-                dashboard_state.app_state.trainer.config.use_contrastive = dashboard_state.app_state.config.use_contrastive
-                dashboard_state.app_state.trainer.config.contrastive_weight = dashboard_state.app_state.config.contrastive_weight
-
-            if architecture_changed:
-                _append_status_message(
-                    "Configuration saved. Architecture changes require restarting the dashboard."
-                )
-            else:
-                _append_status_message("Configuration updated successfully.")
-
-        except Exception as exc:
+        command = UpdateModelConfigCommand(
+            batch_size=batch_size,
+            max_epochs=max_epochs,
+            patience=patience,
+            learning_rate=learning_rate,
+            encoder_type=encoder_type,
+            decoder_type=decoder_type,
+            latent_dim=latent_dim,
+            hidden_dims=hidden_dims,
+            recon_weight=recon_weight,
+            kl_weight=kl_weight,
+            label_weight=label_weight,
+            weight_decay=weight_decay,
+            dropout_rate=dropout_rate,
+            grad_clip_norm=grad_clip_norm,
+            monitor_metric=monitor_metric,
+            use_contrastive=use_contrastive,
+            contrastive_weight=contrastive_weight,
+        )
+        
+        success, message = dashboard_state.dispatcher.execute(command)
+        if not success:
             error_msg = dash.html.Div(
-                f"Error saving configuration: {exc}",
+                message,
                 style={"color": "#C10A27", "fontWeight": "600"},
             )
-            _append_status_message(f"Error saving configuration: {exc}")
+            _append_status_message(f"Configuration update failed: {message}")
             return no_update, error_msg
-
-        # Navigate back to main dashboard
-        return "/", no_update
+        
+        _append_status_message(message)
+        return redirect_path, ""

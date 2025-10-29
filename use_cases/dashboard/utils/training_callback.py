@@ -91,8 +91,9 @@ class DashboardMetricsCallback(TrainingCallback):
             from use_cases.dashboard import state as dashboard_state
             
             with dashboard_state.state_lock:
-                if dashboard_state.app_state and dashboard_state.app_state.training.stop_requested:
-                    return True
+                app_state = dashboard_state.app_state
+                if app_state and app_state.active_model:
+                    return app_state.active_model.training.stop_requested
         except Exception:
             # Don't crash training if check fails
             pass

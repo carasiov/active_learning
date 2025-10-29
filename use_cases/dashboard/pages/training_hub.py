@@ -17,7 +17,8 @@ if str(SRC_DIR) not in sys.path:
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from use_cases.dashboard import state as dashboard_state
+from use_cases.dashboard.core import state as dashboard_state
+from use_cases.dashboard.core.model_manager import ModelManager
 
 
 def build_training_hub_layout() -> html.Div:
@@ -25,11 +26,20 @@ def build_training_hub_layout() -> html.Div:
     dashboard_state.initialize_model_and_data()
     
     with dashboard_state.state_lock:
-        config = dashboard_state.app_state.config
-        training_state = dashboard_state.app_state.training.state
-        target_epochs = dashboard_state.app_state.training.target_epochs or 10
-        status_messages = list(dashboard_state.app_state.training.status_messages)
-        latent_version = dashboard_state.app_state.data.version
+        # Check if we have an active model
+        if dashboard_state.app_state.active_model is None:
+            return html.Div([
+                html.H3("No Model Loaded", style={"textAlign": "center", "marginTop": "100px"}),
+                html.P("Please select a model from the home page.", style={"textAlign": "center"}),
+                html.A("Go to Home", href="/", style={"display": "block", "textAlign": "center"})
+            ])
+        
+        config = dashboard_state.app_state.active_model.config
+        training_state = dashboard_state.app_state.active_model.training.state
+        target_epochs = dashboard_state.app_state.active_model.training.target_epochs or 10
+        status_messages = list(dashboard_state.app_state.active_model.training.status_messages)
+        latent_version = dashboard_state.app_state.active_model.data.version
+        model_id = dashboard_state.app_state.active_model.model_id
     
     # Determine status for hero bar
     if training_state.name == "RUNNING":
@@ -45,6 +55,12 @@ def build_training_hub_layout() -> html.Div:
         status_color = "#6F6F6F"  # Gray
         status_text = "IDLE"
     
+    checkpoint_path = ModelManager.checkpoint_path(model_id)
+    try:
+        checkpoint_display = str(checkpoint_path.relative_to(ROOT_DIR))
+    except ValueError:
+        checkpoint_display = str(checkpoint_path)
+
     return html.Div(
         [
             # Hidden stores and intervals - use session storage to persist across navigation
@@ -65,7 +81,7 @@ def build_training_hub_layout() -> html.Div:
                                 "fontFamily": "'Open Sans', Verdana, sans-serif",
                             }),
                             html.Div(
-                                "⚠️ This will overwrite the current checkpoint at ssvae.ckpt",
+                                f"⚠️ This will overwrite the current checkpoint at {checkpoint_display}",
                                 style={
                                     "marginTop": "16px",
                                     "padding": "12px",
@@ -153,7 +169,7 @@ def build_training_hub_layout() -> html.Div:
                         html.Div(
                             dcc.Link(
                                 "← Back to Latent Viewer",
-                                href="/",
+                                href=f"/model/{model_id}",
                                 style={
                                     "fontSize": "14px",
                                     "color": "#45717A",
@@ -439,7 +455,7 @@ def build_training_hub_layout() -> html.Div:
                                     # Link to Advanced Config
                                     dcc.Link(
                                         "Model Architecture & Advanced Settings →",
-                                        href="/configure-training",
+                                        href=f"/model/{model_id}/configure-training",
                                         style={
                                             "display": "block",
                                             "textAlign": "center",

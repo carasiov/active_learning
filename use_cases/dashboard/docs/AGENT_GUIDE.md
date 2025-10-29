@@ -99,23 +99,33 @@ User Interaction (Browser)
 
 ```
 use_cases/dashboard/
-├── state_models.py      # Dataclass definitions (what state looks like)
-├── state.py             # State initialization and helpers
-├── commands.py          # All state-modifying operations
-├── layouts.py           # UI layout and components
-├── app.py               # App initialization and routing
-├── callbacks/
+├── app.py                 # App initialization and routing
+├── core/                  # Core infrastructure
+│   ├── state_models.py    # Dataclass definitions (what state looks like)
+│   ├── state.py           # State initialization and helpers
+│   ├── commands.py        # All state-modifying operations
+│   ├── model_manager.py   # File I/O for models
+│   └── logging_config.py  # Logging system
+├── pages/                 # UI layouts
+│   ├── home.py            # Home page
+│   ├── layouts.py         # Main dashboard layout
+│   ├── training.py        # Training config page
+│   └── training_hub.py    # Training hub page
+├── callbacks/             # UI event handlers
 │   ├── training_callbacks.py      # Training workflow
 │   ├── labeling_callbacks.py      # Sample labeling
 │   ├── visualization_callbacks.py # Plots and UI state
 │   └── config_callbacks.py        # Configuration
-└── utils.py             # Shared utilities
+└── utils/                 # Shared helpers
+    ├── visualization.py   # Plotting utilities
+    ├── callback_utils.py  # Callback decorators
+    └── training_callback.py # Training metrics callback
 ```
 
 **Your work will mostly happen in:**
-- `commands.py` (when adding state-modifying features)
+- `core/commands.py` (when adding state-modifying features)
 - `callbacks/*.py` (when adding UI interactions)
-- `layouts.py` (when adding new UI components)
+- `pages/*.py` (when adding new UI components)
 
 ---
 
@@ -283,12 +293,12 @@ After implementing a command:
 
 ```bash
 # 1. Check it imports
-poetry run python -c "from use_cases.dashboard.commands import MyNewCommand; print('✓ Imports')"
+poetry run python -c "from use_cases.dashboard.core.commands import MyNewCommand; print('✓ Imports')"
 
 # 2. Test validation catches errors
 poetry run python -c "
-from use_cases.dashboard.commands import MyNewCommand
-from use_cases.dashboard import state as dashboard_state
+from use_cases.dashboard.core.commands import MyNewCommand
+from use_cases.dashboard.core import state as dashboard_state
 dashboard_state.initialize_model_and_data()
 cmd = MyNewCommand(invalid_params)
 error = cmd.validate(dashboard_state.app_state)
@@ -298,8 +308,8 @@ print('✓ Validation catches errors')
 
 # 3. Test execution succeeds
 poetry run python -c "
-from use_cases.dashboard.commands import MyNewCommand
-from use_cases.dashboard import state as dashboard_state
+from use_cases.dashboard.core.commands import MyNewCommand
+from use_cases.dashboard.core import state as dashboard_state
 dashboard_state.initialize_model_and_data()
 cmd = MyNewCommand(valid_params)
 success, msg = dashboard_state.dispatcher.execute(cmd)
@@ -651,8 +661,8 @@ Create a test script for your feature:
 
 def test_my_command_validation():
     """Test that invalid input is caught."""
-    from use_cases.dashboard.commands import MyCommand
-    from use_cases.dashboard import state as dashboard_state
+    from use_cases.dashboard.core.commands import MyCommand
+    from use_cases.dashboard.core import state as dashboard_state
     
     dashboard_state.initialize_model_and_data()
     
@@ -760,8 +770,8 @@ with dashboard_state.state_lock:
 ### Pitfall 4: Circular Imports
 
 ```python
-# In commands.py - WRONG
-from use_cases.dashboard.state import app_state  # Circular!
+# In core/commands.py - WRONG
+from use_cases.dashboard.core.state import app_state  # Circular!
 
 # RIGHT - import inside methods
 def execute(self, state: AppState):
@@ -786,6 +796,49 @@ style={
 ```
 
 **Why it matters**: Visual consistency makes the dashboard look professional and helps users build mental models.
+
+### Pitfall 6: Pattern-Matching Callbacks Without Value Checks
+
+When using Dash's pattern-matching callbacks with `ALL` and `n_clicks`, callbacks trigger on initial render with values of `0` or `None`.
+
+```python
+# WRONG - triggers on page load with n_clicks=[0, 0, 0]
+@app.callback(
+    Output("result", "children"),
+    Input({"type": "delete-btn", "id": ALL}, "n_clicks"),
+    prevent_initial_call=True
+)
+def handle_delete(n_clicks_list):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+    # This executes even on initial render! 🐛
+    triggered_id = ctx.triggered[0]["prop_id"]
+    # ... delete logic ...
+
+# RIGHT - check if actual click occurred
+@app.callback(
+    Output("result", "children"),
+    Input({"type": "delete-btn", "id": ALL}, "n_clicks"),
+    prevent_initial_call=True
+)
+def handle_delete(n_clicks_list):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise PreventUpdate
+    
+    # Check if this was an actual click (not initial render)
+    triggered_value = ctx.triggered[0]["value"]
+    if triggered_value is None or triggered_value == 0:
+        raise PreventUpdate  # Ignore initial render
+    
+    triggered_id = ctx.triggered[0]["prop_id"]
+    # ... safe to proceed with delete logic ...
+```
+
+**Why it matters**: Without the value check, callbacks execute on page load, potentially triggering unintended actions like deletions or state changes. This was the source of a critical bug where models were being deleted unexpectedly.
+
+**Rule of thumb**: Always check `ctx.triggered[0]["value"]` in pattern-matching callbacks with `n_clicks` to distinguish actual user clicks from initial component renders.
 
 ---
 

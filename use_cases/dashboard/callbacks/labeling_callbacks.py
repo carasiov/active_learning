@@ -10,12 +10,9 @@ from dash.exceptions import PreventUpdate
 import numpy as np
 import plotly.graph_objects as go
 
-from use_cases.dashboard import state as dashboard_state
-from use_cases.dashboard.state import (
-    LABELS_PATH,
-)
-from use_cases.dashboard.commands import LabelSampleCommand
-from use_cases.dashboard.utils import array_to_base64, INFOTEAM_PALETTE
+from use_cases.dashboard.core import state as dashboard_state
+from use_cases.dashboard.core.commands import LabelSampleCommand
+from use_cases.dashboard.utils.visualization import array_to_base64, INFOTEAM_PALETTE
 
 
 def register_labeling_callbacks(app: Dash) -> None:
@@ -35,15 +32,17 @@ def register_labeling_callbacks(app: Dash) -> None:
             raise PreventUpdate
 
         with dashboard_state.state_lock:
+            if dashboard_state.app_state.active_model is None:
+                raise PreventUpdate
             idx = int(selected_idx)
-            x_train = np.array(dashboard_state.app_state.data.x_train)
-            recon = np.array(dashboard_state.app_state.data.reconstructed)
-            pred_classes = np.array(dashboard_state.app_state.data.pred_classes)
-            pred_certainty = np.array(dashboard_state.app_state.data.pred_certainty)
-            labels = np.array(dashboard_state.app_state.data.labels)
+            x_train = np.array(dashboard_state.app_state.active_model.data.x_train)
+            recon = np.array(dashboard_state.app_state.active_model.data.reconstructed)
+            pred_classes = np.array(dashboard_state.app_state.active_model.data.pred_classes)
+            pred_certainty = np.array(dashboard_state.app_state.active_model.data.pred_certainty)
+            labels = np.array(dashboard_state.app_state.active_model.data.labels)
             true_labels = (
-                np.array(dashboard_state.app_state.data.true_labels, dtype=np.int32)
-                if dashboard_state.app_state.data.true_labels is not None
+                np.array(dashboard_state.app_state.active_model.data.true_labels, dtype=np.int32)
+                if dashboard_state.app_state.active_model.data.true_labels is not None
                 else None
             )
 
@@ -93,6 +92,12 @@ def register_labeling_callbacks(app: Dash) -> None:
         ctx = dash.callback_context
         if not ctx.triggered:
             raise PreventUpdate
+        
+        # Check if this was an actual click (not initial render)
+        triggered_value = ctx.triggered[0]["value"]
+        if triggered_value is None or triggered_value == 0:
+            raise PreventUpdate
+        
         triggered_id = ctx.triggered_id
         
         # Determine command based on trigger
@@ -109,7 +114,10 @@ def register_labeling_callbacks(app: Dash) -> None:
         
         # Return updated version
         with dashboard_state.state_lock:
-            version_payload = {"version": dashboard_state.app_state.data.version}
+            if dashboard_state.app_state.active_model:
+                version_payload = {"version": dashboard_state.app_state.active_model.data.version}
+            else:
+                version_payload = {"version": 0}
         
         return version_payload, message
 
@@ -133,7 +141,10 @@ def register_labeling_callbacks(app: Dash) -> None:
         
         # Return updated version
         with dashboard_state.state_lock:
-            version_payload = {"version": dashboard_state.app_state.data.version}
+            if dashboard_state.app_state.active_model:
+                version_payload = {"version": dashboard_state.app_state.active_model.data.version}
+            else:
+                version_payload = {"version": 0}
         
         return version_payload, message
 
@@ -178,7 +189,10 @@ def register_labeling_callbacks(app: Dash) -> None:
     )
     def update_dataset_stats(_labels_store: dict | None):
         with dashboard_state.state_lock:
-            labels = np.array(dashboard_state.app_state.data.labels, dtype=float)
+            if dashboard_state.app_state.active_model:
+                labels = np.array(dashboard_state.app_state.active_model.data.labels, dtype=float)
+            else:
+                labels = np.array([], dtype=float)
 
         total_samples = int(labels.size)
         labeled_mask = ~np.isnan(labels)

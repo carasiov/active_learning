@@ -2,7 +2,7 @@
 
 This guide explains the internal architecture of the SSVAE Active Learning Dashboard. Read this if you need to understand how the system works, debug issues, or modify core functionality.
 
-**For usage:** See [README.md](README.md)  
+**For usage:** See [README.md](../README.md)  
 **For extending:** See [AGENT_GUIDE.md](AGENT_GUIDE.md)
 
 ---
@@ -43,12 +43,12 @@ _init_lock = threading.Lock()      # Ensures single initialization
 
 **Access pattern:**
 ```python
-from use_cases.dashboard import state as dashboard_state
+from use_cases.dashboard.core import state as dashboard_state
 
 # READ
 with dashboard_state.state_lock:
-    labels = dashboard_state.app_state.data.labels
-    config = dashboard_state.app_state.config
+    labels = dashboard_state.app_state.active_model.data.labels
+    config = dashboard_state.app_state.active_model.config
 
 # UPDATE (via command - see below)
 command = LabelSampleCommand(sample_idx=42, label=7)
@@ -58,10 +58,10 @@ dashboard_state.dispatcher.execute(command)
 **Critical:** Always import the module, not the variable:
 ```python
 # WRONG - gets stale reference
-from use_cases.dashboard.state import app_state
+from use_cases.dashboard.core.state import app_state
 
 # CORRECT - always gets current value  
-from use_cases.dashboard import state as dashboard_state
+from use_cases.dashboard.core import state as dashboard_state
 ```
 
 ### State Updates
@@ -528,8 +528,8 @@ print(f"✓ Command executed: {msg}")
 
 ## Further Reading
 
-- **README.md** - Features, quick start, product vision
-- **AGENT_GUIDE.md** - Patterns for extending the dashboard
+- **[README.md](../README.md)** - Features, quick start, product vision
+- **[AGENT_GUIDE.md](AGENT_GUIDE.md)** - Patterns for extending the dashboard
 - **State models** - `state_models.py` for dataclass definitions
 - **Commands** - `commands.py` for all state-modifying operations
 - **Callbacks** - `callbacks/*.py` for UI interaction handlers

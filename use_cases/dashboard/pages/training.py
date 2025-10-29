@@ -8,20 +8,22 @@ from dash import dcc, html, callback, Input, Output, State
 import dash_bootstrap_components as dbc
 
 
-def build_training_config_page() -> html.Div:
+def build_training_config_page(model_id: str | None = None) -> html.Div:
     """Build the dedicated training configuration page."""
+    dashboard_url = f"/model/{model_id}" if model_id else "/"
+
     return html.Div(
         [
             # Header
             html.Div(
-                [
-                    dcc.Link(
-                        "← Back to Dashboard",
-                        href="/",
-                        style={
-                            "fontSize": "14px",
-                            "color": "#C10A27",
-                            "textDecoration": "none",
+                    [
+                        dcc.Link(
+                            "← Back to Dashboard",
+                            href=dashboard_url,
+                            style={
+                                "fontSize": "14px",
+                                "color": "#C10A27",
+                                "textDecoration": "none",
                             "fontWeight": "600",
                             "fontFamily": "'Open Sans', Verdana, sans-serif",
                             "display": "inline-block",
@@ -68,7 +70,7 @@ def build_training_config_page() -> html.Div:
                             dbc.Button(
                                 "Cancel",
                                 id="config-cancel-btn",
-                                href="/",
+                                href=dashboard_url,
                                 style={
                                     "backgroundColor": "#ffffff",
                                     "color": "#6F6F6F",

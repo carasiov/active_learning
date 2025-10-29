@@ -12,6 +12,61 @@ from ssvae import SSVAE, SSVAEConfig
 from training.interactive_trainer import InteractiveTrainer
 
 
+@dataclass(frozen=True)
+class ModelMetadata:
+    """Lightweight model info for home page and registry."""
+    model_id: str
+    name: str
+    created_at: str  # ISO format
+    last_modified: str  # ISO format
+    dataset: str
+    total_epochs: int
+    labeled_count: int
+    latest_loss: Optional[float]
+    
+    @classmethod
+    def from_dict(cls, data: dict) -> ModelMetadata:
+        """Load from metadata.json - handles old and new field names."""
+        # Handle old field name 'labeled_samples' -> new name 'labeled_count'
+        data = dict(data)  # Copy to avoid modifying original
+        if "labeled_samples" in data and "labeled_count" not in data:
+            data["labeled_count"] = data.pop("labeled_samples")
+        
+        # Handle old field name 'id' -> new name 'model_id'
+        if "id" in data and "model_id" not in data:
+            data["model_id"] = data.pop("id")
+        
+        # Remove any fields that don't exist in current ModelMetadata
+        valid_fields = {'model_id', 'name', 'created_at', 'last_modified', 'dataset', 
+                       'total_epochs', 'labeled_count', 'latest_loss'}
+        data = {k: v for k, v in data.items() if k in valid_fields}
+        
+        # Ensure required fields have defaults for old metadata
+        data.setdefault('model_id', 'unknown')
+        data.setdefault('name', data.get('model_id', 'Unnamed Model'))
+        data.setdefault('dataset', 'mnist')
+        data.setdefault('created_at', '2025-01-01T00:00:00')
+        data.setdefault('last_modified', data.get('created_at', '2025-01-01T00:00:00'))
+        data.setdefault('total_epochs', 0)
+        data.setdefault('labeled_count', 0)
+        data.setdefault('latest_loss', None)
+        
+        return cls(**data)
+    
+    def to_dict(self) -> dict:
+        """Serialize to metadata.json"""
+        return {
+            "model_id": self.model_id,
+            "name": self.name,
+            "created_at": self.created_at,
+            "last_modified": self.last_modified,
+            "dataset": self.dataset,
+            "total_epochs": self.total_epochs,
+            "labeled_count": self.labeled_count,
+            "latest_loss": self.latest_loss,
+        }
+
+
 class TrainingState(Enum):
     """Training lifecycle states."""
     IDLE = auto()
@@ -217,42 +272,48 @@ class TrainingHistory:
 
 
 @dataclass(frozen=True)
-class AppState:
-    """Root immutable state container for the entire dashboard.
-    
-    Thread-safety: The entire AppState instance is replaced atomically under state_lock.
-    Never mutate fields directly - always use with_* methods to create new instances.
-    """
+class ModelState:
+    """Full state for one model - only loaded when active."""
+    model_id: str
+    metadata: ModelMetadata  # Embed metadata here too
     model: SSVAE
     trainer: InteractiveTrainer
     config: SSVAEConfig
     data: DataState
     training: TrainingStatus
     ui: UIState
-    cache: Dict[str, object]  # Keep as dict for now (can refine later)
     history: TrainingHistory
     
-    def _clear_cache(self) -> AppState:
-        """Clear visualization caches - use when data changes."""
-        return replace(self, cache={"base_figures": {}, "colors": {}})
+    def with_updated_metadata(self, **kwargs) -> ModelState:
+        """Helper to update metadata fields."""
+        new_metadata = replace(self.metadata, **kwargs)
+        return replace(self, metadata=new_metadata)
     
-    # Atomic update helpers
+    def _clear_cache_in_app_state(self, app_state: AppState) -> AppState:
+        """Helper to clear cache when this model's state changes."""
+        return replace(app_state, cache={"base_figures": {}, "colors": {}})
     
-    def with_data(self, **changes) -> AppState:
+    # Atomic update helpers (updated for ModelState)
+    
+    def with_data(self, **changes) -> ModelState:
         """Immutable update of data state."""
         return replace(self, data=replace(self.data, **changes))
     
-    def with_training(self, **changes) -> AppState:
+    def with_training(self, **changes) -> ModelState:
         """Immutable update of training state."""
         return replace(self, training=replace(self.training, **changes))
     
-    def with_ui(self, **changes) -> AppState:
+    def with_ui(self, **changes) -> ModelState:
         """Immutable update of UI state."""
         return replace(self, ui=replace(self.ui, **changes))
     
-    def with_history(self, new_history: TrainingHistory) -> AppState:
+    def with_history(self, new_history: TrainingHistory) -> ModelState:
         """Replace entire history."""
         return replace(self, history=new_history)
+    
+    def with_config(self, config: SSVAEConfig) -> ModelState:
+        """Replace configuration snapshot."""
+        return replace(self, config=config)
     
     # Domain-specific updates
     
@@ -260,11 +321,10 @@ class AppState:
         self,
         new_labels: np.ndarray,
         new_hover_metadata: List[List[object]]
-    ) -> AppState:
+    ) -> ModelState:
         """Update labels and increment data version."""
         new_data = self.data.with_updated_labels(new_labels, new_hover_metadata)
-        # Clear cache since hover metadata changed
-        return replace(self, data=new_data)._clear_cache()
+        return replace(self, data=new_data)
     
     def with_training_complete(
         self,
@@ -273,11 +333,43 @@ class AppState:
         pred_classes: np.ndarray,
         pred_certainty: np.ndarray,
         hover_metadata: List[List[object]]
-    ) -> AppState:
+    ) -> ModelState:
         """Update after training completes - new predictions and training state."""
         new_data = self.data.with_updated_predictions(
             latent, reconstructed, pred_classes, pred_certainty, hover_metadata
         )
         new_training = self.training.with_complete()
-        # Clear cache since latent space changed completely
-        return replace(self, data=new_data, training=new_training)._clear_cache()
+        return replace(self, data=new_data, training=new_training)
+
+
+@dataclass(frozen=True)
+class AppState:
+    """Root state - manages model registry.
+    
+    Thread-safety: The entire AppState instance is replaced atomically under state_lock.
+    """
+    models: Dict[str, ModelMetadata]  # All models (lightweight)
+    active_model: Optional[ModelState]  # Only one loaded
+    cache: Dict[str, object]  # Shared cache
+    
+    def with_active_model(self, model_state: ModelState) -> AppState:
+        """Load a model as active."""
+        # Update registry with latest metadata
+        updated_models = dict(self.models)
+        updated_models[model_state.model_id] = model_state.metadata
+        return replace(
+            self,
+            models=updated_models,
+            active_model=model_state,
+            cache={"base_figures": {}, "colors": {}}  # Clear cache
+        )
+    
+    def with_unloaded_model(self) -> AppState:
+        """Unload active model."""
+        return replace(self, active_model=None, cache={})
+    
+    def with_model_metadata(self, metadata: ModelMetadata) -> AppState:
+        """Update registry entry."""
+        updated_models = dict(self.models)
+        updated_models[metadata.model_id] = metadata
+        return replace(self, models=updated_models)

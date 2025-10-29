@@ -9,9 +9,9 @@ from dash.exceptions import PreventUpdate
 import numpy as np
 import plotly.graph_objects as go
 
-from use_cases.dashboard import state as dashboard_state
-from use_cases.dashboard.commands import SelectSampleCommand, ChangeColorModeCommand
-from use_cases.dashboard.utils import (
+from use_cases.dashboard.core import state as dashboard_state
+from use_cases.dashboard.core.commands import SelectSampleCommand, ChangeColorModeCommand
+from use_cases.dashboard.utils.visualization import (
     _colorize_numeric,
     _colorize_user_labels,
     _colorize_discrete_classes,
@@ -152,16 +152,19 @@ def register_visualization_callbacks(app: Dash) -> None:
 
         # CRITICAL: Hold lock for entire cache check and data copy
         with dashboard_state.state_lock:
-            latent = np.array(dashboard_state.app_state.data.latent, dtype=np.float32)
-            labels = np.array(dashboard_state.app_state.data.labels, dtype=np.float64)
+            if dashboard_state.app_state.active_model is None:
+                return go.Figure()  # No model loaded
+            
+            latent = np.array(dashboard_state.app_state.active_model.data.latent, dtype=np.float32)
+            labels = np.array(dashboard_state.app_state.active_model.data.labels, dtype=np.float64)
             true_labels = (
-                np.array(dashboard_state.app_state.data.true_labels, dtype=np.float64)
-                if dashboard_state.app_state.data.true_labels is not None
+                np.array(dashboard_state.app_state.active_model.data.true_labels, dtype=np.float64)
+                if dashboard_state.app_state.active_model.data.true_labels is not None
                 else None
             )
-            pred_classes = np.array(dashboard_state.app_state.data.pred_classes, dtype=np.int32)
-            pred_certainty = np.array(dashboard_state.app_state.data.pred_certainty, dtype=np.float64)
-            hover_metadata = list(dashboard_state.app_state.data.hover_metadata)
+            pred_classes = np.array(dashboard_state.app_state.active_model.data.pred_classes, dtype=np.int32)
+            pred_certainty = np.array(dashboard_state.app_state.active_model.data.pred_certainty, dtype=np.float64)
+            hover_metadata = list(dashboard_state.app_state.active_model.data.hover_metadata)
             
             # Get cache references under lock
             base_figure_cache = dashboard_state.app_state.cache["base_figures"]
@@ -358,7 +361,17 @@ def register_visualization_callbacks(app: Dash) -> None:
     )
     def update_loss_curves(_latent_store: dict | None, smoothing_enabled: list):
         with dashboard_state.state_lock:
-            history = dashboard_state.app_state.history
+            if dashboard_state.app_state.active_model is None:
+                # Return empty figure if no model loaded
+                figure = go.Figure()
+                figure.update_layout(
+                    template="plotly_white",
+                    xaxis_title=dict(text="Epoch", font=dict(size=14)),
+                    yaxis_title=dict(text="Loss", font=dict(size=14)),
+                    margin=dict(l=40, r=20, t=30, b=40),
+                )
+                return figure
+            history = dashboard_state.app_state.active_model.history
             epochs = list(history.epochs)
 
         figure = go.Figure()
