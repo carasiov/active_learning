@@ -30,6 +30,33 @@ class DenseEncoder(nn.Module):
         return z_mean, z_log, z
 
 
+class MixtureDenseEncoder(nn.Module):
+    """Dense encoder with mixture-of-Gaussians prior producing component assignments."""
+
+    hidden_dims: Tuple[int, ...]
+    latent_dim: int
+    num_components: int
+
+    @nn.compact
+    def __call__(self, x: jnp.ndarray, *, training: bool) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+        x = x.reshape((x.shape[0], -1))
+        for i, dim in enumerate(self.hidden_dims):
+            x = nn.Dense(dim, name=f"hidden_{i}")(x)
+            x = nn.leaky_relu(x)
+
+        component_logits = nn.Dense(self.num_components, name="component_logits")(x)
+        z_mean = nn.Dense(self.latent_dim, name="z_mean")(x)
+        z_log = nn.Dense(self.latent_dim, name="z_log")(x)
+        
+        if self.has_rng("reparam"):
+            eps = random.normal(self.make_rng("reparam"), z_mean.shape)
+            z = z_mean + jnp.exp(0.5 * z_log) * eps
+        else:
+            z = z_mean
+        
+        return component_logits, z_mean, z_log, z
+
+
 class ConvEncoder(nn.Module):
     """Convolutional encoder for image inputs producing latent statistics."""
 

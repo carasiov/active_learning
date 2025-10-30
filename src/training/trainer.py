@@ -107,11 +107,13 @@ class Trainer:
             "kl_loss": [],
             "classification_loss": [],
             "contrastive_loss": [],
+            "component_entropy": [],
             "val_loss": [],
             "val_reconstruction_loss": [],
             "val_kl_loss": [],
             "val_classification_loss": [],
             "val_contrastive_loss": [],
+            "val_component_entropy": [],
         }
 
     def _log_session_hyperparameters(self, *, max_epochs: int, patience: int) -> None:

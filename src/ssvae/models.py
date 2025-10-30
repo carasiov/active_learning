@@ -74,11 +74,18 @@ class SSVAENetwork(nn.Module):
         x: jnp.ndarray,
         *,
         training: bool,
-    ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-        z_mean, z_log, z = self.encoder(x, training=training)
+    ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+        encoder_output = self.encoder(x, training=training)
+        
+        if self.config.prior_type == "mixture":
+            component_logits, z_mean, z_log, z = encoder_output
+        else:
+            z_mean, z_log, z = encoder_output
+            component_logits = None
+        
         recon = self.decoder(z)
         logits = self.classifier(z, training=training)
-        return z_mean, z_log, z, recon, logits
+        return component_logits, z_mean, z_log, z, recon, logits
 
 
 class SSVAE:
@@ -168,7 +175,7 @@ class SSVAE:
             *,
             training: bool,
             key: jax.Array | None,
-        ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+        ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
             if key is None:
                 return apply_fn(params, batch_x, training=training)
             reparam_key, dropout_key = random.split(key)
@@ -272,7 +279,7 @@ class SSVAE:
             logits_samples = []
             for _ in range(num_samples):
                 self._rng, subkey = random.split(self._rng)
-                z_mean, _, z, recon, logits = self._apply_fn(
+                component_logits, z_mean, _, z, recon, logits = self._apply_fn(
                     self.state.params,
                     x,
                     training=False,
@@ -298,7 +305,7 @@ class SSVAE:
                 np.array(pred_certainty),
             )
         else:
-            z_mean, _, _, recon, logits = self._apply_fn(self.state.params, x, training=False)
+            component_logits, z_mean, _, _, recon, logits = self._apply_fn(self.state.params, x, training=False)
             probs = softmax(logits, axis=1)
             pred_class = jnp.argmax(probs, axis=1)
             pred_certainty = jnp.max(probs, axis=1)

@@ -45,6 +45,9 @@ INFORMATIVE_HPARAMETERS = (
     "monitor_metric",
     "use_contrastive",
     "contrastive_weight",
+    "prior_type",
+    "num_components",
+    "component_kl_weight",
 )
 
 @dataclass
@@ -73,6 +76,9 @@ class SSVAEConfig:
         monitor_metric: Validation metric name used for early stopping.
         use_contrastive: Whether to include the contrastive loss term.
         contrastive_weight: Scaling factor for the contrastive loss when enabled.
+        prior_type: Type of prior distribution ("standard" | "mixture").
+        num_components: Number of mixture components when prior_type="mixture".
+        component_kl_weight: Scaling factor for mixture component KL divergence.
     """
 
     latent_dim: int = 2
@@ -97,6 +103,9 @@ class SSVAEConfig:
     monitor_metric: str = "classification_loss"
     use_contrastive: bool = False
     contrastive_weight: float = 0.0
+    prior_type: str = "standard"
+    num_components: int = 10
+    component_kl_weight: float = 0.1
 
     def get_informative_hyperparameters(self) -> Dict[str, object]:
         return {name: getattr(self, name) for name in INFORMATIVE_HPARAMETERS}
