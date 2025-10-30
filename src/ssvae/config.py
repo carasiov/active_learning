@@ -83,12 +83,12 @@ class SSVAEConfig:
 
     latent_dim: int = 2
     hidden_dims: Tuple[int, ...] = (256, 128, 64)
-    recon_weight: float = 1000.0
-    kl_weight: float = 0.1
+    recon_weight: float = 500.0
+    kl_weight: float = 1
     learning_rate: float = 1e-3
-    batch_size: int = 256
-    max_epochs: int = 200
-    patience: int = 20
+    batch_size: int = 128
+    max_epochs: int = 300
+    patience: int = 50
     val_split: float = 0.1
     random_seed: int = 42
     grad_clip_norm: float | None = 1.0
