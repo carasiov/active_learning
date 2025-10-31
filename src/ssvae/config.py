@@ -39,7 +39,9 @@ INFORMATIVE_HPARAMETERS = (
     "learning_rate",
     "batch_size",
     "recon_weight",
+    "reconstruction_loss",
     "kl_weight",
+    "label_weight",
     "weight_decay",
     "dropout_rate",
     "monitor_metric",
@@ -57,7 +59,14 @@ class SSVAEConfig:
     Attributes:
         latent_dim: Dimensionality of the latent representation.
         hidden_dims: Dense layer sizes for the encoder; decoder mirrors in reverse (dense only).
-        recon_weight: Weight applied to the reconstruction MSE term.
+        reconstruction_loss: Loss function for reconstruction term.
+            - "mse": Mean squared error, treats pixels as continuous Gaussian.
+                     Appropriate for natural images. Default weight: 500.
+            - "bce": Binary cross-entropy with logits, treats pixels as Bernoulli.
+                     Appropriate for binary/binarized images (e.g., MNIST).
+                     Recommended weight: 1.0 (BCE is already pixel-wise summed).
+        recon_weight: Weight applied to the reconstruction term. 
+            Typical values: 500 for MSE, 1.0 for BCE (due to different scales).
         kl_weight: Scaling factor for the KL divergence regularizer.
         learning_rate: Optimizer learning rate.
         batch_size: Number of samples per training batch.
@@ -83,8 +92,9 @@ class SSVAEConfig:
 
     latent_dim: int = 2
     hidden_dims: Tuple[int, ...] = (256, 128, 64)
+    reconstruction_loss: str = "mse"
     recon_weight: float = 500.0
-    kl_weight: float = 1
+    kl_weight: float = 5
     learning_rate: float = 1e-3
     batch_size: int = 128
     max_epochs: int = 300
@@ -94,7 +104,7 @@ class SSVAEConfig:
     grad_clip_norm: float | None = 1.0
     weight_decay: float = 1e-4
     dropout_rate: float = 0.2
-    label_weight: float = 1.0
+    label_weight: float = 0.0
     xla_flags: str | None = None
     input_hw: Tuple[int, int] | None = None
     encoder_type: str = "dense"
@@ -106,6 +116,15 @@ class SSVAEConfig:
     prior_type: str = "standard"
     num_components: int = 10
     component_kl_weight: float = 0.1
+
+    def __post_init__(self):
+        """Validate configuration after initialization."""
+        valid_losses = {"mse", "bce"}
+        if self.reconstruction_loss not in valid_losses:
+            raise ValueError(
+                f"reconstruction_loss must be one of {valid_losses}, "
+                f"got '{self.reconstruction_loss}'"
+            )
 
     def get_informative_hyperparameters(self) -> Dict[str, object]:
         return {name: getattr(self, name) for name in INFORMATIVE_HPARAMETERS}

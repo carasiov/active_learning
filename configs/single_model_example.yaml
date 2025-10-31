@@ -1,0 +1,60 @@
+# ============================================================================
+# Single Model Training Configuration
+# ============================================================================
+# All hyperparameters in one place - no merging, no inheritance.
+#
+# Usage:
+#   python scripts/compare_models.py --config configs/single_model_example.yaml
+# ============================================================================
+
+description: "Train a single SSVAE model"
+
+# Data settings
+data:
+  num_samples: 5000
+  num_labeled: 50
+  epochs: 30
+  seed: 42
+
+# Single model with all hyperparameters
+models:
+  MyModel:
+    # Architecture
+    encoder_type: "dense"
+    decoder_type: "dense"
+    classifier_type: "dense"
+    latent_dim: 2
+    hidden_dims: [256, 128, 64]
+    input_hw: null
+    
+    # Loss
+    reconstruction_loss: "mse"
+    recon_weight: 500.0
+    kl_weight: 5.0
+    label_weight: 0.0
+    
+    # Prior
+    prior_type: "mixture"
+    num_components: 10
+    component_kl_weight: 0.1
+    
+    # Training
+    learning_rate: 0.001
+    batch_size: 128
+    max_epochs: 300
+    patience: 50
+    val_split: 0.1
+    random_seed: 42
+    
+    # Regularization
+    grad_clip_norm: 1.0
+    weight_decay: 0.0001
+    dropout_rate: 0.2
+    
+    # Monitoring
+    monitor_metric: "classification_loss"
+    
+    # Advanced
+    use_contrastive: false
+    contrastive_weight: 0.0
+    xla_flags: null

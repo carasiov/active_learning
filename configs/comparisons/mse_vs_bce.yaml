@@ -1,0 +1,21 @@
+# Comparison: MSE vs BCE Reconstruction Loss
+# Compare mean squared error against binary cross-entropy for MNIST reconstruction
+
+description: "Evaluate reconstruction quality: MSE vs BCE on MNIST"
+
+data:
+  num_samples: 25000
+  num_labeled: 100
+  epochs: 50
+  seed: 42
+
+models:
+
+  BCE_Standard:
+    reconstruction_loss: bce
+    recon_weight: 1
+    prior_type: mixture
+    num_components: 10
+
+  
+

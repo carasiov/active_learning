@@ -8,8 +8,21 @@ import optax
 
 from ssvae.config import SSVAEConfig
 
-def reconstruction_loss(x: jnp.ndarray, recon: jnp.ndarray, weight: float) -> jnp.ndarray:
-    """Return the reconstruction loss (MSE) scaled by ``weight``."""
+def reconstruction_loss_mse(x: jnp.ndarray, recon: jnp.ndarray, weight: float) -> jnp.ndarray:
+    """Mean squared error reconstruction loss.
+    
+    Args:
+        x: Target images, shape (batch, H, W) or (batch, H*W).
+        recon: Decoder outputs, same shape as x.
+        weight: Scaling factor for the loss.
+    
+    Returns:
+        Weighted MSE loss, scalar.
+    
+    Notes:
+        Appropriate for continuous-valued data. For binary data,
+        consider using reconstruction_loss_bce instead.
+    """
     diff = jnp.square(x - recon)
     if diff.ndim > 1:
         axes = tuple(range(1, diff.ndim))
@@ -17,6 +30,78 @@ def reconstruction_loss(x: jnp.ndarray, recon: jnp.ndarray, weight: float) -> jn
     else:
         per_sample = diff
     return weight * jnp.mean(per_sample)
+
+
+def reconstruction_loss_bce(x: jnp.ndarray, logits: jnp.ndarray, weight: float) -> jnp.ndarray:
+    """Binary cross-entropy with logits (numerically stable).
+    
+    Args:
+        x: Target images in [0, 1], shape (batch, H, W) or (batch, H*W).
+        logits: Raw decoder outputs (pre-sigmoid), same shape as x.
+        weight: Scaling factor for the loss.
+    
+    Returns:
+        Weighted BCE loss, scalar.
+    
+    Notes:
+        Uses log-sum-exp trick for numerical stability:
+        BCE = max(logits, 0) - x * logits + log(1 + exp(-|logits|))
+        
+        This formulation avoids computing sigmoid explicitly and handles
+        large positive/negative logits gracefully.
+    
+    References:
+        - Kingma & Welling (2013): Auto-Encoding Variational Bayes
+        - PyTorch F.binary_cross_entropy_with_logits implementation
+    """
+    # Flatten spatial dimensions if needed
+    if x.ndim > 2:
+        x_flat = x.reshape((x.shape[0], -1))
+        logits_flat = logits.reshape((logits.shape[0], -1))
+    else:
+        x_flat = x
+        logits_flat = logits
+    
+    # Numerically stable BCE computation
+    max_val = jnp.maximum(logits_flat, 0.0)
+    per_pixel_loss = max_val - x_flat * logits_flat + jnp.log1p(jnp.exp(-jnp.abs(logits_flat)))
+    
+    # Sum over pixels, average over batch
+    per_sample_loss = jnp.sum(per_pixel_loss, axis=1)
+    batch_loss = jnp.mean(per_sample_loss)
+    
+    return weight * batch_loss
+
+
+def reconstruction_loss(
+    x: jnp.ndarray,
+    recon: jnp.ndarray,
+    weight: float,
+    loss_type: str = "mse",
+) -> jnp.ndarray:
+    """Compute reconstruction loss with configurable type.
+    
+    Args:
+        x: Target images.
+        recon: Decoder outputs (raw values for MSE, logits for BCE).
+        weight: Scaling factor for the loss.
+        loss_type: Loss function type ("mse" or "bce").
+    
+    Returns:
+        Weighted reconstruction loss, scalar.
+    
+    Raises:
+        ValueError: If loss_type is not recognized.
+    """
+    if loss_type == "mse":
+        return reconstruction_loss_mse(x, recon, weight)
+    elif loss_type == "bce":
+        return reconstruction_loss_bce(x, recon, weight)
+    else:
+        raise ValueError(
+            f"Unknown reconstruction_loss type: '{loss_type}'. "
+            f"Valid options: 'mse', 'bce'"
+        )
 
 
 def kl_divergence(z_mean: jnp.ndarray, z_log: jnp.ndarray, weight: float) -> jnp.ndarray:
@@ -96,7 +181,12 @@ def compute_loss_and_metrics(
         key=use_key,
     )
 
-    rec_loss = reconstruction_loss(batch_x, recon, config.recon_weight)
+    rec_loss = reconstruction_loss(
+        batch_x, 
+        recon, 
+        config.recon_weight,
+        loss_type=config.reconstruction_loss
+    )
     
     # Dispatch KL computation based on prior type
     if component_logits is not None:

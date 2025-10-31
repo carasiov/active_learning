@@ -176,24 +176,22 @@ def main():
     # Prepare data
     X_train, y_semi, y_true = prepare_data(num_samples, num_labeled, seed)
     
-    # Base config shared by all models
-    base_config = {
-        'latent_dim': 2,
-        'hidden_dims': (256, 128, 64),
-        'max_epochs': epochs,
-        'batch_size': 128,
-        'random_seed': seed,
-        'patience': epochs,  # No early stopping
-    }
-    
     # Train all models
     trained_models = {}
     histories = {}
     summaries = {}
     
-    for name, model_overrides in models_to_compare.items():
-        config_dict = {**base_config, **model_overrides}
-        config = SSVAEConfig(**config_dict)
+    for name, model_config in models_to_compare.items():
+        # Convert hidden_dims list to tuple if present
+        if 'hidden_dims' in model_config and isinstance(model_config['hidden_dims'], list):
+            model_config['hidden_dims'] = tuple(model_config['hidden_dims'])
+        
+        # Override training settings from data config
+        model_config['max_epochs'] = epochs
+        model_config['random_seed'] = seed
+        model_config['patience'] = epochs  # No early stopping
+        
+        config = SSVAEConfig(**model_config)
         
         model, history, summary = train_model(name, config, X_train, y_semi, output_dir)
         
