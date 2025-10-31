@@ -68,31 +68,11 @@ Right now the repository provides:
 - **experiment scripts** to compare configurations,
 - and a **dashboard scaffold** (see `use_cases/dashboard/`) that will become the main interactive interface.
 
-This matches the design principles above: VAE-first, modular priors, active-learning hooks.
-
 For the actual project structure and how to run things, see the root `README.md`.
 
 ---
 
-## 5. Planned Direction
-
-The next steps that follow naturally from this context are:
-
-1. **Swap MNIST input → text/notification embeddings**  
-   Change the data loader, increase latent dimensionality, keep the rest of the pipeline.
-
-2. **Expose/activate uncertainty and "label suggestions"**  
-   Rank points by how well the current latent structure and current labels can explain them; surface the hardest ones to the expert.
-
-3. **Add label-aware shaping**  
-   For labeled points only, add contrastive / pull-push terms so the latent becomes more aligned with expert classes.
-
-4. **Refine priors**  
-   Once reconstruction is stable, enable more structured/data-shaped priors to make later class boundaries simpler.
-
----
-
-## 6. How to Read This Alongside the README
+## 5. How to Read This Alongside the README
 
 - **Start** with `README.md` if you want to run code, train models, or see the project layout.
 - **Read** this file (`docs/CONTEXT.md`) if you want to understand why the model and repo are built more generally than MNIST needs.
