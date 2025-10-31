@@ -1,164 +1,157 @@
-Active Learning – Semi-Supervised VAE (JAX/Flax)
-================================================
+# Active Learning – Semi-Supervised VAE (JAX/Flax)
 
-This repository delivers a modular Semi-Supervised Variational Autoencoder (SSVAE) built on JAX, Flax, and Optax. It demonstrates how to learn useful latent structure from predominantly unlabeled data and fine-tune a classifier with only a handful of labels.
-
-## Quick Start
-
-Launch the interactive dashboard to explore, label, train, and evaluate:
-
-```bash
-poetry run python use_cases/dashboard/app.py
-```
-
-Open http://localhost:8050 to access the full active learning workflow in one unified interface.
-
-See the [Dashboard README](use_cases/dashboard/README.md) for detailed features and usage.
-
-## Architecture Highlights
-
-- **Canonical JAX/Flax implementation:** `src/ssvae/` exposes the public API.
-- **Composable architecture:** encoder/decoder/classifier components live under `src/ssvae/components/`, enabling easy swaps via config.
-- **Modular observability:** `src/callbacks/` provides training callbacks for console logging, CSV export, and loss plotting.
-- **Runtime helpers:** `src/utils/` centralizes cross-cutting utilities such as JAX device detection.
-- **Pure training loop:** `src/training/` houses loss functions, the trainer, train state wrapper, and an interactive trainer for incremental labeling sessions.
-- **Interactive dashboard:** `use_cases/dashboard/` provides a web-based interface for the complete active learning cycle—replacing scattered scripts with a unified UI.
-
-
-
-
-
-
-Development Setup
------------------
-
-### Option 1: Using Devcontainer (Recommended)
-
-The project includes a devcontainer configuration for reproducible GPU-accelerated development.
-
-**Prerequisites:**
-- VS Code with "Remote - SSH" and "Dev Containers" extensions
-- Access to a machine with Docker and NVIDIA GPUs (e.g., the cluster)
-
-**Setup:**
-
-1. Connect to cluster via VS Code Remote SSH
-2. Open project folder
-3. Click "Reopen in Container" when prompted
-4. Wait for initial build (~5-10 minutes first time)
-5. Verify GPU: `poetry run python -c "import jax; print(jax.devices())"`
-
-See `.devcontainer/README.md` for detailed instructions and troubleshooting.
-
-**Benefits:**
-- Automatic dependency installation via Poetry
-- GPU access configured out of the box
-- Consistent environment across team members
-- Isolated from system Python
-
-### Option 2: Manual Setup with Poetry
-
-If you prefer not to use devcontainers:
-
-```bash
-# Install Poetry (if not already installed)
-curl -sSL https://install.python-poetry.org | python3 -
-
-# Install dependencies
-poetry install
-
-# For GPU support, ensure you have CUDA 12 installed
-# JAX will automatically detect GPU if available
-
-# Run code
-poetry run python use_cases/scripts/train.py
-```
-
-
-## Usage
-
-### Interactive Dashboard (Recommended)
-
-The dashboard provides a complete active learning interface:
-
-- **Visualize:** Explore 60k-point latent space with interactive WebGL scatter plots
-- **Label:** Click uncertain samples and label them with keyboard shortcuts (0-9)
-- **Configure:** Adjust 17+ hyperparameters through the advanced configuration UI
-- **Train:** Launch background training with real-time progress monitoring
-- **Evaluate:** Track loss curves and metrics as training progresses
-
-All training happens inside the dashboard—no need to touch the terminal for the label→train→evaluate cycle.
-
-See the [Dashboard README](use_cases/dashboard/README.md) for detailed features, architecture, and troubleshooting.
-
-### Programmatic API
-
-For custom workflows or integration into other tools:
-
-```python
-from ssvae import SSVAE, SSVAEConfig
-
-config = SSVAEConfig(
-    latent_dim=2,
-    hidden_dims=(256, 128, 64, 32),
-    max_epochs=75,
-    patience=10,
-    learning_rate=1e-3,
-)
-vae = SSVAE(input_dim=(28, 28), config=config)
-```
-
-Configuration options in `src/ssvae/config.py`:
-
-- **Architecture:** `latent_dim`, `hidden_dims`, `encoder_type`, `decoder_type`, `classifier_type`
-- **Loss weights:** `recon_weight`, `kl_weight`, `label_weight`, `use_contrastive`, `contrastive_weight`
-- **Training:** `batch_size`, `learning_rate`, `max_epochs`, `patience`, `grad_clip_norm`, `weight_decay`
-
-### CLI Scripts (Advanced)
-
-Command-line tools for batch processing and automation are available in `use_cases/scripts/`:
-
-**Train:**
-```bash
-poetry run python use_cases/scripts/train.py \
-  --labels data/mnist/labels.csv \
-  --weights artifacts/checkpoints/ssvae.ckpt
-```
-
-**Inference:**
-```bash
-poetry run python use_cases/scripts/infer.py \
-  --weights artifacts/checkpoints/ssvae.ckpt \
-  --output data/output_latent.npz \
-  --split train
-```
-
-**Legacy Interactive Viewer:**
-```bash
-poetry run python use_cases/scripts/view_latent.py
-```
-
-Labels are stored in `data/mnist/labels.csv` (columns: `Serial`, `label`). Both the dashboard and CLI scripts share this format, so you can switch between them without migration.
+> Modular semi-supervised variational autoencoder for learning from predominantly unlabeled data.  
+> JAX/Flax implementation.
 
 ---
 
-Callback System
----------------
+## What is this?
 
-Training observability is handled by the callback package (`src/callbacks/`):
+This repository contains a **deep learning model** that learns useful representations from datasets with very few labeled examples. 
 
-- `TrainingCallback` (base class) defines the hook surface: `on_train_start`, `on_epoch_end`, and `on_train_end`.
-- `ConsoleLogger` mirrors the legacy console table, including optional contrastive columns.
-- `CSVExporter` writes run history with the same schema consumed by experiment collectors.
-- `LossCurvePlotter` renders loss curves when Matplotlib is available (otherwise it no-ops).
+**The model is the core.** Everything else (comparison tools, dashboard, scripts) exists to experiment with, validate, and interact with the SSVAE model.
 
-Callbacks are instantiated in `SSVAE._build_callbacks`, so CLI scripts and notebooks automatically receive the default behavior without additional wiring.
+**Why does this exist?** While MNIST serves as the proof of concept, the ultimate goal is interactive active learning for high-dimensional text embeddings (device notifications, error messages). See [**Context & Motivation**](docs/CONTEXT.md) for the full story.
 
-### Extending Callbacks
 
-1. Create a new callback in `src/callbacks/` (either a new module or alongside the existing ones) that subclasses `TrainingCallback`.
-2. Override only the hooks you need; remember to convert JAX arrays to Python scalars (`float(...)`) before logging or serializing values.
-3. Export the callback from `src/callbacks/__init__.py` if you want downstream code to import it via `from callbacks import YourCallback`.
-4. Inject it by passing a callback list to `Trainer.train(..., callbacks=[...])`, to `InteractiveTrainer(..., callbacks=[...])`, or by extending `SSVAE._build_callbacks` in your own wrapper.
+## Project Structure
 
-This architecture keeps the training loop free of I/O concerns while making it straightforward to add integrations like streaming loggers, experiment trackers, or custom visualizations.
+```
+active_learning_showcase/
+│
+├── src/ssvae/                   # 🧠 Core Model (JAX/Flax)
+│   ├── models.py                #    SSVAE class (public API)
+│   ├── config.py                #    SSVAEConfig (25+ hyperparameters)
+│   └── components/              #    Encoder, decoder, classifier (factory pattern)
+│
+├── src/training/                # 🔄 Training Infrastructure
+│   ├── trainer.py               #    Training loop with early stopping
+│   ├── losses.py                #    Loss functions (reconstruction, KL, classification)
+│   └── interactive_trainer.py  #    Incremental training for active learning
+│
+├── src/callbacks/               # 📊 Training Observability
+│   ├── logging.py               #    Console & CSV logging
+│   └── plotting.py              #    Loss curve visualization
+│
+├── scripts/                     # 🔬 Experimentation Tools (Current Focus)
+│   ├── compare_models.py        #    Compare model configurations
+│   └── comparison_utils.py      #    Visualization & reporting utilities
+│
+├── use_cases/dashboard/         # 🎛️ Interactive Interface (Future Focus)
+│   ├── app.py                   #    Web-based active learning interface
+│   ├── core/                    #    State management & commands
+│   ├── pages/                   #    Dashboard UI pages
+│   └── docs/                    #    Dashboard-specific documentation
+│
+├── configs/comparisons/         # ⚙️ Experiment Configurations
+│   └── *.yaml                   #    YAML configs for model comparisons
+│
+├── data/mnist/                  # 📦 Dataset
+│   └── labels.csv               #    Shared label format (Serial, label)
+│
+├── artifacts/                   # 💾 Outputs
+│   ├── comparisons/             #    Experiment results (plots, metrics, reports)
+│   ├── checkpoints/             #    Model weights
+│   └── models/                  #    Dashboard model state
+│
+└── docs/                        # 📖 Documentation
+    ├── IMPLEMENTATION.md        #    Core model architecture & APIreference                       
+    └──...
+```
+
+### Component Relationships
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      SSVAE Model Core                       │
+│  (src/ssvae/ + src/training/ + src/callbacks/)              │
+│                                                              │
+│  • Configuration-driven architecture                         │
+│  • Factory pattern for components                            │
+│  • Pure functional training loop                             │
+│  • Callback-based observability                              │
+└──────────────┬──────────────────────────────┬───────────────┘
+               │                              │
+               │                              │
+     ┌─────────▼────────┐          ┌─────────▼──────────┐
+     │  Comparison Tool │          │     Dashboard      │
+     │  (scripts/)      │          │  (use_cases/)      │
+     │                  │          │                    │
+     │  Current primary │          │  Future primary    │
+     │  workflow for    │          │  interface once    │
+     │  experimentation │          │  features stable   │
+     └──────────────────┘          └────────────────────┘
+```
+
+**Current Reality:** Experimentation happens via `scripts/compare_models.py` for rapid iteration and validation.
+
+**Target State:** Dashboard becomes the primary interface for interactive active learning once model features stabilize.
+
+---
+
+---
+
+## Quick Start
+
+Get your first results in under 3 minutes:
+
+```bash
+# 1. Install dependencies (one-time setup)
+poetry install
+
+# 2. Run a model comparison
+poetry run python scripts/compare_models.py --models standard mixture_k10 --epochs 10
+```
+
+**Output:** `artifacts/comparisons/20241031_143022/` with loss curves, latent visualizations, metrics, and checkpoints.
+
+**Next steps:** [Getting Started Guide](docs/GETTING_STARTED.md) for detailed setup and verification.
+
+---
+---
+
+## Usage
+
+All usage patterns are documented in the [**Usage Guide**](docs/USAGE.md):
+
+- **[Comparison Tool](docs/USAGE.md#comparison-tool)** - Command-line experimentation (current primary workflow)
+- **[Interactive Dashboard](docs/USAGE.md#interactive-dashboard)** - Web interface for active learning  
+- **[Python API](docs/USAGE.md#python-api)** - Programmatic access for custom integration
+- **[Legacy Tools](docs/USAGE.md#legacy-tools)** - Single-model CLI scripts
+
+**Quick example:**
+
+```bash
+# Compare two models
+poetry run python scripts/compare_models.py --models standard mixture_k10 --epochs 10
+```
+
+See the [Usage Guide](docs/USAGE.md) for detailed examples, workflows, and troubleshooting.
+
+---
+
+---
+
+---
+
+## Documentation Map
+
+**Start here based on your goal:**
+
+| Get Started | Use Tools | Understand Model | Extend System |
+|-------------|-----------|------------------|---------------|
+| [**Getting Started**](docs/GETTING_STARTED.md)<br>• Installation<br>• Requirements<br>• Quick start<br>• Verification | [**Usage Guide**](docs/USAGE.md)<br>• Comparison tool<br>• Dashboard<br>• Python API<br>• Workflows | [**Implementation**](docs/IMPLEMENTATION.md)<br>• Architecture<br>• API reference<br>• Components<br>• Patterns | [**Contributing**](docs/CONTRIBUTING.md)<br>• Dev workflow<br>• Adding features<br>• Testing<br>• Code style |
+
+**Context & Philosophy:**
+
+- 📖 [**Context & Motivation**](docs/CONTEXT.md) - Why this architecture? What's the target application? Why MNIST first?
+
+**Specialized Guides:**
+
+- 🐳 [GPU Setup & Troubleshooting](.devcontainer/README.md) - Devcontainer, CUDA, device selection
+- 🔬 [Comparison Tool Details](configs/comparisons/README.md) - YAML configs, options, troubleshooting  
+- 🎛️ [Dashboard Overview](use_cases/dashboard/README.md) - Features, routing, development
+- 🤖 [Dashboard Extensions](use_cases/dashboard/docs/AGENT_GUIDE.md) - Adding commands, UI, callbacks
+- 🔧 [Dashboard Internals](use_cases/dashboard/docs/DEVELOPER_GUIDE.md) - Architecture, debugging, state
+
+

@@ -75,6 +75,7 @@ class SSVAENetwork(nn.Module):
         *,
         training: bool,
     ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+        """Returns (component_logits, z_mean, z_log_var, z, recon, class_logits)."""
         encoder_output = self.encoder(x, training=training)
         
         if self.config.prior_type == "mixture":
@@ -249,6 +250,7 @@ class SSVAE:
         )
 
     def load_model_weights(self, weights_path: str):
+        """Load params and optimizer state from checkpoint."""
         self.weights_path = str(weights_path)
         self._load_weights(self.weights_path)
 
@@ -271,6 +273,7 @@ class SSVAE:
         sample: bool = False,
         num_samples: int = 1,
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Returns (latent, reconstruction, class_predictions, certainty)."""
         x = jnp.array(data, dtype=jnp.float32)
         if sample:
             num_samples = max(1, int(num_samples))
@@ -317,6 +320,7 @@ class SSVAE:
             )
 
     def fit(self, data: np.ndarray, labels: np.ndarray, weights_path: str):
+        """Train with semi-supervised labels (NaN = unlabeled). Returns history dict."""
         self.weights_path = str(weights_path)
         callbacks = self._build_callbacks(weights_path=self.weights_path, export_history=True)
         trainer = Trainer(self.config)
