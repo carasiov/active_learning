@@ -1,0 +1,26 @@
+# Comparison: Different Latent Dimensions
+# Compare model performance across different latent space dimensionalities
+
+description: "Test how latent dimensionality affects mixture prior learning"
+
+data:
+  num_samples: 3000
+  num_labeled: 30
+  epochs: 20
+  seed: 42
+
+models:
+  Latent2D:
+    prior_type: mixture
+    num_components: 10
+    latent_dim: 2
+  
+  Latent5D:
+    prior_type: mixture
+    num_components: 10
+    latent_dim: 5
+  
+  Latent10D:
+    prior_type: mixture
+    num_components: 10
+    latent_dim: 10

@@ -1,0 +1,18 @@
+# Comparison: Mixture vs Standard Prior
+# Compare mixture prior with different K values against standard Gaussian prior
+
+description: "Evaluate mixture prior effectiveness across component counts"
+
+data:
+  num_samples: 50000
+  num_labeled: 0
+  epochs: 300
+  seed: 42
+
+models:
+  Standard:
+    prior_type: standard
+  
+  Mixture_K10:
+    prior_type: mixture
+    num_components: 10

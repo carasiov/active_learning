@@ -39,12 +39,17 @@ INFORMATIVE_HPARAMETERS = (
     "learning_rate",
     "batch_size",
     "recon_weight",
+    "reconstruction_loss",
     "kl_weight",
+    "label_weight",
     "weight_decay",
     "dropout_rate",
     "monitor_metric",
     "use_contrastive",
     "contrastive_weight",
+    "prior_type",
+    "num_components",
+    "component_kl_weight",
 )
 
 @dataclass
@@ -54,7 +59,14 @@ class SSVAEConfig:
     Attributes:
         latent_dim: Dimensionality of the latent representation.
         hidden_dims: Dense layer sizes for the encoder; decoder mirrors in reverse (dense only).
-        recon_weight: Weight applied to the reconstruction MSE term.
+        reconstruction_loss: Loss function for reconstruction term.
+            - "mse": Mean squared error, treats pixels as continuous Gaussian.
+                     Appropriate for natural images. Default weight: 500.
+            - "bce": Binary cross-entropy with logits, treats pixels as Bernoulli.
+                     Appropriate for binary/binarized images (e.g., MNIST).
+                     Recommended weight: 1.0 (BCE is already pixel-wise summed).
+        recon_weight: Weight applied to the reconstruction term. 
+            Typical values: 500 for MSE, 1.0 for BCE (due to different scales).
         kl_weight: Scaling factor for the KL divergence regularizer.
         learning_rate: Optimizer learning rate.
         batch_size: Number of samples per training batch.
@@ -73,22 +85,26 @@ class SSVAEConfig:
         monitor_metric: Validation metric name used for early stopping.
         use_contrastive: Whether to include the contrastive loss term.
         contrastive_weight: Scaling factor for the contrastive loss when enabled.
+        prior_type: Type of prior distribution ("standard" | "mixture").
+        num_components: Number of mixture components when prior_type="mixture".
+        component_kl_weight: Scaling factor for mixture component KL divergence.
     """
 
     latent_dim: int = 2
     hidden_dims: Tuple[int, ...] = (256, 128, 64)
-    recon_weight: float = 1000.0
-    kl_weight: float = 0.1
+    reconstruction_loss: str = "mse"
+    recon_weight: float = 500.0
+    kl_weight: float = 5
     learning_rate: float = 1e-3
-    batch_size: int = 256
-    max_epochs: int = 200
-    patience: int = 20
+    batch_size: int = 128
+    max_epochs: int = 300
+    patience: int = 50
     val_split: float = 0.1
     random_seed: int = 42
     grad_clip_norm: float | None = 1.0
     weight_decay: float = 1e-4
     dropout_rate: float = 0.2
-    label_weight: float = 1.0
+    label_weight: float = 0.0
     xla_flags: str | None = None
     input_hw: Tuple[int, int] | None = None
     encoder_type: str = "dense"
@@ -97,6 +113,18 @@ class SSVAEConfig:
     monitor_metric: str = "classification_loss"
     use_contrastive: bool = False
     contrastive_weight: float = 0.0
+    prior_type: str = "standard"
+    num_components: int = 10
+    component_kl_weight: float = 0.1
+
+    def __post_init__(self):
+        """Validate configuration after initialization."""
+        valid_losses = {"mse", "bce"}
+        if self.reconstruction_loss not in valid_losses:
+            raise ValueError(
+                f"reconstruction_loss must be one of {valid_losses}, "
+                f"got '{self.reconstruction_loss}'"
+            )
 
     def get_informative_hyperparameters(self) -> Dict[str, object]:
         return {name: getattr(self, name) for name in INFORMATIVE_HPARAMETERS}

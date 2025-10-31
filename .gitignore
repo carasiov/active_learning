@@ -44,3 +44,5 @@ artifacts
 .devcontainer/*.log
 .devcontainer/devcontainer.json
 devcontainer.json
+
+tests
