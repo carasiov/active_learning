@@ -51,13 +51,24 @@ models:
 
 # Expected outputs:
 #
-# For Mixture_K10:
+# Cross-model comparisons:
+#   - reconstructions.png (grid: original vs standard vs mixture reconstructions)
+#   - loss_comparison.png (training curves for all models)
+#   - latent_spaces.png (latent space visualizations)
+#   - COMPARISON_REPORT.md (comprehensive comparison report)
+#
+# Per-model diagnostics (all models):
+#   - diagnostics/reconstructions.png (original vs reconstruction pairs)
+#   - diagnostics/reconstruction_indices.npy (reproducibility)
+#
+# Mixture-specific diagnostics:
 #   - diagnostics/component_usage.npy (all 10 components should be active)
 #   - diagnostics/component_entropy.npy (mean entropy ~1.5-2.0)
 #   - diagnostics/per_class_component_usage.npy (components specialize to classes)
 #   - diagnostics/mixture_summary.txt (human-readable summary)
 #
 # Validation criteria:
+#   ✓ Reconstruction quality: Digits should be recognizable (visual check)
 #   ✓ No component collapse (all K components used)
 #   ✓ Balanced usage (max/min usage ratio < 20x)
 #   ✓ Moderate entropy (1.5-2.0, not too deterministic/uniform)
@@ -69,14 +80,20 @@ models:
 #
 # Output location:
 #   artifacts/comparisons/{timestamp}/
+#     - reconstructions.png              # Cross-model reconstruction comparison
+#     - loss_comparison.png              # Training curves
+#     - latent_spaces.png                # Latent space visualizations
+#     - COMPARISON_REPORT.md             # Comprehensive report
+#     - summary.json                     # Metrics JSON
 #     - standard/
+#       - diagnostics/
+#         - reconstructions.png          # Original vs reconstruction
+#         - reconstruction_indices.npy   # Sample indices used
 #     - mixture_k10/
 #       - diagnostics/
+#         - reconstructions.png
+#         - reconstruction_indices.npy
 #         - component_usage.npy
 #         - component_entropy.npy
 #         - per_class_component_usage.npy
 #         - mixture_summary.txt
-#     - summary.json
-#     - report.txt
-#     - loss_comparison.png
-#     - latent_spaces.png

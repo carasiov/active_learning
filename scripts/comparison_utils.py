@@ -104,6 +104,74 @@ def plot_latent_spaces(
     plt.close()
 
 
+def plot_reconstructions(
+    models: Dict[str, object],
+    X_data: np.ndarray,
+    y_true: np.ndarray,
+    output_dir: Path,
+    num_samples: int = 10
+):
+    """Generate reconstruction comparison grid across all models.
+
+    Shows original images vs reconstructions for each model side-by-side.
+    Uses stratified sampling (one image per class) for reproducibility.
+
+    Args:
+        models: Dictionary of {model_name: SSVAE model}
+        X_data: Input data array
+        y_true: True labels (for stratified sampling)
+        output_dir: Directory to save visualization
+        num_samples: Number of samples to show (default: 10, one per class)
+    """
+    # Select indices: one per class (0-9) for reproducibility
+    indices = []
+    for digit in range(min(num_samples, 10)):
+        mask = y_true == digit
+        if mask.sum() > 0:
+            indices.append(np.where(mask)[0][0])
+
+    # Limit to available samples
+    indices = indices[:num_samples]
+    X_samples = X_data[indices]
+
+    # Get reconstructions from all models
+    n_models = len(models)
+    n_samples = len(indices)
+
+    # Create figure: rows = samples, cols = [Original, Model1, Model2, ...]
+    fig, axes = plt.subplots(n_samples, n_models + 1, figsize=(2 * (n_models + 1), 2 * n_samples))
+
+    # Handle single sample case
+    if n_samples == 1:
+        axes = axes.reshape(1, -1)
+
+    for row_idx in range(n_samples):
+        # First column: original image
+        ax = axes[row_idx, 0]
+        ax.imshow(X_samples[row_idx], cmap='gray')
+        ax.axis('off')
+        if row_idx == 0:
+            ax.set_title('Original', fontsize=10)
+
+        # Subsequent columns: reconstructions from each model
+        for col_idx, (model_name, model) in enumerate(models.items(), start=1):
+            ax = axes[row_idx, col_idx]
+
+            # Get reconstruction for this sample
+            _, recon, _, _ = model.predict(X_samples[row_idx:row_idx+1])
+
+            ax.imshow(recon[0], cmap='gray')
+            ax.axis('off')
+            if row_idx == 0:
+                ax.set_title(model_name, fontsize=10)
+
+    plt.tight_layout()
+    output_path = output_dir / 'reconstructions.png'
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"  Saved: {output_path}")
+    plt.close()
+
+
 def generate_report(
     summaries: Dict[str, Dict],
     histories: Dict[str, Dict],
@@ -130,9 +198,13 @@ def generate_report(
             f.write("\n")
         
         f.write("## Results\n\n")
+        f.write("### Reconstructions\n\n")
+        f.write("![Reconstructions](reconstructions.png)\n\n")
+        f.write("*Reconstruction quality comparison (one sample per class, 0-9)*\n\n")
+
         f.write("### Loss Curves\n\n")
         f.write("![Loss Comparison](loss_comparison.png)\n\n")
-        
+
         f.write("### Latent Spaces\n\n")
         f.write("![Latent Spaces](latent_spaces.png)\n\n")
         

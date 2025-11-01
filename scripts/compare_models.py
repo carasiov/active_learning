@@ -26,7 +26,7 @@ if str(DATA_DIR) not in sys.path:
 
 from mnist.mnist import load_mnist_scaled
 from ssvae import SSVAE, SSVAEConfig
-from comparison_utils import plot_loss_comparison, plot_latent_spaces, generate_report
+from comparison_utils import plot_loss_comparison, plot_latent_spaces, plot_reconstructions, generate_report
 from diagnostics import DIAGNOSTICS
 
 
@@ -210,6 +210,7 @@ def main():
     
     # Generate visualizations
     print("\nGenerating visualizations...")
+    plot_reconstructions(trained_models, X_train, y_true, output_dir)
     plot_loss_comparison(histories, output_dir)
     plot_latent_spaces(trained_models, X_train, y_true, output_dir)
     

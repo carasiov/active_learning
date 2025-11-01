@@ -204,6 +204,87 @@ class MixtureDiagnostics(DiagnosticExporter):
         print(f"    - mixture_summary.txt")
 
 
+class ReconstructionDiagnostics(DiagnosticExporter):
+    """Diagnostic exporter for reconstruction quality (applies to all models).
+
+    Exports:
+        - reconstructions.png: Grid showing original vs reconstruction (10 samples)
+        - reconstruction_indices.npy: Indices of samples used (for reproducibility)
+
+    These diagnostics help answer:
+        - Is the model reconstructing inputs accurately?
+        - Are there systematic failures (e.g., certain digits)?
+        - Visual confirmation of reconstruction loss values
+    """
+
+    def should_export(self, config: SSVAEConfig) -> bool:
+        """Always export reconstruction diagnostics."""
+        return True
+
+    def export(
+        self,
+        model: SSVAE,
+        data: np.ndarray,
+        labels: np.ndarray,
+        output_dir: Path,
+    ) -> None:
+        """Export reconstruction diagnostics."""
+        import matplotlib.pyplot as plt
+
+        # Select samples: one per class (0-9) for reproducibility
+        indices = []
+        for digit in range(10):
+            mask = labels == digit
+            if mask.sum() > 0:
+                indices.append(np.where(mask)[0][0])
+
+        num_samples = len(indices)
+        if num_samples == 0:
+            print("  Warning: No labeled samples for reconstruction diagnostics")
+            return
+
+        X_samples = data[indices]
+
+        # Get reconstructions
+        _, reconstructions, _, _ = model.predict(X_samples)
+
+        # Create diagnostics directory
+        diagnostics_dir = output_dir / "diagnostics"
+        diagnostics_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create visualization: 2 columns (original, reconstruction), N rows (samples)
+        fig, axes = plt.subplots(num_samples, 2, figsize=(4, 2 * num_samples))
+
+        # Handle single sample case
+        if num_samples == 1:
+            axes = axes.reshape(1, -1)
+
+        for idx in range(num_samples):
+            # Original
+            axes[idx, 0].imshow(X_samples[idx], cmap='gray')
+            axes[idx, 0].axis('off')
+            if idx == 0:
+                axes[idx, 0].set_title('Original', fontsize=10)
+
+            # Reconstruction
+            axes[idx, 1].imshow(reconstructions[idx], cmap='gray')
+            axes[idx, 1].axis('off')
+            if idx == 0:
+                axes[idx, 1].set_title('Reconstruction', fontsize=10)
+
+        plt.tight_layout()
+        recon_path = diagnostics_dir / 'reconstructions.png'
+        plt.savefig(recon_path, dpi=150, bbox_inches='tight')
+        plt.close()
+
+        # Save indices for reproducibility
+        np.save(diagnostics_dir / 'reconstruction_indices.npy', np.array(indices))
+
+        print(f"  Reconstruction diagnostics saved to {diagnostics_dir}")
+        print(f"    - reconstructions.png")
+        print(f"    - reconstruction_indices.npy")
+
+
 # =============================================================================
 # Future Diagnostics (Template Examples)
 # =============================================================================
@@ -249,8 +330,9 @@ class MixtureDiagnostics(DiagnosticExporter):
 # Global registry of all diagnostic exporters
 # Add new diagnostics here as they are implemented
 DIAGNOSTICS = [
-    MixtureDiagnostics(),
-    # LabelStoreDiagnostics(),  # Future
-    # OODDiagnostics(),         # Future
-    # VampPriorDiagnostics(),   # Future
+    ReconstructionDiagnostics(),  # Always-on: visual verification of reconstruction quality
+    MixtureDiagnostics(),         # Feature-specific: mixture prior analysis
+    # LabelStoreDiagnostics(),    # Future
+    # OODDiagnostics(),           # Future
+    # VampPriorDiagnostics(),     # Future
 ]
