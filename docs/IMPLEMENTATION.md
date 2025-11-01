@@ -208,6 +208,8 @@ class SSVAETrainState:
 
 ### 5. Loss Functions (`src/training/losses.py`)
 
+> **Testing:** All loss functions have comprehensive tests in `tests/test_core_correctness.py`. See [Verification Methodology](VERIFICATION.md).
+
 **Pure functions** — Decoupled from model architecture
 
 **`compute_loss_and_metrics`** — Main loss aggregation

@@ -157,8 +157,9 @@ See the [Usage Guide](docs/USAGE.md) for detailed examples, workflows, and troub
 
 **Specialized Guides:**
 
+- ✅ [**Verification Methodology**](docs/VERIFICATION.md) - Testing & diagnostic framework for features
 - 🐳 [GPU Setup & Troubleshooting](.devcontainer/README.md) - Devcontainer, CUDA, device selection
-- 🔬 [Comparison Tool Details](configs/comparisons/README.md) - YAML configs, options, troubleshooting  
+- 🔬 [Comparison Tool Details](configs/comparisons/README.md) - YAML configs, options, troubleshooting
 - 🎛️ [Dashboard Overview](use_cases/dashboard/README.md) - Features, routing, development
 - 🤖 [Dashboard Extensions](use_cases/dashboard/docs/AGENT_GUIDE.md) - Adding commands, UI, callbacks
 - 🔧 [Dashboard Internals](use_cases/dashboard/docs/DEVELOPER_GUIDE.md) - Architecture, debugging, state

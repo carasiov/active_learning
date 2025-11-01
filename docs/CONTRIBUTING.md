@@ -2,6 +2,8 @@
 
 Guide for extending and modifying the SSVAE project.
 
+> **Before adding features:** See [Verification Methodology](VERIFICATION.md) for testing and validation process.
+
 ---
 
 ## Development Workflow

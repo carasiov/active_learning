@@ -27,6 +27,7 @@ if str(DATA_DIR) not in sys.path:
 from mnist.mnist import load_mnist_scaled
 from ssvae import SSVAE, SSVAEConfig
 from comparison_utils import plot_loss_comparison, plot_latent_spaces, generate_report
+from diagnostics import DIAGNOSTICS
 
 
 def parse_args():
@@ -185,16 +186,24 @@ def main():
         # Convert hidden_dims list to tuple if present
         if 'hidden_dims' in model_config and isinstance(model_config['hidden_dims'], list):
             model_config['hidden_dims'] = tuple(model_config['hidden_dims'])
-        
+
         # Override training settings from data config
         model_config['max_epochs'] = epochs
         model_config['random_seed'] = seed
         model_config['patience'] = epochs  # No early stopping
-        
+
         config = SSVAEConfig(**model_config)
-        
+
         model, history, summary = train_model(name, config, X_train, y_semi, output_dir)
-        
+
+        # Export feature-specific diagnostics
+        model_output_dir = output_dir / name.replace(' ', '_').lower()
+        model_output_dir.mkdir(parents=True, exist_ok=True)
+
+        for diagnostic in DIAGNOSTICS:
+            if diagnostic.should_export(config):
+                diagnostic.export(model, X_train, y_true, model_output_dir)
+
         trained_models[name] = model
         histories[name] = history
         summaries[name] = summary

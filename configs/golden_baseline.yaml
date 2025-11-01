@@ -1,0 +1,81 @@
+# Golden Baseline Configuration
+#
+# Purpose: Establish validated baseline for standard vs mixture prior comparison
+#
+# This configuration serves as an EXAMPLE of the verification process.
+# When adding new features (label store, OOD, VampPrior), follow this pattern:
+# 1. Create config comparing baseline vs feature
+# 2. Run experiment: python scripts/compare_models.py --config configs/golden_baseline.yaml
+# 3. Validate outputs with advisor
+# 4. Save to artifacts/golden/{feature_name}/
+# 5. Document findings in docs/VERIFICATION.md
+
+description: "Golden baseline - Standard vs Mixture prior (advisor validated)"
+
+# Data configuration
+data:
+  num_samples: 5000        # Total MNIST samples
+  num_labeled: 50          # Labeled samples (semi-supervised)
+  epochs: 20               # Training epochs (no early stopping)
+  seed: 42                 # Random seed for reproducibility
+
+# Models to compare
+models:
+  # Baseline: Standard Gaussian prior
+  Standard:
+    prior_type: standard
+    latent_dim: 2
+    hidden_dims: [256, 128, 64]
+    reconstruction_loss: mse
+    recon_weight: 500.0
+    kl_weight: 5.0
+    learning_rate: 0.001
+    batch_size: 128
+    dropout_rate: 0.2
+    label_weight: 0.0
+
+  # Feature: Mixture of Gaussians prior (K=10)
+  Mixture_K10:
+    prior_type: mixture
+    num_components: 10
+    component_kl_weight: 0.1
+    latent_dim: 2
+    hidden_dims: [256, 128, 64]
+    reconstruction_loss: mse
+    recon_weight: 500.0
+    learning_rate: 0.001
+    batch_size: 128
+    dropout_rate: 0.2
+    label_weight: 0.0
+
+# Expected outputs (to be validated with advisor):
+#
+# For Mixture_K10:
+#   - diagnostics/component_usage.npy (all 10 components should be active)
+#   - diagnostics/component_entropy.npy (mean entropy ~1.5-2.0)
+#   - diagnostics/per_class_component_usage.npy (components specialize to classes)
+#   - diagnostics/mixture_summary.txt (human-readable summary)
+#
+# Validation criteria:
+#   ✓ No component collapse (all K components used)
+#   ✓ Balanced usage (max/min usage ratio < 20x)
+#   ✓ Moderate entropy (1.5-2.0, not too deterministic/uniform)
+#   ✓ Class specialization (each class has 1-3 dominant components)
+#   ✓ Classification performance comparable to standard (within 10%)
+#
+# Usage:
+#   python scripts/compare_models.py --config configs/golden_baseline.yaml
+#
+# Output location:
+#   artifacts/comparisons/{timestamp}/
+#     - standard/
+#     - mixture_k10/
+#       - diagnostics/
+#         - component_usage.npy
+#         - component_entropy.npy
+#         - per_class_component_usage.npy
+#         - mixture_summary.txt
+#     - summary.json
+#     - report.txt
+#     - loss_comparison.png
+#     - latent_spaces.png
