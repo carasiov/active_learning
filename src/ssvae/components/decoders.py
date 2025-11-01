@@ -20,6 +20,7 @@ class DenseDecoder(nn.Module):
             x = nn.leaky_relu(x)
         h, w = self.output_hw
         x = nn.Dense(h * w, name="projection")(x)
+        x = nn.sigmoid(x)  # Output in [0, 1] range for MSE loss
         return x.reshape((-1, h, w))
 
 
@@ -41,5 +42,6 @@ class ConvDecoder(nn.Module):
         x = nn.ConvTranspose(features=32, kernel_size=(3, 3), strides=(2, 2), padding="SAME", name="deconv_1")(x)
         x = nn.leaky_relu(x, negative_slope=0.2)
         x = nn.Conv(features=1, kernel_size=(3, 3), strides=(1, 1), padding="SAME", name="recon")(x)
+        x = nn.sigmoid(x)  # Output in [0, 1] range for MSE loss
         x = x.squeeze(axis=-1)
         return x
