@@ -11,8 +11,17 @@ This repository contains a **deep learning model** that learns useful representa
 
 **The model is the core.** Everything else (comparison tools, dashboard, scripts) exists to experiment with, validate, and interact with the SSVAE model.
 
-**Why does this exist?** While MNIST serves as the proof of concept, the ultimate goal is interactive active learning for high-dimensional text embeddings (device notifications, error messages). See [**Context & Motivation**](docs/CONTEXT.md) for the full story.
+**Why does this exist?** While MNIST serves as the proof of concept, the ultimate goal is interactive active learning for high-dimensional text embeddings (device notifications, error messages). See [**Context & Motivation**](docs/CONTEXT.md) for the full story, and if you want to understand why the model and repo are built more generally than MNIST needs.
 
+### Current Implementation Status
+
+The repository provides:
+- **Semi-supervised VAE** (JAX/Flax) with standard and mixture priors
+- **Component-based architecture** with responsibilities and conditional decoder
+- **Training infrastructure** for incremental/interactive runs with curriculum support
+- **Multiple loss terms**: reconstruction (MSE/BCE/Gaussian NLL), KL, classification, contrastive
+- **Experiment scripts** to compare configurations
+- **Dashboard scaffold** (`use_cases/dashboard/`) for interactive labeling interface
 
 ## Project Structure
 
