@@ -293,6 +293,11 @@ class SSVAE:
                 logits_samples.append(logits)
             latent_stack = jnp.stack(latent_samples) if num_samples > 1 else latent_samples[0]
             recon_stack = jnp.stack(recon_samples) if num_samples > 1 else recon_samples[0]
+
+            # Convert reconstruction logits to probabilities for BCE loss
+            if self.config.reconstruction_loss == "bce":
+                recon_stack = jax.nn.sigmoid(recon_stack)
+
             logits_stack = jnp.stack(logits_samples) if num_samples > 1 else logits_samples[0]
             probs = softmax(logits_stack, axis=-1)
             if num_samples > 1:
@@ -309,6 +314,11 @@ class SSVAE:
             )
         else:
             component_logits, z_mean, _, _, recon, logits = self._apply_fn(self.state.params, x, training=False)
+
+            # Convert reconstruction logits to probabilities for BCE loss
+            if self.config.reconstruction_loss == "bce":
+                recon = jax.nn.sigmoid(recon)
+
             probs = softmax(logits, axis=1)
             pred_class = jnp.argmax(probs, axis=1)
             pred_certainty = jnp.max(probs, axis=1)
