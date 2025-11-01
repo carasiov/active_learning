@@ -186,71 +186,17 @@ for diagnostic in DIAGNOSTICS:
 
 No need to modify the comparison tool - just add your diagnostic class and it runs automatically!
 
-### Step 4: Validate with Advisor
-
-**Critical step:** Get expert validation of "healthy" behavior.
-
-1. Create config: `configs/my_feature_baseline.yaml`
-2. Run experiment: `python scripts/compare_models.py --config configs/my_feature_baseline.yaml`
-3. **Meet with advisor** - Review outputs together
-4. Save validated outputs: `artifacts/golden/my_feature/`
-5. Document findings in this file
-
-**Why this matters:**
-
-You can't verify a feature works correctly without knowing what "correct" looks like. Advisor validation establishes ground truth.
-
-### Step 5: Document
+### Step 4: Document
 
 Add section to this file documenting:
 - What the feature does
 - What tests exist
 - What diagnostics are exported
-- What "healthy" behavior looks like (from advisor validation)
+- What "healthy" behavior looks like
 
 ---
 
-## Golden Baselines
 
-### Mixture Prior (Example)
-
-**Config:** `configs/golden_baseline.yaml`
-
-**Setup:**
-- 5000 MNIST samples, 50 labeled
-- 20 epochs
-- Standard vs Mixture (K=10)
-
-**Validated behavior (advisor approved):**
-
-1. **Component usage:** All 10 components active (no collapse)
-   - File: `component_usage.npy`
-   - Expected: No component with 0 assignments
-   - Expected: Usage ratio (max/min) < 20x
-
-2. **Component entropy:** Moderate uncertainty (not too deterministic, not too uniform)
-   - File: `component_entropy.npy`
-   - Expected: Mean entropy ~1.5-2.0 (range: 0 to log(10)=2.3)
-   - Too low (<1.0): Model too deterministic, not utilizing mixture
-   - Too high (>2.2): Model not learning structure
-
-3. **Per-class specialization:** Components show some class preference
-   - File: `per_class_component_usage.npy`
-   - Expected: Each class has 1-3 dominant components (not uniform)
-   - Expected: Different classes prefer different components
-
-4. **Classification performance:** Comparable to standard prior
-   - Expected: Final classification loss within 10% of standard
-   - Mixture should not hurt supervised performance
-
-**How to reproduce:**
-```bash
-python scripts/compare_models.py --config configs/golden_baseline.yaml
-```
-
-**Artifacts location:** `artifacts/golden/mixture_prior/`
-
----
 
 ## Future Feature Checklist
 
