@@ -8,21 +8,12 @@ import optax
 
 from ssvae.config import SSVAEConfig
 
+
+EPS = 1e-8
+
+
 def reconstruction_loss_mse(x: jnp.ndarray, recon: jnp.ndarray, weight: float) -> jnp.ndarray:
-    """Mean squared error reconstruction loss.
-    
-    Args:
-        x: Target images, shape (batch, H, W) or (batch, H*W).
-        recon: Decoder outputs, same shape as x.
-        weight: Scaling factor for the loss.
-    
-    Returns:
-        Weighted MSE loss, scalar.
-    
-    Notes:
-        Appropriate for continuous-valued data. For binary data,
-        consider using reconstruction_loss_bce instead.
-    """
+    """Mean squared error reconstruction loss for standard prior."""
     diff = jnp.square(x - recon)
     if diff.ndim > 1:
         axes = tuple(range(1, diff.ndim))
@@ -33,44 +24,54 @@ def reconstruction_loss_mse(x: jnp.ndarray, recon: jnp.ndarray, weight: float) -
 
 
 def reconstruction_loss_bce(x: jnp.ndarray, logits: jnp.ndarray, weight: float) -> jnp.ndarray:
-    """Binary cross-entropy with logits (numerically stable).
-    
-    Args:
-        x: Target images in [0, 1], shape (batch, H, W) or (batch, H*W).
-        logits: Raw decoder outputs (pre-sigmoid), same shape as x.
-        weight: Scaling factor for the loss.
-    
-    Returns:
-        Weighted BCE loss, scalar.
-    
-    Notes:
-        Uses log-sum-exp trick for numerical stability:
-        BCE = max(logits, 0) - x * logits + log(1 + exp(-|logits|))
-        
-        This formulation avoids computing sigmoid explicitly and handles
-        large positive/negative logits gracefully.
-    
-    References:
-        - Kingma & Welling (2013): Auto-Encoding Variational Bayes
-        - PyTorch F.binary_cross_entropy_with_logits implementation
-    """
-    # Flatten spatial dimensions if needed
+    """Binary cross-entropy with logits (numerically stable) for standard prior."""
     if x.ndim > 2:
         x_flat = x.reshape((x.shape[0], -1))
         logits_flat = logits.reshape((logits.shape[0], -1))
     else:
         x_flat = x
         logits_flat = logits
-    
-    # Numerically stable BCE computation
+
     max_val = jnp.maximum(logits_flat, 0.0)
     per_pixel_loss = max_val - x_flat * logits_flat + jnp.log1p(jnp.exp(-jnp.abs(logits_flat)))
-    
-    # Sum over pixels, average over batch
     per_sample_loss = jnp.sum(per_pixel_loss, axis=1)
     batch_loss = jnp.mean(per_sample_loss)
-    
     return weight * batch_loss
+
+
+def weighted_reconstruction_loss_mse(
+    x: jnp.ndarray,
+    recon_components: jnp.ndarray,
+    responsibilities: jnp.ndarray,
+    weight: float,
+) -> jnp.ndarray:
+    """Expected reconstruction MSE under q(c|x)."""
+    diff = jnp.square(x[:, None, ...] - recon_components)
+    axes = tuple(range(2, diff.ndim))
+    per_component = jnp.mean(diff, axis=axes)
+    weighted = jnp.sum(responsibilities * per_component, axis=1)
+    return weight * jnp.mean(weighted)
+
+
+def weighted_reconstruction_loss_bce(
+    x: jnp.ndarray,
+    logits_components: jnp.ndarray,
+    responsibilities: jnp.ndarray,
+    weight: float,
+) -> jnp.ndarray:
+    """Expected BCE reconstruction loss under q(c|x)."""
+    if x.ndim > 2:
+        x_flat = x.reshape((x.shape[0], -1))
+        logits_flat = logits_components.reshape((logits_components.shape[0], logits_components.shape[1], -1))
+    else:
+        x_flat = x
+        logits_flat = logits_components
+
+    max_val = jnp.maximum(logits_flat, 0.0)
+    per_pixel_loss = max_val - x_flat[:, None, :] * logits_flat + jnp.log1p(jnp.exp(-jnp.abs(logits_flat)))
+    per_component = jnp.sum(per_pixel_loss, axis=-1)
+    weighted = jnp.sum(responsibilities * per_component, axis=1)
+    return weight * jnp.mean(weighted)
 
 
 def reconstruction_loss(
@@ -79,29 +80,27 @@ def reconstruction_loss(
     weight: float,
     loss_type: str = "mse",
 ) -> jnp.ndarray:
-    """Compute reconstruction loss with configurable type.
-    
-    Args:
-        x: Target images.
-        recon: Decoder outputs (raw values for MSE, logits for BCE).
-        weight: Scaling factor for the loss.
-        loss_type: Loss function type ("mse" or "bce").
-    
-    Returns:
-        Weighted reconstruction loss, scalar.
-    
-    Raises:
-        ValueError: If loss_type is not recognized.
-    """
+    """Compute reconstruction loss for standard prior modes."""
     if loss_type == "mse":
         return reconstruction_loss_mse(x, recon, weight)
-    elif loss_type == "bce":
+    if loss_type == "bce":
         return reconstruction_loss_bce(x, recon, weight)
-    else:
-        raise ValueError(
-            f"Unknown reconstruction_loss type: '{loss_type}'. "
-            f"Valid options: 'mse', 'bce'"
-        )
+    raise ValueError(f"Unknown reconstruction_loss type: '{loss_type}'. Valid options: 'mse', 'bce'")
+
+
+def weighted_reconstruction_loss(
+    x: jnp.ndarray,
+    recon_components: jnp.ndarray,
+    responsibilities: jnp.ndarray,
+    weight: float,
+    loss_type: str,
+) -> jnp.ndarray:
+    """Compute expectation of reconstruction loss over mixture components."""
+    if loss_type == "mse":
+        return weighted_reconstruction_loss_mse(x, recon_components, responsibilities, weight)
+    if loss_type == "bce":
+        return weighted_reconstruction_loss_bce(x, recon_components, responsibilities, weight)
+    raise ValueError(f"Unknown reconstruction_loss type: '{loss_type}'. Valid options: 'mse', 'bce'")
 
 
 def kl_divergence(z_mean: jnp.ndarray, z_log: jnp.ndarray, weight: float) -> jnp.ndarray:
@@ -110,31 +109,35 @@ def kl_divergence(z_mean: jnp.ndarray, z_log: jnp.ndarray, weight: float) -> jnp
     return weight * jnp.mean(jnp.sum(kl, axis=1))
 
 
-def kl_divergence_mixture(
-    component_logits: jnp.ndarray,
-    z_mean: jnp.ndarray,
-    z_log: jnp.ndarray,
+def categorical_kl(
+    responsibilities: jnp.ndarray,
+    pi: jnp.ndarray,
     weight: float,
 ) -> jnp.ndarray:
-    """Return mixture KL divergence KL(q(c,z|x) || Uniform(c)*N(z|0,I))."""
-    responsibilities = jax.nn.softmax(component_logits, axis=-1)
-    num_components = component_logits.shape[-1]
-    
-    # KL for each component against standard Gaussian
-    kl_per_component = -0.5 * (1.0 + z_log - jnp.square(z_mean) - jnp.exp(z_log))
-    kl_per_component_sum = jnp.sum(kl_per_component, axis=-1)
-    
-    # Entropy of component distribution: -sum(r * log(r))
-    log_responsibilities = jnp.log(responsibilities + 1e-10)
-    component_entropy = -jnp.sum(responsibilities * log_responsibilities, axis=-1)
-    
-    # KL(q(c) || Uniform) = log(K) - H(q(c))
-    kl_component = jnp.log(float(num_components)) - component_entropy
-    
-    # Total mixture KL: E_q(c)[KL(q(z|c) || p(z))] + KL(q(c) || p(c))
-    mixture_kl = kl_per_component_sum + kl_component
-    
-    return weight * jnp.mean(mixture_kl)
+    """Compute KL(q(c|x) || π) averaged over the batch."""
+    resp_safe = jnp.clip(responsibilities, EPS, 1.0)
+    pi_safe = jnp.clip(pi, EPS, 1.0)
+    log_ratio = jnp.log(resp_safe) - jnp.log(pi_safe)[None, :]
+    per_sample = jnp.sum(resp_safe * log_ratio, axis=1)
+    return weight * jnp.mean(per_sample)
+
+
+def dirichlet_map_penalty(pi: jnp.ndarray, alpha: float | None, weight: float) -> jnp.ndarray:
+    """Dirichlet MAP penalty on π; returns zero when alpha is None."""
+    if alpha is None:
+        return jnp.array(0.0, dtype=pi.dtype)
+    pi_safe = jnp.clip(pi, EPS, 1.0)
+    penalty = -(alpha - 1.0) * jnp.sum(jnp.log(pi_safe))
+    return weight * penalty
+
+
+def usage_sparsity_penalty(responsibilities: jnp.ndarray, weight: float) -> jnp.ndarray:
+    """Usage sparsity penalty based on empirical component frequencies."""
+    if weight == 0.0:
+        return jnp.array(0.0, dtype=responsibilities.dtype)
+    hat_p = jnp.mean(responsibilities, axis=0)
+    penalty = jnp.sum(hat_p * jnp.log(jnp.clip(hat_p, EPS, 1.0)))
+    return weight * penalty
 
 
 def classification_loss(logits: jnp.ndarray, labels: jnp.ndarray, weight: float) -> jnp.ndarray:
@@ -164,41 +167,59 @@ def _contrastive_loss_stub(z: jnp.ndarray, weight: float) -> jnp.ndarray:
 
 def compute_loss_and_metrics(
     params: Dict[str, Dict[str, jnp.ndarray]],
-    batch_x: jnp.ndarray,
-    batch_y: jnp.ndarray,
-    model_apply_fn: Callable[..., Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]],
-    config: SSVAEConfig,
-    rng: jax.Array | None,
-    *,
-    training: bool,
+   batch_x: jnp.ndarray,
+   batch_y: jnp.ndarray,
+   model_apply_fn: Callable[..., Tuple],
+   config: SSVAEConfig,
+   rng: jax.Array | None,
+   *,
+   training: bool,
+    kl_c_scale: float = 1.0,
 ) -> Tuple[jnp.ndarray, Dict[str, jnp.ndarray]]:
     """Mirror ``SSVAE._loss_and_metrics`` using the pure loss helpers."""
     use_key = rng if training else None
-    component_logits, z_mean, z_log, z, recon, logits = model_apply_fn(
+    forward_output = model_apply_fn(
         params,
         batch_x,
         training=training,
         key=use_key,
     )
+    component_logits, z_mean, z_log, z, recon, logits, extras = forward_output
 
-    rec_loss = reconstruction_loss(
-        batch_x, 
-        recon, 
-        config.recon_weight,
-        loss_type=config.reconstruction_loss
-    )
-    
-    # Dispatch KL computation based on prior type
-    if component_logits is not None:
-        kl_loss = kl_divergence_mixture(component_logits, z_mean, z_log, config.component_kl_weight)
-        # Compute component entropy metric
-        responsibilities = jax.nn.softmax(component_logits, axis=-1)
-        log_resp = jnp.log(responsibilities + 1e-10)
-        component_entropy = -jnp.mean(jnp.sum(responsibilities * log_resp, axis=-1))
+    if hasattr(extras, "get"):
+        responsibilities = extras.get("responsibilities")
+        recon_components = extras.get("recon_per_component")
+        pi = extras.get("pi")
     else:
-        kl_loss = kl_divergence(z_mean, z_log, config.kl_weight)
-        component_entropy = jnp.array(0.0, dtype=kl_loss.dtype)
-    
+        responsibilities = recon_components = pi = None
+
+    if responsibilities is not None and recon_components is not None and pi is not None:
+        rec_loss = weighted_reconstruction_loss(
+            batch_x,
+            recon_components,
+            responsibilities,
+            config.recon_weight,
+            loss_type=config.reconstruction_loss,
+        )
+        kl_z = kl_divergence(z_mean, z_log, config.kl_weight)
+        kl_c_weight = config.kl_c_weight * kl_c_scale
+        kl_c = categorical_kl(responsibilities, pi, kl_c_weight)
+        dirichlet_penalty = dirichlet_map_penalty(pi, config.dirichlet_alpha, config.dirichlet_weight)
+        usage_penalty = usage_sparsity_penalty(responsibilities, config.usage_sparsity_weight)
+        resp_safe = jnp.clip(responsibilities, EPS, 1.0)
+        component_entropy = -jnp.mean(jnp.sum(resp_safe * jnp.log(resp_safe), axis=-1))
+        pi_safe = jnp.clip(pi, EPS, 1.0)
+        pi_entropy = -jnp.sum(pi_safe * jnp.log(pi_safe))
+    else:
+        rec_loss = reconstruction_loss(batch_x, recon, config.recon_weight, loss_type=config.reconstruction_loss)
+        kl_z = kl_divergence(z_mean, z_log, config.kl_weight)
+        zero = jnp.array(0.0, dtype=rec_loss.dtype)
+        kl_c = zero
+        dirichlet_penalty = zero
+        usage_penalty = zero
+        component_entropy = zero
+        pi_entropy = zero
+
     # Compute classification loss for metrics (unweighted) and for the objective (weighted).
     cls_loss_unweighted = classification_loss(logits, batch_y, 1.0)
     cls_loss_weighted = classification_loss(logits, batch_y, config.label_weight)
@@ -208,14 +229,22 @@ def compute_loss_and_metrics(
     else:
         contrastive = jnp.array(0.0, dtype=rec_loss.dtype)
 
-    total = rec_loss + kl_loss + cls_loss_weighted + contrastive
+    total = rec_loss + kl_z + kl_c + dirichlet_penalty + usage_penalty + cls_loss_weighted + contrastive
+    # For readability, expose a variant that excludes global priors/usage terms.
+    loss_no_global_priors = rec_loss + kl_z + kl_c + cls_loss_weighted + contrastive
     metrics = {
         "loss": total,
+        "loss_no_global_priors": loss_no_global_priors,
         "reconstruction_loss": rec_loss,
-        "kl_loss": kl_loss,
+        "kl_loss": kl_z + kl_c,
+        "kl_z": kl_z,
+        "kl_c": kl_c,
+        "dirichlet_penalty": dirichlet_penalty,
+        "usage_sparsity_loss": usage_penalty,
         "classification_loss": cls_loss_unweighted,
         "weighted_classification_loss": cls_loss_weighted,
         "contrastive_loss": contrastive,
         "component_entropy": component_entropy,
+        "pi_entropy": pi_entropy,
     }
     return total, metrics

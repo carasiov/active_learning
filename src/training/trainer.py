@@ -14,7 +14,7 @@ from training.train_state import SSVAETrainState
 
 MetricsDict = Dict[str, jnp.ndarray]
 HistoryDict = Dict[str, list[float]]
-TrainStepFn = Callable[[SSVAETrainState, jnp.ndarray, jnp.ndarray, jax.Array], Tuple[SSVAETrainState, MetricsDict]]
+TrainStepFn = Callable[[SSVAETrainState, jnp.ndarray, jnp.ndarray, jax.Array, float], Tuple[SSVAETrainState, MetricsDict]]
 EvalMetricsFn = Callable[[Dict[str, Dict[str, jnp.ndarray]], jnp.ndarray, jnp.ndarray], MetricsDict]
 SaveFn = Callable[[SSVAETrainState, str], None]
 
@@ -98,22 +98,35 @@ class Trainer:
 
     def __init__(self, config: SSVAEConfig):
         self.config = config
+        self._latest_splits: DataSplits | None = None
 
     @staticmethod
     def _init_history() -> HistoryDict:
         return {
             "loss": [],
+            "loss_no_global_priors": [],
             "reconstruction_loss": [],
             "kl_loss": [],
+            "kl_z": [],
+            "kl_c": [],
+            "dirichlet_penalty": [],
+            "usage_sparsity_loss": [],
             "classification_loss": [],
             "contrastive_loss": [],
             "component_entropy": [],
+            "pi_entropy": [],
             "val_loss": [],
+            "val_loss_no_global_priors": [],
             "val_reconstruction_loss": [],
             "val_kl_loss": [],
+            "val_kl_z": [],
+            "val_kl_c": [],
+            "val_dirichlet_penalty": [],
+            "val_usage_sparsity_loss": [],
             "val_classification_loss": [],
             "val_contrastive_loss": [],
             "val_component_entropy": [],
+            "val_pi_entropy": [],
         }
 
     def _log_session_hyperparameters(self, *, max_epochs: int, patience: int) -> None:
@@ -148,6 +161,7 @@ class Trainer:
     ) -> Tuple[SSVAETrainState, jax.Array, HistoryDict]:
         state_rng = state.rng
         splits, state_rng = self._prepare_data(state_rng=state_rng, data=data, labels=labels)
+        self._latest_splits = splits
         setup = self._configure_training(splits=splits, num_epochs=num_epochs, patience=patience)
 
         history = self._init_history()
@@ -164,6 +178,10 @@ class Trainer:
         epochs_ran = 0
         for epoch in range(setup.max_epochs):
             epochs_ran = epoch + 1
+            if self.config.kl_c_anneal_epochs > 0:
+                kl_c_scale = min(1.0, (epoch + 1) / float(self.config.kl_c_anneal_epochs))
+            else:
+                kl_c_scale = 1.0
             state, state_rng, shuffle_rng, splits = self._train_one_epoch(
                 state,
                 splits=splits,
@@ -171,7 +189,9 @@ class Trainer:
                 shuffle_rng=shuffle_rng,
                 train_step_fn=train_step_fn,
                 batch_size=setup.batch_size,
+                kl_c_scale=kl_c_scale,
             )
+            self._latest_splits = splits
 
             train_metrics, val_metrics = self._evaluate_both_splits(
                 state.params, splits, eval_metrics_fn=eval_metrics_fn, eval_batch_size=setup.eval_batch_size
@@ -201,6 +221,10 @@ class Trainer:
         state = state.replace(rng=state_rng)
         self._run_callbacks(callback_list, "on_train_end", history, self)
         return state, shuffle_rng, history
+
+    @property
+    def latest_splits(self) -> DataSplits | None:
+        return self._latest_splits
 
     def _prepare_data(self, *, state_rng: jax.Array, data: np.ndarray, labels: np.ndarray) -> Tuple[DataSplits, jax.Array]:
         x_np = np.asarray(data, dtype=np.float32)
@@ -278,6 +302,7 @@ class Trainer:
         shuffle_rng: jax.Array,
         train_step_fn: TrainStepFn,
         batch_size: int,
+        kl_c_scale: float,
     ) -> Tuple[SSVAETrainState, jax.Array, jax.Array, DataSplits]:
         if splits.train_size == 0:
             return state, state_rng, shuffle_rng, splits
@@ -288,7 +313,14 @@ class Trainer:
         y_train = jnp.take(splits.y_train, perm, axis=0)
 
         for batch_x, batch_y in self._batch_iterator(x_train, y_train, batch_size):
-            state, state_rng = self._train_one_batch(state, batch_x, batch_y, state_rng, train_step_fn)
+            state, state_rng = self._train_one_batch(
+                state,
+                batch_x,
+                batch_y,
+                state_rng,
+                train_step_fn,
+                kl_c_scale,
+            )
 
         updated_splits = splits.with_train(x_train=x_train, y_train=y_train)
         return state, state_rng, shuffle_rng, updated_splits
@@ -322,10 +354,11 @@ class Trainer:
         batch_y: jnp.ndarray,
         state_rng: jax.Array,
         train_step_fn: TrainStepFn,
+        kl_c_scale: float,
     ) -> Tuple[SSVAETrainState, jax.Array]:
         state_rng, raw_key = jax.random.split(state_rng)
         batch_key = jax.random.fold_in(raw_key, int(state.step))
-        state, _ = train_step_fn(state, batch_x, batch_y, batch_key)
+        state, _ = train_step_fn(state, batch_x, batch_y, batch_key, kl_c_scale)
         return state, state_rng
 
     def _evaluate_both_splits(
@@ -403,7 +436,21 @@ class Trainer:
         train_metrics: MetricsDict,
         val_metrics: MetricsDict,
     ) -> None:
-        for key in ("loss", "reconstruction_loss", "kl_loss", "classification_loss", "contrastive_loss"):
+        tracked_keys = (
+            "loss",
+            "loss_no_global_priors",
+            "reconstruction_loss",
+            "kl_loss",
+            "kl_z",
+            "kl_c",
+            "dirichlet_penalty",
+            "usage_sparsity_loss",
+            "classification_loss",
+            "contrastive_loss",
+            "component_entropy",
+            "pi_entropy",
+        )
+        for key in tracked_keys:
             history[key].append(float(train_metrics[key]))
             history[f"val_{key}"].append(float(val_metrics[key]))
 

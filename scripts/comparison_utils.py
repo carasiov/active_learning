@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend
@@ -104,11 +104,93 @@ def plot_latent_spaces(
     plt.close()
 
 
+def _sanitize_model_name(name: str) -> str:
+    return "".join(c.lower() if c.isalnum() else "_" for c in name).strip("_") or "model"
+
+
+def plot_reconstructions(
+    models: Dict[str, object],
+    X_data: np.ndarray,
+    output_dir: Path,
+    *,
+    num_samples: int = 8,
+    seed: int = 0,
+) -> Dict[str, str]:
+    """Generate reconstruction grids (original vs. recon) for each model.
+
+    Returns a mapping of model name to the relative image filename saved under ``output_dir``.
+    """
+    if X_data.size == 0 or not models:
+        return {}
+
+    rng = np.random.RandomState(seed)
+    num_samples = max(1, min(num_samples, X_data.shape[0]))
+    if X_data.shape[0] <= num_samples:
+        indices = np.arange(X_data.shape[0])
+    else:
+        indices = np.sort(rng.choice(X_data.shape[0], size=num_samples, replace=False))
+
+    samples = X_data[indices]
+    saved = {}
+
+    def _prep_image(img: np.ndarray) -> np.ndarray:
+        if img.ndim == 3 and img.shape[-1] == 1:
+            return img[..., 0]
+        return img
+
+    for model_name, model in models.items():
+        try:
+            _, recon, _, _ = model.predict(samples)
+        except TypeError:
+            # Fall back if predict signature differs; try without unpacking extras.
+            prediction = model.predict(samples)
+            if isinstance(prediction, tuple) and len(prediction) >= 2:
+                recon = prediction[1]
+            else:
+                raise
+
+        # For BCE, decoder outputs logits; map to probabilities for visualization.
+        try:
+            use_sigmoid = getattr(getattr(model, "config", None), "reconstruction_loss", "mse") == "bce"
+        except Exception:
+            use_sigmoid = False
+
+        if use_sigmoid:
+            # numerically stable-ish sigmoid for display
+            recon = 1.0 / (1.0 + np.exp(-recon))
+
+        fig, axes = plt.subplots(2, num_samples, figsize=(1.6 * num_samples, 3.2))
+        if num_samples == 1:
+            axes = np.array([[axes[0]], [axes[1]]])
+
+        for idx in range(num_samples):
+            original_ax = axes[0, idx]
+            recon_ax = axes[1, idx]
+            original_ax.imshow(_prep_image(samples[idx]), cmap="gray")
+            original_ax.set_title("Original" if idx == 0 else "")
+            original_ax.axis("off")
+
+            recon_ax.imshow(_prep_image(recon[idx]), cmap="gray")
+            recon_ax.set_title("Reconstruction" if idx == 0 else "")
+            recon_ax.axis("off")
+
+        plt.tight_layout()
+        filename = f"{_sanitize_model_name(model_name)}_reconstructions.png"
+        output_path = output_dir / filename
+        plt.savefig(output_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        saved[model_name] = filename
+        print(f"  Saved: {output_path}")
+
+    return saved
+
+
 def generate_report(
     summaries: Dict[str, Dict],
     histories: Dict[str, Dict],
     config_info: Dict,
-    output_dir: Path
+    output_dir: Path,
+    recon_paths: Optional[Dict[str, str]] = None,
 ):
     """Generate comprehensive comparison report."""
     report_path = output_dir / 'COMPARISON_REPORT.md'
@@ -135,6 +217,35 @@ def generate_report(
         
         f.write("### Latent Spaces\n\n")
         f.write("![Latent Spaces](latent_spaces.png)\n\n")
+
+        if recon_paths:
+            f.write("### Reconstructions\n\n")
+            for model_name, filename in recon_paths.items():
+                f.write(f"**{model_name}**\n\n")
+                f.write(f"![{model_name} Reconstructions]({filename})\n\n")
+
+        mixture_models = {name: summaries[name] for name in summaries if 'pi_values' in summaries[name] or 'component_usage' in summaries[name]}
+        if mixture_models:
+            f.write("### Mixture Diagnostics\n\n")
+            for model_name, summary in mixture_models.items():
+                f.write(f"**{model_name}**\n")
+                if 'final_component_entropy' in summary:
+                    f.write(f"- Final component entropy: {summary['final_component_entropy']:.4f}\n")
+                if 'final_pi_entropy' in summary:
+                    f.write(f"- Final π entropy: {summary['final_pi_entropy']:.4f}\n")
+                if 'pi_max' in summary and 'pi_min' in summary:
+                    f.write(f"- π max/min: {summary['pi_max']:.4f} / {summary['pi_min']:.4f} (argmax={summary.get('pi_argmax', '-')})\n")
+                if 'pi_values' in summary:
+                    pi_str = ", ".join(f"{v:.3f}" for v in summary['pi_values'])
+                    f.write(f"- π values: [{pi_str}]\n")
+                if 'component_usage' in summary:
+                    usage = summary['component_usage']
+                    usage_str = ", ".join(f"{v:.3f}" for v in usage)
+                    f.write(f"- Component usage: [{usage_str}]\n")
+                if 'diagnostics_path' in summary:
+                    rel_path = Path(summary['diagnostics_path']).relative_to(output_dir)
+                    f.write(f"- Diagnostics folder: `{rel_path}`\n")
+                f.write("\n")
         
         # Check if any model has component entropy
         has_mixture = any('component_entropy' in h and len(h['component_entropy']) > 0 for h in histories.values())
