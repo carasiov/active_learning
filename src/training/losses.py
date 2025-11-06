@@ -136,8 +136,8 @@ def usage_sparsity_penalty(responsibilities: jnp.ndarray, weight: float) -> jnp.
     if weight == 0.0:
         return jnp.array(0.0, dtype=responsibilities.dtype)
     hat_p = jnp.mean(responsibilities, axis=0)
-    penalty = jnp.sum(hat_p * jnp.log(jnp.clip(hat_p, EPS, 1.0)))
-    return weight * penalty
+    entropy = -jnp.sum(hat_p * jnp.log(jnp.clip(hat_p, EPS, 1.0)))
+    return weight * entropy
 
 
 def classification_loss(logits: jnp.ndarray, labels: jnp.ndarray, weight: float) -> jnp.ndarray:

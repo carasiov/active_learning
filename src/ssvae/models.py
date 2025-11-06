@@ -77,7 +77,7 @@ def _make_weight_decay_mask(params: Dict[str, Dict[str, jnp.ndarray]]):
     for key in flat_params:
         param_name = key[-1]
         apply_decay = param_name not in ("bias", "scale")
-        if "prior" in key and param_name == "pi_logits":
+        if "prior" in key and param_name in ("pi_logits", "component_embeddings"):
             apply_decay = False
         mask[key] = apply_decay
     unflat = traverse_util.unflatten_dict(mask)

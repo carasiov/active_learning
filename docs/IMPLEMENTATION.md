@@ -11,7 +11,7 @@ The SSVAE follows a modular JAX/Flax design with clear separation between model 
 ```
 Input (28×28) 
   ↓
-Encoder (Dense/Conv) → produces (z_mean, z_log_var) + optional component_logits
+Encoder (Dense/Conv) → produces (z_mean, z_log_var) + optional component_logits (mixture)
   ↓
 Latent Space (z) ← sampled via reparameterization trick
   ↓ ↓
@@ -19,7 +19,7 @@ Latent Space (z) ← sampled via reparameterization trick
   ↓
 Decoder (Dense/Conv) → reconstruction
   ↓
-Loss = recon_weight × L_recon + kl_weight × L_kl + label_weight × L_class
+Loss = recon_weight × L_recon + kl_weight × KL_z + kl_c_weight × KL_c + (Dirichlet/usage penalties) + label_weight × L_class
 ```
 
 **Key Design Principles:**
@@ -47,8 +47,11 @@ labels = np.full(1000, np.nan)
 labels[:10] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]  # Label 10 samples
 history = vae.fit(X_train, labels, "model.ckpt")
 
-# Inference returns: (latent, reconstruction, class_logits, certainty)
-z, recon, logits, cert = vae.predict(X_test)
+# Inference returns: (latent, reconstruction, class_predictions, certainty)
+z, recon, pred, cert = vae.predict(X_test)
+
+# Mixture extras (optional)
+z, recon, pred, cert, q_c, pi = vae.predict(X_test, return_mixture=True)
 ```
 
 **Key Methods:**
@@ -62,9 +65,9 @@ z, recon, logits, cert = vae.predict(X_test)
 - Supports 0% to 100% labeled data
 
 **`SSVAENetwork`** — Flax module (internal)
-- Composes encoder, decoder, classifier
-- Returns 6-tuple: `(component_logits, z_mean, z_log_var, z, recon, class_logits)`
-- Used internally by `SSVAE`, rarely instantiated directly
+- Composes encoder, decoder, classifier, and (for mixture) a prior submodule with learnable `pi_logits` and component embeddings
+- For mixture prior, the decoder conditions on component via concatenation `[z; e_c]` and computes the exact expected reconstruction over components with weights `q(c|x)`
+- Returns a named-tuple internally: `(component_logits, z_mean, z_log_var, z, recon, class_logits, extras)` where `extras` carries `responsibilities`, `pi`, `recon_per_component`, etc.
 
 ---
 
@@ -96,7 +99,10 @@ SSVAEConfig(reconstruction_loss="mse", recon_weight=500.0)
 **Critical Parameters:**
 - `prior_type`: `"standard"` (Gaussian) or `"mixture"` (mixture of Gaussians)
 - `reconstruction_loss`: `"mse"` or `"bce"`
-- `recon_weight`, `kl_weight`, `label_weight`: Loss term weights
+- `recon_weight`, `kl_weight`, `kl_c_weight`, `label_weight`: Loss term weights
+- `dirichlet_alpha` (optional) and `dirichlet_weight` for Dirichlet MAP on π
+- `usage_sparsity_weight` for empirical usage penalty
+- `kl_c_anneal_epochs` to linearly warm up `kl_c_weight`
 - `encoder_type`, `decoder_type`: `"dense"` or `"conv"`
 - `num_components`: Number of mixture components (only with `prior_type="mixture"`)
 
@@ -211,29 +217,33 @@ class SSVAETrainState:
 **Pure functions** — Decoupled from model architecture
 
 **`compute_loss_and_metrics`** — Main loss aggregation
-```python
-total_loss, metrics = compute_loss_and_metrics(
-    component_logits, z_mean, z_log_var, z,
-    x_recon, x_true, class_logits, labels,
-    config
-)
-```
+Returns the total loss and a metrics dict with keys including `reconstruction_loss`, `kl_z`, `kl_c`, `dirichlet_penalty`, `usage_sparsity_loss`, `component_entropy`, `pi_entropy`, and `loss_no_global_priors`.
 
 **Loss Components:**
 
 1. **Reconstruction Loss**
    - `reconstruction_loss_mse`: Mean squared error (continuous values)
-   - `reconstruction_loss_bce`: Binary cross-entropy (binary images)
+   - `reconstruction_loss_bce`: Binary cross-entropy with logits (binary images)
+   - For mixture prior, the expected reconstruction is computed exactly over components (`weighted_reconstruction_loss_*`)
    - Weighted by `config.recon_weight`
 
 2. **KL Divergence**
-   - `kl_divergence_standard`: Standard Gaussian prior
-   - `kl_divergence_mixture`: Mixture of Gaussians prior
-   - Weighted by `config.kl_weight`
+   - `kl_divergence`: `KL_z(q(z|x)||N(0,I))` with weight `config.kl_weight`
+   - `categorical_kl`: `KL_c(q(c|x)||π)` with weight `config.kl_c_weight`
 
 3. **Classification Loss**
    - Cross-entropy over labeled samples (mask out NaN labels)
    - Weighted by `config.label_weight`
+
+4. **Optional Regularizers**
+   - Dirichlet MAP on π: negative log-prior term controlled by `dirichlet_alpha` and `dirichlet_weight`
+   - Usage sparsity: entropy-like penalty on empirical component usage, weight `usage_sparsity_weight`
+
+5. **Notes on BCE and visualization**
+   - Decoder outputs logits for BCE; we never apply sigmoid in the model. Visualization utilities apply a sigmoid for display only.
+
+6. **Why loss can be negative**
+   - With `dirichlet_alpha < 1`, the Dirichlet MAP term is negative and can dominate totals; use `loss_no_global_priors` to track recon + KL behavior.
 
 **MSE vs BCE Tradeoff:**
 - **BCE**: Numerically stable for binary data, pixel-wise sum → use `recon_weight=1.0`
@@ -242,7 +252,7 @@ total_loss, metrics = compute_loss_and_metrics(
 
 **Mixture Prior:**
 - Encoder outputs `component_logits` (shape: `[batch, K]`)
-- KL computed as: `log p(z|x) - log Σ_k π_k N(z; 0, I)`
+- ELBO terms: `KL_z(q(z|x) || N(0,I))` and `KL_c(q(c|x) || π)` (with optional Dirichlet/usage penalties)
 - Better latent clustering for multi-modal data
 - Only works with dense encoder (conv lacks mixture support)
 

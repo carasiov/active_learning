@@ -104,7 +104,7 @@ def test_usage_sparsity_penalty_prefers_concentration():
     penalty = usage_sparsity_penalty(responsibilities, weight=0.2)
 
     assert jnp.isfinite(penalty)
-    assert penalty <= 0.0
+    assert penalty >= 0.0
 
 
 def test_dirichlet_penalty_zero_when_alpha_none():

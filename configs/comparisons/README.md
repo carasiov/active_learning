@@ -73,6 +73,7 @@ Results are saved to `artifacts/comparisons/{timestamp}/`:
 
 - `loss_comparison.png`: Multi-panel loss curves
 - `latent_spaces.png`: Latent space visualizations
+- `<model>_reconstructions.png`: Original vs reconstruction grids
 - `summary.json`: Final metrics for each model
 - `COMPARISON_REPORT.md`: Comprehensive markdown report
 
@@ -216,6 +217,17 @@ models:
 - Same optimizer & hyperparameters (unless overridden)
 - Same data & splits
 - **Only the prior distribution changes**
+
+### Mixture Diagnostics
+
+For `prior_type: mixture`, the training run also saves:
+
+- `diagnostics/component_usage.npy`: empirical usage (mean `q(c|x)` over validation)
+- `diagnostics/component_entropy.npy`: mean responsibility entropy
+- `diagnostics/pi.npy`: learned π (softmax of `pi_logits`)
+- `diagnostics/latent.npz`: if `latent_dim==2`, includes `z_mean`, labels and `q_c`
+
+The report summarizes π and usage; use these to verify Dirichlet/usage penalties are having the intended effect.
 
 ### Training Mechanics
 
