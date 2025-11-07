@@ -46,8 +46,36 @@ models:
     # ---- Prior Configuration ----
     prior_type: "standard"          # "standard" | "mixture"
     num_components: 10              # Mixture components (mixture prior only)
-    component_kl_weight: 0.1        # Component KL weight (mixture prior only)
+    kl_c_weight: 1.0                # KL(q(c|x)||π) weight (mixture prior only)
+    dirichlet_alpha: null           # Optional Dirichlet MAP strength on π
+    dirichlet_weight: 1.0           # Scaling for Dirichlet penalty
+    usage_sparsity_weight: 0.0      # Encourage sparse component usage
+    kl_c_anneal_epochs: 0           # Linear warm-up for kl_c_weight (0 = off)
     
+    # ------------------------------------------------------------------------
+    # KL-related parameters and prior type behavior:
+    #
+    # - If prior_type: "standard", only kl_weight is used for KL regularization.
+    #   All mixture-specific parameters (kl_c_weight, dirichlet_*, usage_sparsity_weight)
+    #   are ignored.
+    #
+    # - If prior_type: "mixture", kl_weight (for latent), kl_c_weight (for component assignment),
+    #   dirichlet_alpha/dirichlet_weight (for mixture weights regularization), and
+    #   usage_sparsity_weight (for component usage) are all active and additive in the loss.
+    #
+    # - Unused parameters for the selected prior are ignored (effectively zeroed out in the loss).
+    #
+    # Example:
+    #   prior_type: "standard"   # Only kl_weight is used
+    #   prior_type: "mixture"    # All KL-related terms above are active
+    #
+    # This ensures experiments are reproducible and interpretable. Adjust only the parameters
+    # relevant to your chosen prior type for clarity and correctness.
+    # ------------------------------------------------------------------------
+    
+
+
+
     # ---- Optimizer & Training ----
     learning_rate: 0.001            # Adam learning rate
     batch_size: 128                 # Training batch size
@@ -108,7 +136,7 @@ models:
 # model:
 #   prior_type: "mixture"
 #   num_components: 10
-#   component_kl_weight: 0.1
+#   kl_c_weight: 1.0
 #   latent_dim: 2
 #   max_epochs: 300
 

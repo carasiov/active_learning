@@ -86,11 +86,16 @@ def test_mixture_predict_output_shapes():
     
     X_test = np.random.rand(10, 28, 28).astype(np.float32)
     latent, recon, pred_class, pred_certainty = vae.predict(X_test)
-    
+    latent_mix, recon_mix, pred_class_mix, pred_certainty_mix, q_c, pi = vae.predict(X_test, return_mixture=True)
+
     assert latent.shape == (10, 2)
     assert recon.shape == (10, 28, 28)
     assert pred_class.shape == (10,)
     assert pred_certainty.shape == (10,)
+    assert q_c.shape == (10, 5)
+    assert pi.shape == (5,)
+    assert np.allclose(latent, latent_mix)
+    assert np.allclose(recon, recon_mix)
 
 
 def test_mixture_sample_prediction():
@@ -109,11 +114,13 @@ def test_mixture_sample_prediction():
     vae.fit(X_train, y_train, weights_path="/tmp/test_mixture_sample.ckpt")
     
     X_test = np.random.rand(5, 28, 28).astype(np.float32)
-    latent, recon, pred_class, pred_certainty = vae.predict(
-        X_test, sample=True, num_samples=10
+    latent, recon, pred_class, pred_certainty, q_c, pi = vae.predict(
+        X_test, sample=True, num_samples=10, return_mixture=True
     )
     
     assert latent.shape == (10, 5, 2)
     assert recon.shape == (10, 5, 28, 28)
     assert pred_class.shape == (10, 5)
     assert pred_certainty.shape == (10, 5)
+    assert q_c.shape == (10, 5, 3)
+    assert pi.shape == (3,)

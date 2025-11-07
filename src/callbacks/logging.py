@@ -40,6 +40,8 @@ class ConsoleLogger(TrainingCallback):
         metric_columns = [
             ("Train.loss", train_metrics, "loss"),
             ("Val.loss", val_metrics, "loss"),
+            ("Train.loss_np", train_metrics, "loss_no_global_priors"),
+            ("Val.loss_np", val_metrics, "loss_no_global_priors"),
             ("Train.rec", train_metrics, "reconstruction_loss"),
             ("Val.rec", val_metrics, "reconstruction_loss"),
             ("Train.kl", train_metrics, "kl_loss"),

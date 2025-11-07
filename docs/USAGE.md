@@ -106,6 +106,7 @@ Each comparison generates a timestamped directory:
 artifacts/comparisons/20241031_143022/
 ├── loss_comparison.png           # Multi-panel loss curves
 ├── latent_spaces.png             # 2D visualizations (if latent_dim=2)
+├── <model>_reconstructions.png   # Original vs reconstruction grids
 ├── summary.json                  # Final metrics for each model
 ├── COMPARISON_REPORT.md          # Comprehensive markdown analysis
 ├── standard_checkpoint.ckpt      # Model weights (standard)
@@ -150,7 +151,27 @@ models:
   
   BCE:
     reconstruction_loss: bce
-    recon_weight: 1.0
+    recon_weight: 1.0   # decoder outputs logits; visualization applies sigmoid
+```
+
+### Mixture Prior (Priors v1)
+
+Key config knobs (per model in YAML):
+```yaml
+prior_type: mixture
+num_components: 10
+kl_c_weight: 1.0              # weight on KL(q(c|x)||π)
+dirichlet_alpha: 0.5          # optional; encourages sparse π for α<1
+dirichlet_weight: 1.0         # scales Dirichlet MAP term
+usage_sparsity_weight: 0.0    # entropy-like penalty on empirical usage
+kl_c_anneal_epochs: 0         # 0 = off; else linear warm-up
+```
+
+Report changes:
+- Adds per-model Reconstruction grids.
+- Adds Mixture Diagnostics section: π values, component usage, entropies, and link to saved diagnostics folder.
+
+Tip: When `dirichlet_alpha < 1` the total “loss” can become negative due to the (negative) Dirichlet MAP term. Use the `Train.loss_np/Val.loss_np` columns (recon + KL only) in logs to compare model fit across runs.
 ```
 
 ### When to Use

@@ -26,7 +26,12 @@ if str(DATA_DIR) not in sys.path:
 
 from mnist.mnist import load_mnist_scaled
 from ssvae import SSVAE, SSVAEConfig
-from comparison_utils import plot_loss_comparison, plot_latent_spaces, generate_report
+from comparison_utils import (
+    plot_loss_comparison,
+    plot_latent_spaces,
+    plot_reconstructions,
+    generate_report,
+)
 
 
 def parse_args():
@@ -91,10 +96,28 @@ def train_model(name: str, config: SSVAEConfig, X_train, y_train, output_dir: Pa
         'final_class_loss': float(history['classification_loss'][-1]),
         'training_time_sec': float(train_time),
     }
-    
+
     if 'component_entropy' in history and len(history['component_entropy']) > 0:
         summary['final_component_entropy'] = float(history['component_entropy'][-1])
-    
+    if 'pi_entropy' in history and len(history['pi_entropy']) > 0:
+        summary['final_pi_entropy'] = float(history['pi_entropy'][-1])
+
+    diag_dir = getattr(model, "_last_diagnostics_dir", None)
+    if diag_dir:
+        diag_path = Path(diag_dir)
+        summary['diagnostics_path'] = str(diag_path)
+        usage_path = diag_path / "component_usage.npy"
+        pi_path = diag_path / "pi.npy"
+        if usage_path.exists():
+            usage = np.load(usage_path)
+            summary['component_usage'] = usage.tolist()
+        if pi_path.exists():
+            pi = np.load(pi_path)
+            summary['pi_values'] = pi.tolist()
+            summary['pi_max'] = float(np.max(pi))
+            summary['pi_min'] = float(np.min(pi))
+            summary['pi_argmax'] = int(np.argmax(pi))
+
     return model, history, summary
 
 
@@ -186,10 +209,13 @@ def main():
         if 'hidden_dims' in model_config and isinstance(model_config['hidden_dims'], list):
             model_config['hidden_dims'] = tuple(model_config['hidden_dims'])
         
-        # Override training settings from data config
-        model_config['max_epochs'] = epochs
-        model_config['random_seed'] = seed
-        model_config['patience'] = epochs  # No early stopping
+            # Only set global training settings if not specified in model config
+            if 'max_epochs' not in model_config:
+                model_config['max_epochs'] = epochs
+            if 'random_seed' not in model_config:
+                model_config['random_seed'] = seed
+            if 'patience' not in model_config:
+                model_config['patience'] = epochs  # No early stopping
         
         config = SSVAEConfig(**model_config)
         
@@ -203,6 +229,7 @@ def main():
     print("\nGenerating visualizations...")
     plot_loss_comparison(histories, output_dir)
     plot_latent_spaces(trained_models, X_train, y_true, output_dir)
+    recon_paths = plot_reconstructions(trained_models, X_train, output_dir)
     
     # Save summaries
     summary_path = output_dir / 'summary.json'
@@ -219,7 +246,7 @@ def main():
         'seed': seed,
         'models': models_to_compare,
     }
-    generate_report(summaries, histories, config_info, output_dir)
+    generate_report(summaries, histories, config_info, output_dir, recon_paths=recon_paths)
     
     print(f"\n{'='*60}\nComparison complete! Results: {output_dir}\n{'='*60}\n")
 

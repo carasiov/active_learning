@@ -16,11 +16,17 @@ This repository contains a **deep learning model** that learns useful representa
 ### Current Implementation Status
 
 The repository provides:
-- **Semi-supervised VAE** (JAX/Flax) with standard and mixture priors
-- **Component-based architecture** with responsibilities and conditional decoder
+- **Semi-supervised VAE** (JAX/Flax) with standard and Priors v1 mixture prior
+  - Learnable mixture weights π (via `prior/pi_logits`, no weight decay)
+  - Conditional decoder via concatenation `[z; e_c]` and exact expected reconstruction over components
+- **Losses (Priors v1)**
+  - `KL_z(q(z|x)||N(0,I))` and `KL_c(q(c|x)||π)` with separate weights
+  - Optional Dirichlet MAP on π (`dirichlet_alpha`, `dirichlet_weight`)
+  - Optional usage sparsity on empirical component usage
+  - Reported auxiliary metric `loss_no_global_priors` (recon + KL only)
 - **Training infrastructure** for incremental/interactive runs with curriculum support
-- **Multiple loss terms**: reconstruction (MSE/BCE/Gaussian NLL), KL, classification, contrastive
-- **Experiment scripts** to compare configurations
+- **Experiment scripts** to compare configurations and generate reports
+  - Reports include loss curves, latent plots, reconstruction grids, and mixture diagnostics (π, usage, entropies)
 - **Dashboard scaffold** (`use_cases/dashboard/`) for interactive labeling interface
 
 ## Project Structure
@@ -162,5 +168,4 @@ See the [Usage Guide](docs/USAGE.md) for detailed examples, workflows, and troub
 - 🎛️ [Dashboard Overview](use_cases/dashboard/README.md) - Features, routing, development
 - 🤖 [Dashboard Extensions](use_cases/dashboard/docs/AGENT_GUIDE.md) - Adding commands, UI, callbacks
 - 🔧 [Dashboard Internals](use_cases/dashboard/docs/DEVELOPER_GUIDE.md) - Architecture, debugging, state
-
 

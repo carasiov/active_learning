@@ -2,7 +2,8 @@ from __future__ import annotations
 """SSVAE models module (JAX)."""
 
 from pathlib import Path
-from typing import Dict, List, Tuple
+
+from typing import Dict, List, NamedTuple, Optional, Tuple
 
 from utils import configure_jax_device, print_device_banner
 
@@ -33,6 +34,37 @@ except Exception as e:  # pragma: no cover
     ) from e
 
 
+class ForwardOutput(NamedTuple):
+    component_logits: Optional[jnp.ndarray]
+    z_mean: jnp.ndarray
+    z_log: jnp.ndarray
+    z: jnp.ndarray
+    recon: jnp.ndarray
+    class_logits: jnp.ndarray
+    extras: Dict[str, jnp.ndarray]
+
+
+class MixturePriorParameters(nn.Module):
+    """Container for learnable mixture prior parameters."""
+
+    num_components: int
+    embed_dim: int
+
+    @nn.compact
+    def __call__(self) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        embeddings = self.param(
+            "component_embeddings",
+            nn.initializers.normal(stddev=0.02),
+            (self.num_components, self.embed_dim),
+        )
+        pi_logits = self.param(
+            "pi_logits",
+            nn.initializers.zeros,
+            (self.num_components,),
+        )
+        return embeddings, pi_logits
+
+
 def _make_weight_decay_mask(params: Dict[str, Dict[str, jnp.ndarray]]):
     """Create a mask matching ``params`` tree type for weight decay.
 
@@ -44,7 +76,10 @@ def _make_weight_decay_mask(params: Dict[str, Dict[str, jnp.ndarray]]):
     mask = {}
     for key in flat_params:
         param_name = key[-1]
-        mask[key] = param_name not in ("bias", "scale")
+        apply_decay = param_name not in ("bias", "scale")
+        if "prior" in key and param_name in ("pi_logits", "component_embeddings"):
+            apply_decay = False
+        mask[key] = apply_decay
     unflat = traverse_util.unflatten_dict(mask)
     if isinstance(params, FrozenDict):
         return freeze(unflat)
@@ -68,25 +103,62 @@ class SSVAENetwork(nn.Module):
         self.encoder = build_encoder(self.config, input_hw=self.input_hw)
         self.decoder = build_decoder(self.config, input_hw=self.input_hw)
         self.classifier = build_classifier(self.config, input_hw=self.input_hw)
+        self.prior_module: MixturePriorParameters | None = None
+        if self.config.prior_type == "mixture":
+            self.prior_module = MixturePriorParameters(
+                name="prior",
+                num_components=self.config.num_components,
+                embed_dim=self.latent_dim,
+            )
 
     def __call__(
         self,
         x: jnp.ndarray,
         *,
         training: bool,
-    ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-        """Returns (component_logits, z_mean, z_log_var, z, recon, class_logits)."""
+    ) -> ForwardOutput:
+        """Forward pass returning latent statistics, reconstructions, and classifier logits."""
         encoder_output = self.encoder(x, training=training)
-        
+        extras: Dict[str, jnp.ndarray] = {}
+
         if self.config.prior_type == "mixture":
             component_logits, z_mean, z_log, z = encoder_output
+            if self.prior_module is None:
+                raise ValueError("Mixture prior selected but prior_module was not initialized.")
+            embeddings, pi_logits = self.prior_module()
+            responsibilities = softmax(component_logits, axis=-1)
+            pi = softmax(pi_logits, axis=-1)
+
+            batch_size = z.shape[0]
+            num_components = self.config.num_components
+
+            z_tiled = jnp.broadcast_to(z[:, None, :], (batch_size, num_components, self.latent_dim))
+            embed_tiled = jnp.broadcast_to(embeddings[None, :, :], (batch_size, num_components, embeddings.shape[-1]))
+            decoder_inputs = jnp.concatenate([z_tiled, embed_tiled], axis=-1)
+            decoder_inputs_flat = decoder_inputs.reshape((batch_size * num_components, -1))
+            recon_per_component_flat = self.decoder(decoder_inputs_flat)
+            recon_per_component = recon_per_component_flat.reshape(
+                (batch_size, num_components, *self.output_hw)
+            )
+            expected_recon = jnp.sum(
+                responsibilities[..., None, None] * recon_per_component,
+                axis=1,
+            )
+            recon = expected_recon
+            extras = {
+                "recon_per_component": recon_per_component,
+                "responsibilities": responsibilities,
+                "pi_logits": pi_logits,
+                "pi": pi,
+                "component_embeddings": embeddings,
+            }
         else:
             z_mean, z_log, z = encoder_output
             component_logits = None
-        
-        recon = self.decoder(z)
+            recon = self.decoder(z)
+
         logits = self.classifier(z, training=training)
-        return component_logits, z_mean, z_log, z, recon, logits
+        return ForwardOutput(component_logits, z_mean, z_log, z, recon, logits, extras)
 
 
 class SSVAE:
@@ -107,6 +179,7 @@ class SSVAE:
         self.config = config or SSVAEConfig()
         self.latent_dim = self.config.latent_dim
         self.weights_path: str | None = None
+        self._last_diagnostics_dir: Path | None = None
 
         if not SSVAE._DEVICE_BANNER_PRINTED:
             print_device_banner()
@@ -176,7 +249,7 @@ class SSVAE:
             *,
             training: bool,
             key: jax.Array | None,
-        ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+        ) -> ForwardOutput:
             if key is None:
                 return apply_fn(params, batch_x, training=training)
             reparam_key, dropout_key = random.split(key)
@@ -193,6 +266,7 @@ class SSVAE:
             batch_y: jnp.ndarray,
             key: jax.Array | None,
             training: bool,
+            kl_c_scale: float,
         ) -> Tuple[jnp.ndarray, Dict[str, jnp.ndarray]]:
             rng = key if training else None
             return compute_loss_and_metrics(
@@ -203,9 +277,14 @@ class SSVAE:
                 cfg,
                 rng,
                 training=training,
+                kl_c_scale=kl_c_scale,
             )
 
-        train_loss_and_grad = jax.value_and_grad(_train_loss_fn := (lambda p, x, y, k: _loss_and_metrics(p, x, y, k, True)), argnums=0, has_aux=True)
+        train_loss_and_grad = jax.value_and_grad(
+            lambda p, x, y, k, scale: _loss_and_metrics(p, x, y, k, True, scale),
+            argnums=0,
+            has_aux=True,
+        )
 
         @jax.jit
         def train_step(
@@ -213,13 +292,14 @@ class SSVAE:
             batch_x: jnp.ndarray,
             batch_y: jnp.ndarray,
             key: jax.Array,
+            kl_c_scale: float,
         ):
-            (loss, metrics), grads = train_loss_and_grad(state.params, batch_x, batch_y, key)
+            (loss, metrics), grads = train_loss_and_grad(state.params, batch_x, batch_y, key, kl_c_scale)
             new_state = state.apply_gradients(grads=grads)
             return new_state, metrics
 
         self._train_step = train_step
-        self._eval_metrics = jax.jit(lambda p, x, y: _loss_and_metrics(p, x, y, None, False)[1])
+        self._eval_metrics = jax.jit(lambda p, x, y: _loss_and_metrics(p, x, y, None, False, 1.0)[1])
 
     def prepare_data_for_keras_model(self, data: np.ndarray) -> np.ndarray:
         return np.where(data == 0, 0.0, 1.0)
@@ -266,31 +346,125 @@ class SSVAE:
         callbacks.append(LossCurvePlotter(plot_path))
         return callbacks
 
+    def _diagnostics_output_dir(self) -> Path:
+        base = Path(self.weights_path) if self.weights_path else DEFAULT_CHECKPOINT_PATH
+        diag_dir = base.parent / "diagnostics" / base.stem
+        diag_dir.mkdir(parents=True, exist_ok=True)
+        self._last_diagnostics_dir = diag_dir
+        return diag_dir
+
+    def _save_mixture_diagnostics(self, splits: Trainer.DataSplits | None) -> None:
+        if self.config.prior_type != "mixture" or splits is None:
+            return
+
+        val_x = np.asarray(splits.x_val)
+        val_y = np.asarray(splits.y_val)
+        if val_x.size == 0:
+            val_x = np.asarray(splits.x_train)
+            val_y = np.asarray(splits.y_train)
+        if val_x.size == 0:
+            return
+
+        batch_size = min(self.config.batch_size, 1024)
+        eps = 1e-8
+
+        usage_sum: np.ndarray | None = None
+        entropy_sum = 0.0
+        count = 0
+        z_records: List[np.ndarray] = []
+        resp_records: List[np.ndarray] = []
+        label_records: List[np.ndarray] = []
+        pi_array: np.ndarray | None = None
+
+        total = val_x.shape[0]
+        for start in range(0, total, batch_size):
+            end = min(start + batch_size, total)
+            batch_inputs = jnp.asarray(val_x[start:end])
+            forward = self._apply_fn(self.state.params, batch_inputs, training=False)
+            component_logits, z_mean, _, _, _, _, extras = forward
+            responsibilities = extras.get("responsibilities") if hasattr(extras, "get") else None
+            if responsibilities is None:
+                return
+            resp_np = np.asarray(responsibilities)
+            if usage_sum is None:
+                usage_sum = np.zeros(resp_np.shape[1], dtype=np.float64)
+            usage_sum += resp_np.sum(axis=0)
+            entropy_batch = -resp_np * np.log(resp_np + eps)
+            entropy_sum += entropy_batch.sum()
+            count += resp_np.shape[0]
+            z_records.append(np.asarray(z_mean))
+            resp_records.append(resp_np)
+            label_records.append(val_y[start:end])
+            if pi_array is None:
+                pi_val = extras.get("pi") if hasattr(extras, "get") else None
+                if pi_val is not None:
+                    pi_array = np.asarray(pi_val)
+
+        if usage_sum is None or count == 0:
+            return
+
+        component_usage = (usage_sum / count).astype(np.float32)
+        component_entropy = np.array(entropy_sum / count, dtype=np.float32)
+
+        diag_dir = self._diagnostics_output_dir()
+        np.save(diag_dir / "component_usage.npy", component_usage)
+        np.save(diag_dir / "component_entropy.npy", component_entropy)
+        if pi_array is not None:
+            np.save(diag_dir / "pi.npy", pi_array.astype(np.float32))
+
+        if self.latent_dim == 2 and z_records:
+            z_array = np.concatenate(z_records, axis=0).astype(np.float32)
+            resp_array = np.concatenate(resp_records, axis=0).astype(np.float32)
+            labels_array = np.concatenate(label_records, axis=0)
+            np.savez(diag_dir / "latent.npz", z_mean=z_array, labels=labels_array, q_c=resp_array)
+
     def predict(
         self,
         data: np.ndarray,
         *,
         sample: bool = False,
         num_samples: int = 1,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """Returns (latent, reconstruction, class_predictions, certainty)."""
+        return_mixture: bool = False,
+    ) -> Tuple:
+        """Returns (latent, reconstruction, class_predictions, certainty).
+
+        When ``return_mixture`` is True and the model uses a mixture prior, the tuple will
+        include two additional entries: responsibilities ``q_c`` and the learned ``pi``.
+        """
         x = jnp.array(data, dtype=jnp.float32)
+        mixture_active = self.config.prior_type == "mixture"
+        if return_mixture and not mixture_active:
+            raise ValueError("return_mixture=True is only supported for mixture priors.")
+
         if sample:
             num_samples = max(1, int(num_samples))
             latent_samples = []
             recon_samples = []
             logits_samples = []
+            resp_samples = []
+            pi_value = None
             for _ in range(num_samples):
                 self._rng, subkey = random.split(self._rng)
-                component_logits, z_mean, _, z, recon, logits = self._apply_fn(
+                forward = self._apply_fn(
                     self.state.params,
                     x,
                     training=False,
                     rngs={"reparam": subkey},
                 )
+                component_logits, z_mean, _, z, recon, logits, extras = forward
                 latent_samples.append(z)
                 recon_samples.append(recon)
                 logits_samples.append(logits)
+                if return_mixture:
+                    responsibilities = extras.get("responsibilities") if hasattr(extras, "get") else None
+                    if responsibilities is None:
+                        raise ValueError("Mixture responsibilities unavailable during predict().")
+                    resp_samples.append(responsibilities)
+                    if pi_value is None:
+                        pi_val = extras.get("pi") if hasattr(extras, "get") else None
+                        if pi_val is not None:
+                            pi_value = pi_val
+
             latent_stack = jnp.stack(latent_samples) if num_samples > 1 else latent_samples[0]
             recon_stack = jnp.stack(recon_samples) if num_samples > 1 else recon_samples[0]
             logits_stack = jnp.stack(logits_samples) if num_samples > 1 else logits_samples[0]
@@ -301,23 +475,36 @@ class SSVAE:
             else:
                 pred_class = jnp.argmax(probs, axis=1)
                 pred_certainty = jnp.max(probs, axis=1)
-            return (
+            result = (
                 np.array(latent_stack),
                 np.array(recon_stack),
                 np.array(pred_class, dtype=np.int32),
                 np.array(pred_certainty),
             )
+            if return_mixture:
+                q_stack = jnp.stack(resp_samples) if num_samples > 1 else resp_samples[0]
+                pi_np = np.array(pi_value) if pi_value is not None else None
+                result += (np.array(q_stack), pi_np)
+            return result
         else:
-            component_logits, z_mean, _, _, recon, logits = self._apply_fn(self.state.params, x, training=False)
+            forward = self._apply_fn(self.state.params, x, training=False)
+            component_logits, z_mean, _, _, recon, logits, extras = forward
             probs = softmax(logits, axis=1)
             pred_class = jnp.argmax(probs, axis=1)
             pred_certainty = jnp.max(probs, axis=1)
-            return (
+            result = (
                 np.array(z_mean),
                 np.array(recon),
                 np.array(pred_class, dtype=np.int32),
                 np.array(pred_certainty),
             )
+            if return_mixture:
+                responsibilities = extras.get("responsibilities") if hasattr(extras, "get") else None
+                pi_val = extras.get("pi") if hasattr(extras, "get") else None
+                if responsibilities is None or pi_val is None:
+                    raise ValueError("Mixture responsibilities unavailable during predict().")
+                result += (np.array(responsibilities), np.array(pi_val))
+            return result
 
     def fit(self, data: np.ndarray, labels: np.ndarray, weights_path: str):
         """Train with semi-supervised labels (NaN = unlabeled). Returns history dict."""
@@ -336,6 +523,8 @@ class SSVAE:
             callbacks=callbacks,
         )
         self._rng = self.state.rng
+        if self.config.prior_type == "mixture":
+            self._save_mixture_diagnostics(trainer.latest_splits)
         return history
 
 

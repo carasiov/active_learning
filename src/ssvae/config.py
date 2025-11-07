@@ -42,6 +42,10 @@ INFORMATIVE_HPARAMETERS = (
     "reconstruction_loss",
     "kl_weight",
     "label_weight",
+    "kl_c_weight",
+    "dirichlet_alpha",
+    "dirichlet_weight",
+    "usage_sparsity_weight",
     "weight_decay",
     "dropout_rate",
     "monitor_metric",
@@ -49,7 +53,7 @@ INFORMATIVE_HPARAMETERS = (
     "contrastive_weight",
     "prior_type",
     "num_components",
-    "component_kl_weight",
+    "kl_c_anneal_epochs",
 )
 
 @dataclass
@@ -87,7 +91,12 @@ class SSVAEConfig:
         contrastive_weight: Scaling factor for the contrastive loss when enabled.
         prior_type: Type of prior distribution ("standard" | "mixture").
         num_components: Number of mixture components when prior_type="mixture".
-        component_kl_weight: Scaling factor for mixture component KL divergence.
+        kl_c_weight: Scaling factor applied to KL(q(c|x) || π) when mixture prior is active.
+        dirichlet_alpha: Optional scalar prior strength for Dirichlet-MAP regularization on π.
+        dirichlet_weight: Scaling applied to the Dirichlet-MAP penalty (no effect when alpha is None).
+        usage_sparsity_weight: Scaling factor for empirical component usage sparsity penalty.
+        kl_c_anneal_epochs: If >0, linearly ramp kl_c_weight from 0 to its configured value across this many epochs.
+        component_kl_weight: Deprecated alias for kl_c_weight kept for backward compatibility.
     """
 
     latent_dim: int = 2
@@ -115,7 +124,12 @@ class SSVAEConfig:
     contrastive_weight: float = 0.0
     prior_type: str = "standard"
     num_components: int = 10
-    component_kl_weight: float = 0.1
+    component_kl_weight: float | None = None
+    kl_c_weight: float = 1.0
+    dirichlet_alpha: float | None = None
+    dirichlet_weight: float = 1.0
+    usage_sparsity_weight: float = 0.0
+    kl_c_anneal_epochs: int = 0
 
     def __post_init__(self):
         """Validate configuration after initialization."""
@@ -125,6 +139,18 @@ class SSVAEConfig:
                 f"reconstruction_loss must be one of {valid_losses}, "
                 f"got '{self.reconstruction_loss}'"
             )
+        # Backward compatibility: if legacy component_kl_weight is provided and
+        # kl_c_weight wasn't explicitly set, adopt the legacy value.
+        if self.component_kl_weight is not None:
+            default_kl_c = SSVAEConfig.__dataclass_fields__["kl_c_weight"].default
+            if self.kl_c_weight == default_kl_c:
+                self.kl_c_weight = float(self.component_kl_weight)
+        # Mirror into legacy field for any downstream code still reading it.
+        self.component_kl_weight = float(self.kl_c_weight)
+        if self.kl_c_anneal_epochs < 0:
+            raise ValueError("kl_c_anneal_epochs must be >= 0")
+        if self.dirichlet_alpha is not None and self.dirichlet_alpha <= 0.0:
+            raise ValueError("dirichlet_alpha must be positive when provided")
 
     def get_informative_hyperparameters(self) -> Dict[str, object]:
         return {name: getattr(self, name) for name in INFORMATIVE_HPARAMETERS}

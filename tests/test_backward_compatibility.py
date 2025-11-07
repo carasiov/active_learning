@@ -14,7 +14,8 @@ def test_default_config_unchanged():
     
     assert config.prior_type == "standard"
     assert config.num_components == 10
-    assert config.component_kl_weight == 0.1
+    assert config.kl_c_weight == 1.0
+    assert config.component_kl_weight == 1.0
     
     # Verify it's backward compatible
     assert config.encoder_type == "dense"
@@ -43,10 +44,17 @@ def test_standard_mode_trains_identically():
     assert "loss" in history
     assert "kl_loss" in history
     assert "reconstruction_loss" in history
-    
+    assert "kl_z" in history
+    assert "kl_c" in history
+    assert "dirichlet_penalty" in history
+    assert "usage_sparsity_loss" in history
+
     # Verify component_entropy is 0 for standard mode
     assert "component_entropy" in history
     assert all(val == 0.0 for val in history["component_entropy"])
+    assert all(val == 0.0 for val in history["kl_c"])
+    assert all(val == 0.0 for val in history["dirichlet_penalty"])
+    assert all(val == 0.0 for val in history["usage_sparsity_loss"])
 
 
 def test_standard_encoder_still_works():
@@ -83,14 +91,14 @@ def test_config_serialization_includes_mixture_fields():
     )
     
     hparams = config.get_informative_hyperparameters()
-    
+
     assert "prior_type" in hparams
     assert "num_components" in hparams
-    assert "component_kl_weight" in hparams
-    
+    assert "kl_c_weight" in hparams
+
     assert hparams["prior_type"] == "mixture"
     assert hparams["num_components"] == 7
-    assert hparams["component_kl_weight"] == 0.05
+    assert hparams["kl_c_weight"] == 0.05
 
 
 def test_predict_handles_both_modes():

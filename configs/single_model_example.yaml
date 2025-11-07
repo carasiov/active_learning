@@ -11,7 +11,7 @@ description: "Train a single SSVAE model"
 
 # Data settings
 data:
-  num_samples: 5000
+  num_samples: 15000
   num_labeled: 50
   epochs: 30
   seed: 42
@@ -28,21 +28,26 @@ models:
     input_hw: null
     
     # Loss
-    reconstruction_loss: "mse"
-    recon_weight: 500.0
-    kl_weight: 5.0
+    reconstruction_loss: "bce"
+    recon_weight: 1.0
+    kl_weight: 0.50
     label_weight: 0.0
-    
+
     # Prior
-    prior_type: "mixture"
+    prior_type: "standard"
+
     num_components: 10
-    component_kl_weight: 0.1
+    kl_c_weight: 0.0005
+    kl_c_anneal_epochs: 0.0
+    dirichlet_alpha: 1.0
+    dirichlet_weight: 1.0
+    usage_sparsity_weight: 0.1
     
     # Training
     learning_rate: 0.001
     batch_size: 128
     max_epochs: 300
-    patience: 50
+    patience: 30
     val_split: 0.1
     random_seed: 42
     
@@ -52,7 +57,7 @@ models:
     dropout_rate: 0.2
     
     # Monitoring
-    monitor_metric: "classification_loss"
+    monitor_metric: "loss"
     
     # Advanced
     use_contrastive: false
