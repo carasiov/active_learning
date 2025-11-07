@@ -7,12 +7,6 @@
 
 ## What is this?
 
-This repository contains a **deep learning model** that learns useful representations from datasets with very few labeled examples. 
-
-**The model is the core.** Everything else (comparison tools, dashboard, scripts) exists to experiment with, validate, and interact with the SSVAE model.
-
-**Why does this exist?** While MNIST serves as the proof of concept, the ultimate goal is interactive active learning for high-dimensional text embeddings (device notifications, error messages). See [**Context & Motivation**](docs/CONTEXT.md) for the full story, and if you want to understand why the model and repo are built more generally than MNIST needs.
-
 ### Current Implementation Status
 
 The repository provides:
@@ -70,7 +64,6 @@ active_learning_showcase/
 │   └── models/                  #    Dashboard model state
 │
 └── docs/                        # 📖 Documentation
-    ├── IMPLEMENTATION.md        #    Core model architecture & APIreference                       
     └──...
 ```
 
@@ -104,7 +97,6 @@ active_learning_showcase/
 
 ---
 
----
 
 ## Quick Start
 
@@ -122,7 +114,6 @@ poetry run python scripts/compare_models.py --models standard mixture_k10 --epoc
 
 **Next steps:** [Getting Started Guide](docs/GETTING_STARTED.md) for detailed setup and verification.
 
----
 ---
 
 ## Usage
@@ -144,18 +135,6 @@ poetry run python scripts/compare_models.py --models standard mixture_k10 --epoc
 See the [Usage Guide](docs/USAGE.md) for detailed examples, workflows, and troubleshooting.
 
 ---
-
----
-
----
-
-## Documentation Map
-
-**Start here based on your goal:**
-
-| Get Started | Use Tools | Understand Model | Extend System |
-|-------------|-----------|------------------|---------------|
-| [**Getting Started**](docs/GETTING_STARTED.md)<br>• Installation<br>• Requirements<br>• Quick start<br>• Verification | [**Usage Guide**](docs/USAGE.md)<br>• Comparison tool<br>• Dashboard<br>• Python API<br>• Workflows | [**Implementation**](docs/IMPLEMENTATION.md)<br>• Architecture<br>• API reference<br>• Components<br>• Patterns | [**Contributing**](docs/CONTRIBUTING.md)<br>• Dev workflow<br>• Adding features<br>• Testing<br>• Code style |
 
 **Context & Philosophy:**
 
