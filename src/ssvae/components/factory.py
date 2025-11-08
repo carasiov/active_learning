@@ -65,7 +65,7 @@ def build_classifier(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = 
         classifier_hidden_dims = (last_hidden, last_hidden)
         return Classifier(
             hidden_dims=classifier_hidden_dims,
-            num_classes=10,
+            num_classes=config.num_classes,
             dropout_rate=config.dropout_rate,
         )
     if config.classifier_type == "conv":

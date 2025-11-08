@@ -31,7 +31,7 @@ model:
   reconstruction_loss: "bce"
   recon_weight: 1.0
   kl_weight: 0.50
-  label_weight: 0.0
+  label_weight: 1.0
 
   # Prior (standard or mixture)
   prior_type: "standard"

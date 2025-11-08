@@ -34,6 +34,7 @@ INFORMATIVE_HPARAMETERS = (
     "encoder_type",
     "decoder_type",
     "classifier_type",
+    "num_classes",
     "latent_dim",
     "hidden_dims",
     "learning_rate",
@@ -61,6 +62,7 @@ class SSVAEConfig:
     """Hyperparameters controlling the SSVAE architecture and training loop.
 
     Attributes:
+        num_classes: Number of output classes for the classifier head.
         latent_dim: Dimensionality of the latent representation.
         hidden_dims: Dense layer sizes for the encoder; decoder mirrors in reverse (dense only).
         reconstruction_loss: Loss function for reconstruction term.
@@ -99,6 +101,7 @@ class SSVAEConfig:
         component_kl_weight: Deprecated alias for kl_c_weight kept for backward compatibility.
     """
 
+    num_classes: int = 10
     latent_dim: int = 2
     hidden_dims: Tuple[int, ...] = (256, 128, 64)
     reconstruction_loss: str = "mse"

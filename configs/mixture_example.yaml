@@ -28,7 +28,7 @@ model:
   reconstruction_loss: "bce"
   recon_weight: 1.0
   kl_weight: 0.50
-  label_weight: 0.0
+  label_weight: 1.0
 
   # Mixture prior
   prior_type: "mixture"
