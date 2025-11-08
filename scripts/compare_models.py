@@ -30,7 +30,10 @@ from ssvae.diagnostics import DiagnosticsCollector
 from comparison_utils import (
     plot_loss_comparison,
     plot_latent_spaces,
+    plot_latent_by_component,
     plot_reconstructions,
+    plot_responsibility_histogram,
+    plot_mixture_evolution,
     generate_report,
 )
 
@@ -286,6 +289,9 @@ def main():
     print("\nGenerating visualizations...")
     plot_loss_comparison(histories, output_dir)
     plot_latent_spaces(trained_models, X_train, y_true, output_dir)
+    plot_latent_by_component(trained_models, X_train, y_true, output_dir)
+    plot_responsibility_histogram(trained_models, output_dir)
+    plot_mixture_evolution(trained_models, output_dir)
     recon_paths = plot_reconstructions(trained_models, X_train, output_dir)
     
     # Save summaries
