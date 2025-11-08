@@ -1,7 +1,7 @@
 """
-Test that refactored SSVAE produces identical results to original.
+Test that current SSVAE produces identical results to legacy implementation.
 
-This ensures the refactoring preserves behavior.
+This ensures backward compatibility is maintained.
 """
 from __future__ import annotations
 
@@ -11,11 +11,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from ssvae import SSVAEConfig
+from ssvae import SSVAE, SSVAEConfig
 
-# Import both versions
-from ssvae.models import SSVAE as SSVAEOriginal
-from ssvae.models_refactored import SSVAE as SSVAERefactored
+# Import legacy version for comparison
+from ssvae.models_legacy import SSVAE as SSVAELegacy
 
 
 @pytest.fixture
@@ -50,12 +49,12 @@ class TestRefactoredEquivalence:
         with tempfile.TemporaryDirectory() as tmpdir:
             # Original
             path_orig = str(Path(tmpdir) / "original.ckpt")
-            vae_orig = SSVAEOriginal(input_dim=(28, 28), config=config)
+            vae_orig = SSVAELegacy(input_dim=(28, 28), config=config)
             history_orig = vae_orig.fit(X, y, path_orig)
 
             # Refactored
             path_refac = str(Path(tmpdir) / "refactored.ckpt")
-            vae_refac = SSVAERefactored(input_dim=(28, 28), config=config)
+            vae_refac = SSVAE(input_dim=(28, 28), config=config)
             history_refac = vae_refac.fit(X, y, path_refac)
 
         # Both should complete training
@@ -74,8 +73,8 @@ class TestRefactoredEquivalence:
         config = SSVAEConfig(latent_dim=2, random_seed=42)
 
         # Create both models with same seed
-        vae_orig = SSVAEOriginal(input_dim=(28, 28), config=config)
-        vae_refac = SSVAERefactored(input_dim=(28, 28), config=config)
+        vae_orig = SSVAELegacy(input_dim=(28, 28), config=config)
+        vae_refac = SSVAE(input_dim=(28, 28), config=config)
 
         # Get predictions before any training (random init should be identical)
         z_orig, _, _, _ = vae_orig.predict(X_test)
@@ -95,15 +94,15 @@ class TestRefactoredEquivalence:
             weights_path = str(Path(tmpdir) / "model.ckpt")
 
             # Train with refactored version
-            vae_refac_train = SSVAERefactored(input_dim=(28, 28), config=config)
+            vae_refac_train = SSVAE(input_dim=(28, 28), config=config)
             vae_refac_train.fit(X, y, weights_path)
 
             # Load with original version
-            vae_orig_load = SSVAEOriginal(input_dim=(28, 28), config=config)
+            vae_orig_load = SSVAELegacy(input_dim=(28, 28), config=config)
             vae_orig_load.load_model_weights(weights_path)
 
             # Load with refactored version
-            vae_refac_load = SSVAERefactored(input_dim=(28, 28), config=config)
+            vae_refac_load = SSVAE(input_dim=(28, 28), config=config)
             vae_refac_load.load_model_weights(weights_path)
 
             # Predictions should match
@@ -116,8 +115,8 @@ class TestRefactoredEquivalence:
         """Refactored version must have same public methods."""
         config = SSVAEConfig()
 
-        vae_orig = SSVAEOriginal(input_dim=(28, 28), config=config)
-        vae_refac = SSVAERefactored(input_dim=(28, 28), config=config)
+        vae_orig = SSVAELegacy(input_dim=(28, 28), config=config)
+        vae_refac = SSVAE(input_dim=(28, 28), config=config)
 
         # Check all public methods exist
         public_methods = ["fit", "predict", "load_model_weights"]
@@ -142,7 +141,7 @@ class TestRefactoredEquivalence:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             weights_path = str(Path(tmpdir) / "mixture.ckpt")
-            vae_refac = SSVAERefactored(input_dim=(28, 28), config=config)
+            vae_refac = SSVAE(input_dim=(28, 28), config=config)
             history = vae_refac.fit(X, y, weights_path)
 
         # Should complete training
@@ -209,7 +208,7 @@ class TestRefactoredComponentsIndependently:
             num_components=5,
         )
 
-        vae = SSVAERefactored(input_dim=(28, 28), config=config)
+        vae = SSVAE(input_dim=(28, 28), config=config)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             output_dir = Path(tmpdir) / "diagnostics"

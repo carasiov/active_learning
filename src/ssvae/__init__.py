@@ -15,6 +15,6 @@ See docs/IMPLEMENTATION.md for architecture details and extension guides.
 """
 
 from .config import SSVAEConfig
-from .models_refactored import SSVAE
+from .models import SSVAE
 
 __all__ = ["SSVAE", "SSVAEConfig"]

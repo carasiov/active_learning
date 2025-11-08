@@ -1,25 +1,13 @@
 """
-Run safety tests against the REFACTORED version.
+Run safety tests against the current SSVAE implementation.
 
-This verifies the refactored implementation passes all baseline tests.
+This verifies the current implementation passes all baseline tests.
+Note: Since the refactored version is now the default, this just runs
+the standard safety tests without any monkey-patching.
 """
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-# Temporarily replace the import
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-# Monkey-patch the import to use refactored version
-import ssvae
-from ssvae.models_refactored import SSVAE as SSVAERefactored
-
-# Replace SSVAE with refactored version for testing
-ssvae.SSVAE = SSVAERefactored
-ssvae.models.SSVAE = SSVAERefactored
-
-# Now import the safety tests (they'll use the refactored version)
+# Just re-export all safety tests to run against current implementation
 from test_refactor_safety import *
 
 if __name__ == "__main__":

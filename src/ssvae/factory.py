@@ -17,7 +17,7 @@ from jax import random
 
 from ssvae.config import SSVAEConfig
 from ssvae.components.factory import build_classifier, build_decoder, build_encoder, get_architecture_dims
-from ssvae.models import SSVAENetwork, _make_weight_decay_mask
+from ssvae.models_legacy import SSVAENetwork, _make_weight_decay_mask
 from ssvae.priors import get_prior
 from ssvae.priors.base import PriorMode
 from training.losses import compute_loss_and_metrics
