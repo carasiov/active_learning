@@ -1,0 +1,234 @@
+"""
+SSVAEFactory - Pure factory for creating model components.
+
+This module separates model initialization from the SSVAE class,
+making it easier to test and reuse components.
+"""
+from __future__ import annotations
+
+from typing import Callable, Dict, Tuple
+
+import jax
+import jax.numpy as jnp
+import optax
+from flax import linen as nn, traverse_util
+from flax.core import freeze, FrozenDict
+from jax import random
+
+from ssvae.config import SSVAEConfig
+from ssvae.components.factory import build_classifier, build_decoder, build_encoder, get_architecture_dims
+from ssvae.models import SSVAENetwork, _make_weight_decay_mask
+from training.losses import compute_loss_and_metrics
+from training.train_state import SSVAETrainState
+
+
+class SSVAEFactory:
+    """Pure factory for creating SSVAE components without side effects."""
+
+    @staticmethod
+    def create_model(
+        input_dim: Tuple[int, int],
+        config: SSVAEConfig,
+        random_seed: int | None = None,
+    ) -> Tuple[SSVAENetwork, SSVAETrainState, Callable, Callable, random.PRNGKey]:
+        """Create complete SSVAE model with train/eval functions.
+
+        Args:
+            input_dim: Input image dimensions (height, width)
+            config: SSVAE configuration
+            random_seed: Random seed for reproducibility (uses config.random_seed if None)
+
+        Returns:
+            Tuple of:
+                - network: SSVAENetwork Flax module
+                - state: Initial training state with parameters
+                - train_step_fn: JIT-compiled training step function
+                - eval_metrics_fn: JIT-compiled evaluation function
+                - shuffle_rng: RNG key for data shuffling
+
+        Example:
+            >>> factory = SSVAEFactory()
+            >>> network, state, train_fn, eval_fn, shuffle_rng = factory.create_model(
+            ...     input_dim=(28, 28),
+            ...     config=SSVAEConfig(latent_dim=2)
+            ... )
+        """
+        seed = random_seed if random_seed is not None else config.random_seed
+        out_hw = input_dim
+        if config.input_hw is None:
+            config.input_hw = out_hw
+
+        # Build architecture
+        enc_dims, dec_dims, clf_dims = get_architecture_dims(config, input_hw=out_hw)
+        network = SSVAENetwork(
+            config=config,
+            input_hw=out_hw,
+            encoder_hidden_dims=enc_dims,
+            decoder_hidden_dims=dec_dims,
+            classifier_hidden_dims=clf_dims,
+            classifier_dropout_rate=config.dropout_rate,
+            latent_dim=config.latent_dim,
+            output_hw=out_hw,
+            encoder_type=config.encoder_type,
+            decoder_type=config.decoder_type,
+            classifier_type=config.classifier_type,
+        )
+
+        # Initialize parameters
+        rng = random.PRNGKey(seed)
+        params_key, sample_key, dropout_key, rng = random.split(rng, 4)
+        dummy_input = jnp.zeros((1, *out_hw), dtype=jnp.float32)
+        variables = network.init(
+            {"params": params_key, "reparam": sample_key, "dropout": dropout_key},
+            dummy_input,
+            training=True,
+        )
+
+        # Create optimizer with weight decay masking
+        decay_mask = _make_weight_decay_mask(variables["params"])
+        opt_core = (
+            optax.adamw(
+                learning_rate=config.learning_rate,
+                weight_decay=config.weight_decay,
+                mask=decay_mask,
+            )
+            if config.weight_decay > 0.0
+            else optax.adam(config.learning_rate)
+        )
+
+        tx_steps = []
+        if config.grad_clip_norm is not None:
+            tx_steps.append(optax.clip_by_global_norm(config.grad_clip_norm))
+        tx_steps.append(opt_core)
+        tx = optax.chain(*tx_steps) if len(tx_steps) > 1 else tx_steps[0]
+
+        # Create initial training state
+        state = SSVAETrainState.create(
+            apply_fn=network.apply,
+            params=variables["params"],
+            tx=tx,
+            rng=rng,
+        )
+
+        shuffle_rng = random.PRNGKey(seed + 1)
+
+        # Build train and eval functions
+        train_step_fn = SSVAEFactory._build_train_step(network, config, state.apply_fn)
+        eval_metrics_fn = SSVAEFactory._build_eval_metrics(network, config, state.apply_fn)
+
+        return network, state, train_step_fn, eval_metrics_fn, shuffle_rng
+
+    @staticmethod
+    def _build_train_step(
+        network: SSVAENetwork,
+        config: SSVAEConfig,
+        apply_fn: Callable,
+    ) -> Callable:
+        """Build JIT-compiled training step function."""
+
+        def _apply_fn_wrapper(params, *args, **kwargs):
+            return apply_fn({"params": params}, *args, **kwargs)
+
+        def _model_forward(
+            params: Dict[str, Dict[str, jnp.ndarray]],
+            batch_x: jnp.ndarray,
+            *,
+            training: bool,
+            key: jax.Array | None,
+        ):
+            if key is None:
+                return _apply_fn_wrapper(params, batch_x, training=training)
+            reparam_key, dropout_key = random.split(key)
+            return _apply_fn_wrapper(
+                params,
+                batch_x,
+                training=training,
+                rngs={"reparam": reparam_key, "dropout": dropout_key},
+            )
+
+        def _loss_and_metrics(
+            params: Dict[str, Dict[str, jnp.ndarray]],
+            batch_x: jnp.ndarray,
+            batch_y: jnp.ndarray,
+            key: jax.Array | None,
+            training: bool,
+            kl_c_scale: float,
+        ):
+            rng = key if training else None
+            return compute_loss_and_metrics(
+                params,
+                batch_x,
+                batch_y,
+                _model_forward,
+                config,
+                rng,
+                training=training,
+                kl_c_scale=kl_c_scale,
+            )
+
+        train_loss_and_grad = jax.value_and_grad(
+            lambda p, x, y, k, scale: _loss_and_metrics(p, x, y, k, True, scale),
+            argnums=0,
+            has_aux=True,
+        )
+
+        @jax.jit
+        def train_step(
+            state: SSVAETrainState,
+            batch_x: jnp.ndarray,
+            batch_y: jnp.ndarray,
+            key: jax.Array,
+            kl_c_scale: float,
+        ):
+            (loss, metrics), grads = train_loss_and_grad(state.params, batch_x, batch_y, key, kl_c_scale)
+            new_state = state.apply_gradients(grads=grads)
+            return new_state, metrics
+
+        return train_step
+
+    @staticmethod
+    def _build_eval_metrics(
+        network: SSVAENetwork,
+        config: SSVAEConfig,
+        apply_fn: Callable,
+    ) -> Callable:
+        """Build JIT-compiled evaluation metrics function."""
+
+        def _apply_fn_wrapper(params, *args, **kwargs):
+            return apply_fn({"params": params}, *args, **kwargs)
+
+        def _model_forward(
+            params: Dict[str, Dict[str, jnp.ndarray]],
+            batch_x: jnp.ndarray,
+            *,
+            training: bool,
+            key: jax.Array | None,
+        ):
+            if key is None:
+                return _apply_fn_wrapper(params, batch_x, training=training)
+            reparam_key, dropout_key = random.split(key)
+            return _apply_fn_wrapper(
+                params,
+                batch_x,
+                training=training,
+                rngs={"reparam": reparam_key, "dropout": dropout_key},
+            )
+
+        def _eval_metrics(
+            params: Dict[str, Dict[str, jnp.ndarray]],
+            batch_x: jnp.ndarray,
+            batch_y: jnp.ndarray,
+        ):
+            _, metrics = compute_loss_and_metrics(
+                params,
+                batch_x,
+                batch_y,
+                _model_forward,
+                config,
+                None,
+                training=False,
+                kl_c_scale=1.0,
+            )
+            return metrics
+
+        return jax.jit(_eval_metrics)

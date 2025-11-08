@@ -1,0 +1,195 @@
+"""
+DiagnosticsCollector - Generates model diagnostics and visualizations.
+
+Separates diagnostic logic from model training for cleaner architecture.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Callable, Dict, List
+
+import jax.numpy as jnp
+import numpy as np
+
+from ssvae.config import SSVAEConfig
+
+
+class DiagnosticsCollector:
+    """Collects and saves model diagnostics, especially for mixture priors.
+
+    This class handles:
+    - Component usage statistics
+    - Latent space visualizations
+    - Responsibility distributions
+    - π (mixture weights) tracking
+
+    Separating this from the main model makes it easier to:
+    - Test diagnostic logic independently
+    - Add new diagnostics without touching model code
+    - Disable diagnostics in production
+    """
+
+    def __init__(self, config: SSVAEConfig):
+        """Initialize diagnostics collector.
+
+        Args:
+            config: Model configuration
+        """
+        self.config = config
+        self._last_output_dir: Path | None = None
+
+    def collect_mixture_stats(
+        self,
+        apply_fn: Callable,
+        params: Dict,
+        data: np.ndarray,
+        labels: np.ndarray,
+        output_dir: Path,
+        *,
+        batch_size: int = 1024,
+    ) -> None:
+        """Collect and save mixture prior diagnostics.
+
+        Args:
+            apply_fn: Model forward function
+            params: Model parameters
+            data: Input data (images)
+            labels: Labels for data
+            output_dir: Directory to save diagnostics
+            batch_size: Batch size for processing
+
+        Saves:
+            - component_usage.npy: Mean usage per component
+            - component_entropy.npy: Mean entropy of responsibilities
+            - pi.npy: Learned mixture weights (if available)
+            - latent.npz: Latent codes, labels, and responsibilities (if latent_dim=2)
+        """
+        if self.config.prior_type != "mixture":
+            return
+
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        self._last_output_dir = output_dir
+
+        eps = 1e-8
+        usage_sum: np.ndarray | None = None
+        entropy_sum = 0.0
+        count = 0
+
+        z_records: List[np.ndarray] = []
+        resp_records: List[np.ndarray] = []
+        label_records: List[np.ndarray] = []
+        pi_array: np.ndarray | None = None
+
+        # Process in batches
+        total = data.shape[0]
+        for start in range(0, total, batch_size):
+            end = min(start + batch_size, total)
+            batch_inputs = jnp.asarray(data[start:end])
+
+            # Forward pass
+            forward_output = apply_fn(params, batch_inputs, training=False)
+            component_logits, z_mean, _, _, _, _, extras = forward_output
+
+            # Extract mixture-specific outputs
+            responsibilities = extras.get("responsibilities") if hasattr(extras, "get") else None
+            if responsibilities is None:
+                return
+
+            resp_np = np.asarray(responsibilities)
+
+            # Accumulate usage statistics
+            if usage_sum is None:
+                usage_sum = np.zeros(resp_np.shape[1], dtype=np.float64)
+            usage_sum += resp_np.sum(axis=0)
+
+            # Compute entropy
+            entropy_batch = -resp_np * np.log(resp_np + eps)
+            entropy_sum += entropy_batch.sum()
+            count += resp_np.shape[0]
+
+            # Collect latent space data (for visualization)
+            z_records.append(np.asarray(z_mean))
+            resp_records.append(resp_np)
+            label_records.append(labels[start:end])
+
+            # Extract π (mixture weights) once
+            if pi_array is None:
+                pi_val = extras.get("pi") if hasattr(extras, "get") else None
+                if pi_val is not None:
+                    pi_array = np.asarray(pi_val)
+
+        if usage_sum is None or count == 0:
+            return
+
+        # Compute final statistics
+        component_usage = (usage_sum / count).astype(np.float32)
+        component_entropy = np.array(entropy_sum / count, dtype=np.float32)
+
+        # Save component statistics
+        np.save(output_dir / "component_usage.npy", component_usage)
+        np.save(output_dir / "component_entropy.npy", component_entropy)
+
+        if pi_array is not None:
+            np.save(output_dir / "pi.npy", pi_array.astype(np.float32))
+
+        # Save latent visualization data (only for 2D latent)
+        if self.config.latent_dim == 2 and z_records:
+            z_array = np.concatenate(z_records, axis=0).astype(np.float32)
+            resp_array = np.concatenate(resp_records, axis=0).astype(np.float32)
+            labels_array = np.concatenate(label_records, axis=0)
+
+            np.savez(
+                output_dir / "latent.npz",
+                z_mean=z_array,
+                labels=labels_array,
+                q_c=resp_array,
+            )
+
+    @property
+    def last_output_dir(self) -> Path | None:
+        """Get the last directory where diagnostics were saved."""
+        return self._last_output_dir
+
+    def load_component_usage(self, output_dir: Path | None = None) -> np.ndarray | None:
+        """Load component usage statistics.
+
+        Args:
+            output_dir: Directory to load from (uses last if None)
+
+        Returns:
+            Component usage array or None if not found
+        """
+        dir_path = output_dir or self._last_output_dir
+        if dir_path is None:
+            return None
+
+        usage_path = Path(dir_path) / "component_usage.npy"
+        if not usage_path.exists():
+            return None
+
+        return np.load(usage_path)
+
+    def load_latent_data(self, output_dir: Path | None = None) -> Dict[str, np.ndarray] | None:
+        """Load latent space visualization data.
+
+        Args:
+            output_dir: Directory to load from (uses last if None)
+
+        Returns:
+            Dictionary with 'z_mean', 'labels', 'q_c' or None if not found
+        """
+        dir_path = output_dir or self._last_output_dir
+        if dir_path is None:
+            return None
+
+        latent_path = Path(dir_path) / "latent.npz"
+        if not latent_path.exists():
+            return None
+
+        data = np.load(latent_path)
+        return {
+            "z_mean": data["z_mean"],
+            "labels": data["labels"],
+            "q_c": data["q_c"],
+        }
