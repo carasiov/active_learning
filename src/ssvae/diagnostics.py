@@ -47,7 +47,7 @@ class DiagnosticsCollector:
         output_dir: Path,
         *,
         batch_size: int = 1024,
-    ) -> None:
+    ) -> Dict[str, float]:
         """Collect and save mixture prior diagnostics.
 
         Args:
@@ -57,6 +57,12 @@ class DiagnosticsCollector:
             labels: Labels for data
             output_dir: Directory to save diagnostics
             batch_size: Batch size for processing
+
+        Returns:
+            Dictionary with computed metrics:
+                - K_eff: Effective number of components
+                - responsibility_confidence_mean: Mean of max_c q(c|x)
+                - active_components: Number of components with usage > 1%
 
         Saves:
             - component_usage.npy: Mean usage per component
@@ -120,7 +126,7 @@ class DiagnosticsCollector:
                     pi_array = np.asarray(pi_val)
 
         if usage_sum is None or count == 0:
-            return
+            return {}
 
         # Compute final statistics
         component_usage = (usage_sum / count).astype(np.float32)
@@ -132,6 +138,23 @@ class DiagnosticsCollector:
 
         if pi_array is not None:
             np.save(output_dir / "pi.npy", pi_array.astype(np.float32))
+
+        # Compute derived metrics
+        eps = 1e-8
+        p_c = component_usage / (component_usage.sum() + eps)  # Normalize to probabilities
+        H_c = -np.sum(p_c * np.log(p_c + eps))
+        K_eff = float(np.exp(H_c))
+
+        # Active components (usage > 1%)
+        active_components = int(np.sum(component_usage > 0.01))
+
+        # Responsibility confidence (mean of max_c q(c|x))
+        if resp_records:
+            all_responsibilities = np.concatenate(resp_records, axis=0)
+            max_responsibilities = all_responsibilities.max(axis=1)
+            responsibility_confidence_mean = float(max_responsibilities.mean())
+        else:
+            responsibility_confidence_mean = 0.0
 
         # Save latent visualization data (only for 2D latent)
         if self.config.latent_dim == 2 and z_records:
@@ -145,6 +168,13 @@ class DiagnosticsCollector:
                 labels=labels_array,
                 q_c=resp_array,
             )
+
+        # Return computed metrics
+        return {
+            "K_eff": K_eff,
+            "active_components": active_components,
+            "responsibility_confidence_mean": responsibility_confidence_mean,
+        }
 
     @property
     def last_output_dir(self) -> Path | None:
@@ -192,4 +222,66 @@ class DiagnosticsCollector:
             "z_mean": data["z_mean"],
             "labels": data["labels"],
             "q_c": data["q_c"],
+        }
+
+    @staticmethod
+    def compute_accuracy(
+        predictions: np.ndarray,
+        labels: np.ndarray,
+    ) -> float:
+        """Compute classification accuracy.
+
+        Args:
+            predictions: Predicted class indices (shape: [N])
+            labels: True class labels (shape: [N])
+
+        Returns:
+            Accuracy as a float in [0, 1]
+        """
+        # Filter out unlabeled samples (NaN labels)
+        valid_mask = ~np.isnan(labels)
+        if not valid_mask.any():
+            return 0.0
+
+        predictions_valid = predictions[valid_mask]
+        labels_valid = labels[valid_mask]
+
+        correct = (predictions_valid == labels_valid).sum()
+        total = len(labels_valid)
+
+        return float(correct / total) if total > 0 else 0.0
+
+    @staticmethod
+    def compute_clustering_metrics(
+        component_assignments: np.ndarray,
+        labels: np.ndarray,
+    ) -> Dict[str, float]:
+        """Compute clustering quality metrics (NMI and ARI).
+
+        Args:
+            component_assignments: Component assignments from argmax_c q(c|x) (shape: [N])
+            labels: True class labels (shape: [N])
+
+        Returns:
+            Dictionary with 'nmi' and 'ari' scores, or empty dict if sklearn unavailable
+        """
+        try:
+            from sklearn.metrics import normalized_mutual_info_score, adjusted_rand_score
+        except ImportError:
+            return {}
+
+        # Filter out unlabeled samples (NaN labels)
+        valid_mask = ~np.isnan(labels)
+        if not valid_mask.any():
+            return {}
+
+        component_assignments_valid = component_assignments[valid_mask]
+        labels_valid = labels[valid_mask]
+
+        nmi = normalized_mutual_info_score(labels_valid, component_assignments_valid)
+        ari = adjusted_rand_score(labels_valid, component_assignments_valid)
+
+        return {
+            "nmi": float(nmi),
+            "ari": float(ari),
         }

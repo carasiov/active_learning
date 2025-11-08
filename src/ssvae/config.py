@@ -130,6 +130,7 @@ class SSVAEConfig:
     dirichlet_weight: float = 1.0
     usage_sparsity_weight: float = 0.0
     kl_c_anneal_epochs: int = 0
+    mixture_history_log_every: int = 1  # Track π and usage every N epochs
 
     def __post_init__(self):
         """Validate configuration after initialization."""

@@ -26,6 +26,7 @@ if str(DATA_DIR) not in sys.path:
 
 from mnist.mnist import load_mnist_scaled
 from ssvae import SSVAE, SSVAEConfig
+from ssvae.diagnostics import DiagnosticsCollector
 from comparison_utils import (
     plot_loss_comparison,
     plot_latent_spaces,
@@ -75,48 +76,104 @@ def prepare_data(num_samples: int, num_labeled: int, seed: int):
     return X_subset, y_semi, y_subset
 
 
-def train_model(name: str, config: SSVAEConfig, X_train, y_train, output_dir: Path):
-    """Train a single model configuration."""
+def train_model(name: str, config: SSVAEConfig, X_train, y_train, y_true, output_dir: Path):
+    """Train a single model configuration.
+
+    Args:
+        name: Model name
+        config: Model configuration
+        X_train: Training data
+        y_train: Semi-supervised labels (may contain NaN)
+        y_true: True labels (for evaluation)
+        output_dir: Directory to save outputs
+
+    Returns:
+        Tuple of (model, history, summary_dict)
+    """
     print(f"\n{'='*60}\nTraining: {name}\n{'='*60}")
-    
+
     model = SSVAE(input_dim=(28, 28), config=config)
     weights_path = str(output_dir / f"{name.replace(' ', '_').lower()}_checkpoint.ckpt")
-    
+
     start_time = time.time()
     history = model.fit(X_train, y_train, weights_path=weights_path)
     train_time = time.time() - start_time
-    
+
     print(f"{name} complete in {train_time:.1f}s")
-    
-    # Compute summary
+
+    # Compute predictions for accuracy
+    latent, recon, predictions, certainty = model.predict(X_train)
+    accuracy = DiagnosticsCollector.compute_accuracy(predictions, y_true)
+
+    # Build structured summary
     summary = {
-        'final_loss': float(history['loss'][-1]),
-        'final_recon_loss': float(history['reconstruction_loss'][-1]),
-        'final_kl_loss': float(history['kl_loss'][-1]),
-        'final_class_loss': float(history['classification_loss'][-1]),
-        'training_time_sec': float(train_time),
+        'training': {
+            'final_loss': float(history['loss'][-1]),
+            'final_recon_loss': float(history['reconstruction_loss'][-1]),
+            'final_kl_z': float(history.get('kl_z', [0])[-1]) if 'kl_z' in history and history['kl_z'] else 0.0,
+            'final_kl_c': float(history.get('kl_c', [0])[-1]) if 'kl_c' in history and history['kl_c'] else 0.0,
+            'training_time_sec': float(train_time),
+            'epochs_completed': len(history['loss']),
+        },
+        'classification': {
+            'final_accuracy': float(accuracy),
+            'final_classification_loss': float(history['classification_loss'][-1]),
+        }
     }
 
-    if 'component_entropy' in history and len(history['component_entropy']) > 0:
-        summary['final_component_entropy'] = float(history['component_entropy'][-1])
-    if 'pi_entropy' in history and len(history['pi_entropy']) > 0:
-        summary['final_pi_entropy'] = float(history['pi_entropy'][-1])
+    # Add mixture-specific metrics
+    if config.prior_type == 'mixture':
+        mixture_metrics = model.mixture_metrics
 
-    diag_dir = getattr(model, "_last_diagnostics_dir", None)
-    if diag_dir:
-        diag_path = Path(diag_dir)
-        summary['diagnostics_path'] = str(diag_path)
-        usage_path = diag_path / "component_usage.npy"
-        pi_path = diag_path / "pi.npy"
-        if usage_path.exists():
-            usage = np.load(usage_path)
-            summary['component_usage'] = usage.tolist()
-        if pi_path.exists():
-            pi = np.load(pi_path)
-            summary['pi_values'] = pi.tolist()
-            summary['pi_max'] = float(np.max(pi))
-            summary['pi_min'] = float(np.min(pi))
-            summary['pi_argmax'] = int(np.argmax(pi))
+        mixture_summary = {
+            'K': config.num_components,
+            'final_component_entropy': float(history.get('component_entropy', [0])[-1]) if 'component_entropy' in history and history['component_entropy'] else 0.0,
+            'final_pi_entropy': float(history.get('pi_entropy', [0])[-1]) if 'pi_entropy' in history and history['pi_entropy'] else 0.0,
+        }
+
+        # Add metrics from diagnostics collector
+        if mixture_metrics:
+            mixture_summary['K_eff'] = mixture_metrics.get('K_eff', 0.0)
+            mixture_summary['active_components'] = mixture_metrics.get('active_components', 0)
+            mixture_summary['responsibility_confidence_mean'] = mixture_metrics.get('responsibility_confidence_mean', 0.0)
+
+        # Add π statistics if available
+        diag_dir = model.last_diagnostics_dir
+        if diag_dir:
+            diag_path = Path(diag_dir)
+            summary['diagnostics_path'] = str(diag_path)
+
+            pi_path = diag_path / "pi.npy"
+            if pi_path.exists():
+                pi = np.load(pi_path)
+                mixture_summary['pi_max'] = float(np.max(pi))
+                mixture_summary['pi_min'] = float(np.min(pi))
+                mixture_summary['pi_argmax'] = int(np.argmax(pi))
+                mixture_summary['pi_values'] = pi.tolist()
+
+            usage_path = diag_path / "component_usage.npy"
+            if usage_path.exists():
+                usage = np.load(usage_path)
+                mixture_summary['component_usage'] = usage.tolist()
+
+        summary['mixture'] = mixture_summary
+
+    # Add clustering metrics for 2D latents
+    if config.latent_dim == 2 and config.prior_type == 'mixture':
+        # Compute component assignments from responsibilities
+        diag_dir = model.last_diagnostics_dir
+        if diag_dir:
+            latent_data = model._diagnostics.load_latent_data(diag_dir)
+            if latent_data is not None:
+                responsibilities = latent_data['q_c']
+                component_assignments = responsibilities.argmax(axis=1)
+                labels = latent_data['labels']
+
+                clustering_metrics = DiagnosticsCollector.compute_clustering_metrics(
+                    component_assignments, labels
+                )
+                if clustering_metrics:
+                    summary['clustering'] = clustering_metrics
 
     return model, history, summary
 
@@ -218,9 +275,9 @@ def main():
                 model_config['patience'] = epochs  # No early stopping
         
         config = SSVAEConfig(**model_config)
-        
-        model, history, summary = train_model(name, config, X_train, y_semi, output_dir)
-        
+
+        model, history, summary = train_model(name, config, X_train, y_semi, y_true, output_dir)
+
         trained_models[name] = model
         histories[name] = history
         summaries[name] = summary

@@ -23,7 +23,7 @@ configure_jax_device()
 
 import jax.numpy as jnp
 
-from callbacks import CSVExporter, ConsoleLogger, LossCurvePlotter, TrainingCallback
+from callbacks import CSVExporter, ConsoleLogger, LossCurvePlotter, MixtureHistoryTracker, TrainingCallback
 from ssvae.checkpoint import CheckpointManager
 from ssvae.config import SSVAEConfig
 from ssvae.diagnostics import DiagnosticsCollector
@@ -81,6 +81,7 @@ class SSVAE:
         self._checkpoint_mgr = CheckpointManager()
         self._diagnostics = DiagnosticsCollector(self.config)
         self._trainer = Trainer(self.config)
+        self._mixture_metrics: Dict = {}  # Store mixture diagnostics metrics
 
         # Build apply function for predictions
         model_apply = self.state.apply_fn
@@ -288,6 +289,17 @@ class SSVAE:
         callbacks.append(CSVExporter(history_path))
         callbacks.append(LossCurvePlotter(plot_path))
 
+        # Add mixture history tracker for mixture priors
+        if self.config.prior_type == "mixture":
+            mixture_hist_dir = base_path.parent / "diagnostics" / base_path.stem
+            callbacks.append(
+                MixtureHistoryTracker(
+                    output_dir=mixture_hist_dir,
+                    log_every=self.config.mixture_history_log_every,
+                    enabled=True,
+                )
+            )
+
         return callbacks
 
     def _save_mixture_diagnostics(self, splits: Trainer.DataSplits) -> None:
@@ -312,7 +324,7 @@ class SSVAE:
             diag_dir = Path("artifacts/diagnostics/ssvae")
 
         # Collect diagnostics using DiagnosticsCollector
-        self._diagnostics.collect_mixture_stats(
+        self._mixture_metrics = self._diagnostics.collect_mixture_stats(
             apply_fn=self._apply_fn,
             params=self.state.params,
             data=val_x,
@@ -325,6 +337,11 @@ class SSVAE:
     def last_diagnostics_dir(self) -> Path | None:
         """Get directory where diagnostics were last saved."""
         return self._diagnostics.last_output_dir
+
+    @property
+    def mixture_metrics(self) -> Dict:
+        """Get mixture diagnostics metrics (K_eff, etc.)."""
+        return self._mixture_metrics
 
 
 # Repo root and default paths
