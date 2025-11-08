@@ -598,66 +598,105 @@ preds = trainer.predict(X_test)
 
 ---
 
-### `losses.py` - Loss Functions
+### `losses.py` - Loss Functions (Legacy)
 
-**Purpose:** Compute individual loss components.
+**Purpose:** Original loss computation functions (backward compatibility).
+
+**Status:** ⚠️ Legacy version kept for `models_legacy.py`. **The current implementation uses `losses_v2.py`**.
 
 **Key Functions:**
+- `reconstruction_loss_mse()` / `reconstruction_loss_bce()` - Simple reconstruction losses
+- `weighted_reconstruction_loss_mse()` / `weighted_reconstruction_loss_bce()` - For mixture priors
+- `kl_divergence()` - Standard Gaussian KL
+- `categorical_kl()` - Component assignment KL
+- `dirichlet_map_penalty()` - Dirichlet prior regularization
+- `usage_sparsity_penalty()` - Channel usage sparsity
+- `classification_loss()` - Cross-entropy on labeled samples
+- `compute_loss_and_metrics()` - Main loss computation function (legacy)
 
-**`reconstruction_loss(x, x_recon, loss_type="bce")`**
-- BCE: Binary cross-entropy (for [0,1] images)
-- MSE: Mean squared error
-
-**`kl_divergence(z_mean, z_logvar, prior)`**
-- Delegates to prior's `kl_divergence()` method
-- Handles standard and mixture priors
-
-**`classification_loss(logits, labels)`**
-- Cross-entropy on labeled samples
-- Ignores NaN labels (unlabeled)
-
-**`total_loss(x, x_recon, z_mean, z_logvar, logits, labels, prior, config)`**
-- Combines all losses with configured weights
-- Returns: total loss + individual components dict
-
-**Loss Computation:**
-```python
-loss_dict = {
-    'reconstruction': recon_weight * recon_loss,
-    'kl': kl_weight * kl_div,
-    'classification': label_weight * class_loss,
-    'total': recon + kl + class_loss
-}
-```
+**Design:**
+- All loss logic hard-coded in individual functions
+- Runtime type checking with `hasattr()` to distinguish prior types
+- Used by legacy model implementation only
 
 ---
 
-### `losses_v2.py` - Enhanced Loss Functions
+### `losses_v2.py` - Current Loss Functions
 
-**Purpose:** Extended loss functions with mixture prior support.
+**Purpose:** Protocol-based loss computation using `PriorMode` abstraction.
 
-**Additional Features:**
-- Usage sparsity regularization
-- Dirichlet prior on mixture weights
-- Auxiliary metrics (loss without global priors)
+**Status:** ✅ **Current/active version** used by refactored architecture (default in `SSVAEFactory`).
 
-**Key Function:**
+**Key Differences from v1:**
+- Priors compute their own KL terms via `PriorMode` protocol
+- Priors handle reconstruction loss (weighted vs simple)
+- No runtime type checking - cleaner abstraction
+- Better separation of concerns
 
-**`compute_ssvae_loss_v2(...)`**
-- Computes all loss components for mixture prior
-- Returns comprehensive metrics dict:
-  ```python
-  {
-      'loss': total_loss,
-      'reconstruction_loss': recon,
-      'kl_z': kl_latent,
-      'kl_c': kl_component,
-      'classification_loss': class_loss,
-      'usage_sparsity_loss': sparsity,
-      'component_entropy': entropy,
-      'pi_entropy': pi_ent
-  }
-  ```
+**Main Function:**
+
+**`compute_loss_and_metrics_v2(params, batch_x, batch_y, model_apply_fn, config, prior, rng, training, kl_c_scale)`**
+
+Computes total loss and comprehensive metrics using PriorMode abstraction.
+
+**Args:**
+- `params`: Model parameters
+- `batch_x`: Input images
+- `batch_y`: Labels (NaN for unlabeled)
+- `model_apply_fn`: Forward pass function
+- `config`: SSVAEConfig
+- `prior`: PriorMode instance (handles prior-specific logic)
+- `rng`: Random key (None for deterministic)
+- `training`: Training mode flag
+- `kl_c_scale`: Annealing factor for component KL
+
+**Returns:**
+```python
+(total_loss, metrics_dict)
+
+# metrics_dict contains:
+{
+    'loss': total_loss,
+    'reconstruction_loss': recon,
+    'kl_z': kl_latent,
+    'kl_c': kl_component,
+    'kl_loss': kl_z + kl_c,  # backward compat
+    'classification_loss': cls_unweighted,
+    'weighted_classification_loss': cls_weighted,
+    'usage_sparsity_loss': sparsity,
+    'component_entropy': entropy,
+    'pi_entropy': pi_entropy,
+    'dirichlet_penalty': dirichlet,
+    'loss_no_global_priors': recon + kl_z + kl_c + cls,  # monitoring
+    'contrastive_loss': 0.0  # placeholder
+}
+```
+
+**Design Pattern:**
+```python
+# Prior handles its own KL computation
+encoder_output = EncoderOutput(z_mean, z_log_var, z, component_logits, extras)
+kl_terms = prior.compute_kl_terms(encoder_output, config)
+
+# Prior handles reconstruction weighting (if needed)
+recon_loss = prior.compute_reconstruction_loss(
+    batch_x, recon, encoder_output, config
+)
+
+# Assemble total loss
+total = recon_loss + sum(kl_terms.values()) + classification_loss
+```
+
+**Usage in Factory:**
+```python
+# In SSVAEFactory.create_model()
+factory.create_model(input_dim, config, use_v2_losses=True)  # Default
+
+# Models.py explicitly uses v2
+self.model, self.state, ... = factory.create_model(
+    input_dim, self.config, use_v2_losses=True
+)
+```
 
 ---
 
