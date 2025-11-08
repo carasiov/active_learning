@@ -75,7 +75,7 @@ class SSVAE:
             self._eval_metrics,
             self._shuffle_rng,
             self.prior,
-        ) = factory.create_model(input_dim, self.config, use_v2_losses=True)
+        ) = factory.create_model(input_dim, self.config)
 
         # Initialize managers
         self._checkpoint_mgr = CheckpointManager()

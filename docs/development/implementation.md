@@ -10,6 +10,7 @@
 src/
 ├── ssvae/              # Core SSVAE model
 │   ├── models.py       # Public API (SSVAE class)
+│   ├── network.py      # Neural network architecture
 │   ├── config.py       # Configuration dataclass
 │   ├── factory.py      # Component creation
 │   ├── checkpoint.py   # State persistence
@@ -92,6 +93,132 @@ model = SSVAE(input_dim=(28, 28), config=config)
 history = model.fit(X_train, y_train, "model.ckpt")
 z, recon, preds, cert = model.predict(X_test)
 ```
+
+---
+
+### `network.py` - Neural Network Architecture
+
+**Purpose:** Core neural network architecture components used by the SSVAE model.
+
+**Key Classes:**
+
+**`ForwardOutput` (NamedTuple)**
+
+Standardized output format from network forward pass.
+
+```python
+class ForwardOutput(NamedTuple):
+    component_logits: Optional[jnp.ndarray]  # Mixture component logits (if mixture prior)
+    z_mean: jnp.ndarray                      # Latent mean
+    z_log: jnp.ndarray                       # Latent log-variance
+    z: jnp.ndarray                           # Sampled latent vector
+    recon: jnp.ndarray                       # Reconstruction
+    class_logits: jnp.ndarray                # Classification logits
+    extras: Dict[str, jnp.ndarray]           # Additional outputs (e.g., mixture info)
+```
+
+**`MixturePriorParameters` (nn.Module)**
+
+Learnable parameters for mixture prior distributions.
+
+```python
+class MixturePriorParameters(nn.Module):
+    num_components: int     # Number of mixture components
+    embed_dim: int          # Embedding dimension per component
+
+    def __call__(self) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        # Returns: (component_embeddings, pi_logits)
+```
+
+Creates two learnable parameter arrays:
+- `component_embeddings`: Component-specific embeddings `[K, latent_dim]`
+- `pi_logits`: Mixture weights before softmax `[K]`
+
+**`SSVAENetwork` (nn.Module)**
+
+Main neural network module combining encoder, decoder, and classifier.
+
+**Parameters:**
+```python
+config: SSVAEConfig                          # Model configuration
+input_hw: Tuple[int, int]                    # Input dimensions
+encoder_hidden_dims: Tuple[int, ...]         # Encoder layer sizes
+decoder_hidden_dims: Tuple[int, ...]         # Decoder layer sizes
+classifier_hidden_dims: Tuple[int, ...]      # Classifier layer sizes
+classifier_dropout_rate: float               # Dropout rate
+latent_dim: int                              # Latent space dimension
+output_hw: Tuple[int, int]                   # Output dimensions
+encoder_type: str                            # "dense" or "conv"
+decoder_type: str                            # "dense" or "conv"
+classifier_type: str                         # "dense"
+```
+
+**Forward Pass:**
+```python
+def __call__(self, x: jnp.ndarray, *, training: bool) -> ForwardOutput:
+    """
+    Args:
+        x: Input images [batch, H, W]
+        training: Whether in training mode
+
+    Returns:
+        ForwardOutput with all network outputs
+    """
+```
+
+**Standard Prior Flow:**
+1. Encoder: `x → (z_mean, z_log, z)`
+2. Decoder: `z → reconstruction`
+3. Classifier: `z → class_logits`
+
+**Mixture Prior Flow:**
+1. Encoder: `x → (component_logits, z_mean, z_log, z)`
+2. Get mixture parameters: `prior_module() → (embeddings, pi_logits)`
+3. Compute responsibilities: `q(c|x) = softmax(component_logits)`
+4. Decoder with components:
+   - Tile z for each component: `[batch, K, latent_dim]`
+   - Concatenate with embeddings: `[batch, K, latent_dim + embed_dim]`
+   - Decode per-component: `recon_per_component [batch, K, H, W]`
+   - Weight by responsibilities: `recon = Σ_k q(c_k|x) * recon_k`
+5. Classifier: `z → class_logits`
+
+**Utility Functions:**
+
+**`_make_weight_decay_mask(params)`**
+
+Creates a mask for selective weight decay application.
+
+```python
+def _make_weight_decay_mask(params: Dict) -> Dict:
+    """
+    Create mask matching params tree structure for weight decay.
+
+    Returns:
+        Mask dict where True = apply decay, False = no decay
+
+    No decay applied to:
+    - bias terms
+    - scale terms (BatchNorm, LayerNorm)
+    - prior parameters (pi_logits, component_embeddings)
+    """
+```
+
+**Usage:**
+```python
+# Used by SSVAEFactory to configure optimizer
+decay_mask = _make_weight_decay_mask(params)
+optimizer = optax.adamw(
+    learning_rate=config.learning_rate,
+    weight_decay=config.weight_decay,
+    mask=decay_mask
+)
+```
+
+**Design Notes:**
+- `ForwardOutput` provides type-safe interface for network outputs
+- `MixturePriorParameters` keeps mixture prior learnable params organized
+- `SSVAENetwork` orchestrates all components with prior-specific logic
+- Weight decay masking prevents regularization of bias/prior parameters
 
 ---
 
@@ -598,13 +725,13 @@ preds = trainer.predict(X_test)
 
 ---
 
-### `losses.py` - Loss Functions (Legacy)
+### `losses.py` - Loss Functions
 
-**Purpose:** Original loss computation functions (backward compatibility).
+**Purpose:** Loss computation functions with protocol-based abstraction.
 
-**Status:** ⚠️ Legacy version kept for `models_legacy.py`. **The current implementation uses `losses_v2.py`**.
+**Key Components:**
 
-**Key Functions:**
+**Utility Functions:**
 - `reconstruction_loss_mse()` / `reconstruction_loss_bce()` - Simple reconstruction losses
 - `weighted_reconstruction_loss_mse()` / `weighted_reconstruction_loss_bce()` - For mixture priors
 - `kl_divergence()` - Standard Gaussian KL
@@ -612,32 +739,12 @@ preds = trainer.predict(X_test)
 - `dirichlet_map_penalty()` - Dirichlet prior regularization
 - `usage_sparsity_penalty()` - Channel usage sparsity
 - `classification_loss()` - Cross-entropy on labeled samples
-- `compute_loss_and_metrics()` - Main loss computation function (legacy)
 
-**Design:**
-- All loss logic hard-coded in individual functions
-- Runtime type checking with `hasattr()` to distinguish prior types
-- Used by legacy model implementation only
-
----
-
-### `losses_v2.py` - Current Loss Functions
-
-**Purpose:** Protocol-based loss computation using `PriorMode` abstraction.
-
-**Status:** ✅ **Current/active version** used by refactored architecture (default in `SSVAEFactory`).
-
-**Key Differences from v1:**
-- Priors compute their own KL terms via `PriorMode` protocol
-- Priors handle reconstruction loss (weighted vs simple)
-- No runtime type checking - cleaner abstraction
-- Better separation of concerns
-
-**Main Function:**
+**Main Loss Function:**
 
 **`compute_loss_and_metrics_v2(params, batch_x, batch_y, model_apply_fn, config, prior, rng, training, kl_c_scale)`**
 
-Computes total loss and comprehensive metrics using PriorMode abstraction.
+Protocol-based loss computation that delegates to priors for their specific logic.
 
 **Args:**
 - `params`: Model parameters
@@ -660,14 +767,14 @@ Computes total loss and comprehensive metrics using PriorMode abstraction.
     'reconstruction_loss': recon,
     'kl_z': kl_latent,
     'kl_c': kl_component,
-    'kl_loss': kl_z + kl_c,  # backward compat
+    'kl_loss': kl_z + kl_c,
     'classification_loss': cls_unweighted,
     'weighted_classification_loss': cls_weighted,
     'usage_sparsity_loss': sparsity,
     'component_entropy': entropy,
     'pi_entropy': pi_entropy,
     'dirichlet_penalty': dirichlet,
-    'loss_no_global_priors': recon + kl_z + kl_c + cls,  # monitoring
+    'loss_no_global_priors': recon + kl_z + kl_c + cls,
     'contrastive_loss': 0.0  # placeholder
 }
 ```
@@ -689,13 +796,8 @@ total = recon_loss + sum(kl_terms.values()) + classification_loss
 
 **Usage in Factory:**
 ```python
-# In SSVAEFactory.create_model()
-factory.create_model(input_dim, config, use_v2_losses=True)  # Default
-
-# Models.py explicitly uses v2
-self.model, self.state, ... = factory.create_model(
-    input_dim, self.config, use_v2_losses=True
-)
+# SSVAEFactory automatically uses protocol-based losses
+factory.create_model(input_dim, config)
 ```
 
 ---

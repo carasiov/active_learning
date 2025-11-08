@@ -675,7 +675,7 @@ Add a custom regularization term (e.g., contrastive loss, repulsion).
 ### Example: Channel Repulsion Loss
 
 ```python
-# In src/training/losses.py or losses_v2.py
+# In src/training/losses.py
 
 def channel_repulsion_loss(
     channel_embeddings: Array,  # (K, embedding_dim)

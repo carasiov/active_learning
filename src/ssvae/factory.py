@@ -17,11 +17,10 @@ from jax import random
 
 from ssvae.config import SSVAEConfig
 from ssvae.components.factory import build_classifier, build_decoder, build_encoder, get_architecture_dims
-from ssvae.models_legacy import SSVAENetwork, _make_weight_decay_mask
+from ssvae.network import SSVAENetwork, _make_weight_decay_mask
 from ssvae.priors import get_prior
 from ssvae.priors.base import PriorMode
-from training.losses import compute_loss_and_metrics
-from training.losses_v2 import compute_loss_and_metrics_v2
+from training.losses import compute_loss_and_metrics_v2
 from training.train_state import SSVAETrainState
 
 
@@ -33,7 +32,6 @@ class SSVAEFactory:
         input_dim: Tuple[int, int],
         config: SSVAEConfig,
         random_seed: int | None = None,
-        use_v2_losses: bool = True,
     ) -> Tuple[SSVAENetwork, SSVAETrainState, Callable, Callable, random.PRNGKey, PriorMode]:
         """Create complete SSVAE model with train/eval functions.
 
@@ -41,7 +39,6 @@ class SSVAEFactory:
             input_dim: Input image dimensions (height, width)
             config: SSVAE configuration
             random_seed: Random seed for reproducibility (uses config.random_seed if None)
-            use_v2_losses: Whether to use losses_v2 with PriorMode (default: True)
 
         Returns:
             Tuple of:
@@ -121,130 +118,11 @@ class SSVAEFactory:
         # Create prior instance
         prior = get_prior(config.prior_type)
 
-        # Build train and eval functions
-        if use_v2_losses:
-            train_step_fn = SSVAEFactory._build_train_step_v2(network, config, state.apply_fn, prior)
-            eval_metrics_fn = SSVAEFactory._build_eval_metrics_v2(network, config, state.apply_fn, prior)
-        else:
-            train_step_fn = SSVAEFactory._build_train_step(network, config, state.apply_fn)
-            eval_metrics_fn = SSVAEFactory._build_eval_metrics(network, config, state.apply_fn)
+        # Build train and eval functions (using protocol-based losses)
+        train_step_fn = SSVAEFactory._build_train_step_v2(network, config, state.apply_fn, prior)
+        eval_metrics_fn = SSVAEFactory._build_eval_metrics_v2(network, config, state.apply_fn, prior)
 
         return network, state, train_step_fn, eval_metrics_fn, shuffle_rng, prior
-
-    @staticmethod
-    def _build_train_step(
-        network: SSVAENetwork,
-        config: SSVAEConfig,
-        apply_fn: Callable,
-    ) -> Callable:
-        """Build JIT-compiled training step function."""
-
-        def _apply_fn_wrapper(params, *args, **kwargs):
-            return apply_fn({"params": params}, *args, **kwargs)
-
-        def _model_forward(
-            params: Dict[str, Dict[str, jnp.ndarray]],
-            batch_x: jnp.ndarray,
-            *,
-            training: bool,
-            key: jax.Array | None,
-        ):
-            if key is None:
-                return _apply_fn_wrapper(params, batch_x, training=training)
-            reparam_key, dropout_key = random.split(key)
-            return _apply_fn_wrapper(
-                params,
-                batch_x,
-                training=training,
-                rngs={"reparam": reparam_key, "dropout": dropout_key},
-            )
-
-        def _loss_and_metrics(
-            params: Dict[str, Dict[str, jnp.ndarray]],
-            batch_x: jnp.ndarray,
-            batch_y: jnp.ndarray,
-            key: jax.Array | None,
-            training: bool,
-            kl_c_scale: float,
-        ):
-            rng = key if training else None
-            return compute_loss_and_metrics(
-                params,
-                batch_x,
-                batch_y,
-                _model_forward,
-                config,
-                rng,
-                training=training,
-                kl_c_scale=kl_c_scale,
-            )
-
-        train_loss_and_grad = jax.value_and_grad(
-            lambda p, x, y, k, scale: _loss_and_metrics(p, x, y, k, True, scale),
-            argnums=0,
-            has_aux=True,
-        )
-
-        @jax.jit
-        def train_step(
-            state: SSVAETrainState,
-            batch_x: jnp.ndarray,
-            batch_y: jnp.ndarray,
-            key: jax.Array,
-            kl_c_scale: float,
-        ):
-            (loss, metrics), grads = train_loss_and_grad(state.params, batch_x, batch_y, key, kl_c_scale)
-            new_state = state.apply_gradients(grads=grads)
-            return new_state, metrics
-
-        return train_step
-
-    @staticmethod
-    def _build_eval_metrics(
-        network: SSVAENetwork,
-        config: SSVAEConfig,
-        apply_fn: Callable,
-    ) -> Callable:
-        """Build JIT-compiled evaluation metrics function."""
-
-        def _apply_fn_wrapper(params, *args, **kwargs):
-            return apply_fn({"params": params}, *args, **kwargs)
-
-        def _model_forward(
-            params: Dict[str, Dict[str, jnp.ndarray]],
-            batch_x: jnp.ndarray,
-            *,
-            training: bool,
-            key: jax.Array | None,
-        ):
-            if key is None:
-                return _apply_fn_wrapper(params, batch_x, training=training)
-            reparam_key, dropout_key = random.split(key)
-            return _apply_fn_wrapper(
-                params,
-                batch_x,
-                training=training,
-                rngs={"reparam": reparam_key, "dropout": dropout_key},
-            )
-
-        def _eval_metrics(
-            params: Dict[str, Dict[str, jnp.ndarray]],
-            batch_x: jnp.ndarray,
-            batch_y: jnp.ndarray,
-        ):
-            _, metrics = compute_loss_and_metrics(
-                params,
-                batch_x,
-                batch_y,
-                _model_forward,
-                config,
-                None,
-                training=False,
-                kl_c_scale=1.0,
-            )
-            return metrics
-
-        return jax.jit(_eval_metrics)
 
     @staticmethod
     def _build_train_step_v2(
