@@ -204,12 +204,12 @@ When you ran `compare_models.py`:
 ## Next Steps
 
 **Explore the tools:**
-- 📖 [Usage Guide](USAGE.md) - Detailed examples for all tools
-- 🔬 [Comparison Tool](../configs/comparisons/README.md) - YAML configs, advanced options
-- 🎛️ [Dashboard](../use_cases/dashboard/README.md) - Interactive interface
+- 📖 [Usage Guide](usage.md) - Detailed examples for all tools
+- 🔬 [Comparison Tool](../../configs/comparisons/README.md) - YAML configs, advanced options
+- 🎛️ [Dashboard](../../use_cases/dashboard/README.md) - Interactive interface
 
 **Understand the model:**
-- 📚 [Implementation Guide](IMPLEMENTATION.md) - Architecture, API reference, internals
+- 📚 [Implementation Guide](../development/implementation.md) - Architecture, API reference, internals
 
 **Start experimenting:**
 - Try different priors: `--models standard mixture_k5 mixture_k20`

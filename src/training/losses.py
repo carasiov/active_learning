@@ -165,18 +165,40 @@ def _contrastive_loss_stub(z: jnp.ndarray, weight: float) -> jnp.ndarray:
     return jnp.array(0.0, dtype=z.dtype) * weight
 
 
-def compute_loss_and_metrics(
+def compute_loss_and_metrics_v2(
     params: Dict[str, Dict[str, jnp.ndarray]],
-   batch_x: jnp.ndarray,
-   batch_y: jnp.ndarray,
-   model_apply_fn: Callable[..., Tuple],
-   config: SSVAEConfig,
-   rng: jax.Array | None,
-   *,
-   training: bool,
+    batch_x: jnp.ndarray,
+    batch_y: jnp.ndarray,
+    model_apply_fn: Callable,
+    config: SSVAEConfig,
+    prior,  # PriorMode instance
+    rng: jax.Array | None,
+    *,
+    training: bool,
     kl_c_scale: float = 1.0,
 ) -> Tuple[jnp.ndarray, Dict[str, jnp.ndarray]]:
-    """Mirror ``SSVAE._loss_and_metrics`` using the pure loss helpers."""
+    """Compute loss and metrics using PriorMode abstraction.
+
+    This is the current loss computation function that delegates to priors
+    for their specific KL and reconstruction logic.
+
+    Args:
+        params: Model parameters
+        batch_x: Input images [batch, H, W]
+        batch_y: Labels [batch] (NaN for unlabeled)
+        model_apply_fn: Forward function
+        config: Model configuration
+        prior: Prior mode instance
+        rng: Random key for sampling (None for deterministic)
+        training: Whether in training mode
+        kl_c_scale: Annealing factor for KL_c term
+
+    Returns:
+        Tuple of (total_loss, metrics_dict)
+    """
+    from ssvae.priors.base import EncoderOutput
+
+    # Forward pass
     use_key = rng if training else None
     forward_output = model_apply_fn(
         params,
@@ -184,67 +206,131 @@ def compute_loss_and_metrics(
         training=training,
         key=use_key,
     )
-    component_logits, z_mean, z_log, z, recon, logits, extras = forward_output
 
-    if hasattr(extras, "get"):
-        responsibilities = extras.get("responsibilities")
-        recon_components = extras.get("recon_per_component")
-        pi = extras.get("pi")
+    # Unpack forward output
+    component_logits, z_mean, z_log, z, recon, class_logits, extras = forward_output
+
+    # Create standardized encoder output
+    encoder_output = EncoderOutput(
+        z_mean=z_mean,
+        z_log_var=z_log,
+        z=z,
+        component_logits=component_logits,
+        extras=extras if hasattr(extras, "get") else None,
+    )
+
+    # Reconstruction loss (prior handles weighting for mixture)
+    if prior.requires_component_embeddings() and encoder_output.extras:
+        # Mixture prior: use per-component reconstructions
+        recon_per_component = encoder_output.extras.get("recon_per_component")
+        if recon_per_component is not None:
+            recon_loss = prior.compute_reconstruction_loss(
+                batch_x, recon_per_component, encoder_output, config
+            )
+        else:
+            # Fallback: use weighted reconstruction from model
+            recon_loss = prior.compute_reconstruction_loss(
+                batch_x, recon, encoder_output, config
+            )
     else:
-        responsibilities = recon_components = pi = None
-
-    if responsibilities is not None and recon_components is not None and pi is not None:
-        rec_loss = weighted_reconstruction_loss(
-            batch_x,
-            recon_components,
-            responsibilities,
-            config.recon_weight,
-            loss_type=config.reconstruction_loss,
+        # Standard prior: simple reconstruction
+        recon_loss = prior.compute_reconstruction_loss(
+            batch_x, recon, encoder_output, config
         )
-        kl_z = kl_divergence(z_mean, z_log, config.kl_weight)
-        kl_c_weight = config.kl_c_weight * kl_c_scale
-        kl_c = categorical_kl(responsibilities, pi, kl_c_weight)
-        dirichlet_penalty = dirichlet_map_penalty(pi, config.dirichlet_alpha, config.dirichlet_weight)
-        usage_penalty = usage_sparsity_penalty(responsibilities, config.usage_sparsity_weight)
-        resp_safe = jnp.clip(responsibilities, EPS, 1.0)
-        component_entropy = -jnp.mean(jnp.sum(resp_safe * jnp.log(resp_safe), axis=-1))
-        pi_safe = jnp.clip(pi, EPS, 1.0)
-        pi_entropy = -jnp.sum(pi_safe * jnp.log(pi_safe))
-    else:
-        rec_loss = reconstruction_loss(batch_x, recon, config.recon_weight, loss_type=config.reconstruction_loss)
-        kl_z = kl_divergence(z_mean, z_log, config.kl_weight)
-        zero = jnp.array(0.0, dtype=rec_loss.dtype)
-        kl_c = zero
-        dirichlet_penalty = zero
-        usage_penalty = zero
-        component_entropy = zero
-        pi_entropy = zero
 
-    # Compute classification loss for metrics (unweighted) and for the objective (weighted).
-    cls_loss_unweighted = classification_loss(logits, batch_y, 1.0)
-    cls_loss_weighted = classification_loss(logits, batch_y, config.label_weight)
+    # KL divergence and regularization terms from prior
+    kl_terms = prior.compute_kl_terms(encoder_output, config)
 
-    if config.use_contrastive:
-        contrastive = _contrastive_loss_stub(z, config.contrastive_weight)
-    else:
-        contrastive = jnp.array(0.0, dtype=rec_loss.dtype)
+    # Apply KL_c annealing if present
+    if "kl_c" in kl_terms:
+        kl_terms["kl_c"] = kl_terms["kl_c"] * kl_c_scale
 
-    total = rec_loss + kl_z + kl_c + dirichlet_penalty + usage_penalty + cls_loss_weighted + contrastive
-    # For readability, expose a variant that excludes global priors/usage terms.
-    loss_no_global_priors = rec_loss + kl_z + kl_c + cls_loss_weighted + contrastive
+    # Classification loss (prior-agnostic)
+    cls_loss_unweighted = _classification_loss_internal(class_logits, batch_y, weight=1.0)
+    cls_loss_weighted = _classification_loss_internal(class_logits, batch_y, weight=config.label_weight)
+
+    # Assemble total loss
+    total_kl = sum(
+        v for k, v in kl_terms.items()
+        if k in ("kl_z", "kl_c", "dirichlet_penalty", "usage_sparsity")
+    )
+    total = recon_loss + total_kl + cls_loss_weighted
+
+    # Build metrics dictionary
     metrics = {
         "loss": total,
-        "loss_no_global_priors": loss_no_global_priors,
-        "reconstruction_loss": rec_loss,
-        "kl_loss": kl_z + kl_c,
-        "kl_z": kl_z,
-        "kl_c": kl_c,
-        "dirichlet_penalty": dirichlet_penalty,
-        "usage_sparsity_loss": usage_penalty,
+        "reconstruction_loss": recon_loss,
         "classification_loss": cls_loss_unweighted,
         "weighted_classification_loss": cls_loss_weighted,
-        "contrastive_loss": contrastive,
-        "component_entropy": component_entropy,
-        "pi_entropy": pi_entropy,
     }
+
+    # Add all KL terms from prior with backward-compatible names
+    for key, value in kl_terms.items():
+        # Map new names to old names for backward compatibility with Trainer
+        if key == "usage_sparsity":
+            metrics["usage_sparsity_loss"] = value
+        else:
+            metrics[key] = value
+
+    # Ensure all expected keys exist (Trainer expects them all)
+    zero = jnp.array(0.0, dtype=recon_loss.dtype)
+    if "kl_z" not in metrics:
+        metrics["kl_z"] = zero
+    if "kl_c" not in metrics:
+        metrics["kl_c"] = zero
+    if "dirichlet_penalty" not in metrics:
+        metrics["dirichlet_penalty"] = zero
+    if "usage_sparsity_loss" not in metrics:
+        metrics["usage_sparsity_loss"] = zero
+    if "component_entropy" not in metrics:
+        metrics["component_entropy"] = zero
+    if "pi_entropy" not in metrics:
+        metrics["pi_entropy"] = zero
+
+    # Aggregate kl_loss for backward compatibility
+    metrics["kl_loss"] = metrics["kl_z"] + metrics["kl_c"]
+
+    # Loss without global regularizers (for monitoring)
+    metrics["loss_no_global_priors"] = (
+        recon_loss
+        + metrics["kl_z"]
+        + metrics["kl_c"]
+        + cls_loss_weighted
+    )
+
+    # Add contrastive loss placeholder for backward compatibility
+    metrics["contrastive_loss"] = zero
+
     return total, metrics
+
+
+def _classification_loss_internal(
+    logits: jnp.ndarray,
+    labels: jnp.ndarray,
+    weight: float,
+) -> jnp.ndarray:
+    """Internal classification loss used by compute_loss_and_metrics_v2.
+
+    Note: This is separate from the public classification_loss() function
+    to avoid confusion, as this version uses conditional logic.
+    """
+    labels = labels.reshape((-1,))
+    mask = jnp.logical_not(jnp.isnan(labels))
+    mask_float = mask.astype(jnp.float32)
+    labels_int = jnp.where(mask, labels, 0.0).astype(jnp.int32)
+
+    per_example_ce = optax.softmax_cross_entropy_with_integer_labels(logits, labels_int)
+    masked_ce_sum = jnp.sum(per_example_ce * mask_float)
+    labeled_count = jnp.sum(mask_float)
+    zero = jnp.array(0.0, dtype=per_example_ce.dtype)
+
+    mean_ce = jax.lax.cond(
+        labeled_count > 0,
+        lambda: masked_ce_sum / labeled_count,
+        lambda: zero,
+    )
+    return weight * mean_ce
+
+
+# Backward compatibility alias
+compute_loss_and_metrics = compute_loss_and_metrics_v2
