@@ -2,6 +2,8 @@
 
 Flexible framework for comparing different SSVAE configurations with automated visualization and reporting.
 
+> **Note:** This is a legacy tool for multi-model comparisons. For the current primary experimentation workflow using single-model configs, see the **[Experiment Guide](../../EXPERIMENT_GUIDE.md)**.
+
 ## Quick Start
 
 ```bash

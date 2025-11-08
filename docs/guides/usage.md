@@ -2,15 +2,18 @@
 
 Comprehensive guide to all ways of working with the SSVAE model.
 
+> **Note:** For the current primary experimentation workflow using `run_experiment.py`, see the **[Experiment Guide](../../EXPERIMENT_GUIDE.md)**. This guide covers legacy tools and the Python API.
+
 ---
 
 ## Overview
 
-There are three primary ways to use the SSVAE:
+There are multiple ways to use the SSVAE:
 
-1. **[Comparison Tool](#comparison-tool)** - Command-line tool for experimenting with model configurations (current primary workflow)
-2. **[Interactive Dashboard](#interactive-dashboard)** - Web-based interface for active learning (future primary interface)
-3. **[Python API](#python-api)** - Programmatic access for custom integration
+1. **[Experiment Tool](../../EXPERIMENT_GUIDE.md)** - Single-model workflow with config-driven experiments (current primary workflow)
+2. **[Comparison Tool](#comparison-tool)** - Legacy multi-model comparison tool
+3. **[Interactive Dashboard](#interactive-dashboard)** - Web-based interface for active learning (future primary interface)
+4. **[Python API](#python-api)** - Programmatic access for custom integration
 
 ---
 

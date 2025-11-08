@@ -43,7 +43,8 @@ active_learning_showcase/
 │   └── plotting.py              #    Loss curve visualization
 │
 ├── scripts/                     # 🔬 Experimentation Tools (Current Focus)
-│   ├── compare_models.py        #    Compare model configurations
+│   ├── run_experiment.py        #    Primary experimentation script
+│   ├── compare_models.py        #    Legacy multi-model comparison tool
 │   └── comparison_utils.py      #    Visualization & reporting utilities
 │
 ├── use_cases/dashboard/         # 🎛️ Interactive Interface (Future Focus)
@@ -52,15 +53,20 @@ active_learning_showcase/
 │   ├── pages/                   #    Dashboard UI pages
 │   └── docs/                    #    Dashboard-specific documentation
 │
-├── configs/comparisons/         # ⚙️ Experiment Configurations
-│   └── *.yaml                   #    YAML configs for model comparisons
+├── configs/                     # ⚙️ Experiment Configurations
+│   ├── default.yaml             #    Standard baseline config
+│   ├── quick.yaml               #    Fast sanity checks
+│   ├── mixture_example.yaml     #    Full mixture features
+│   └── comparisons/             #    Legacy multi-model configs
+│       └── *.yaml
 │
 ├── data/mnist/                  # 📦 Dataset
 │   └── labels.csv               #    Shared label format (Serial, label)
 │
 ├── artifacts/                   # 💾 Outputs
-│   ├── comparisons/             #    Experiment results (plots, metrics, reports)
-│   ├── checkpoints/             #    Model weights
+│   ├── experiments/             #    Experiment results (timestamped)
+│   ├── comparisons/             #    Legacy multi-model comparisons
+│   ├── checkpoints/             #    Standalone model weights
 │   └── models/                  #    Dashboard model state
 │
 └── docs/                        # 📖 Documentation
@@ -82,7 +88,7 @@ active_learning_showcase/
                │                              │
                │                              │
      ┌─────────▼────────┐          ┌─────────▼──────────┐
-     │  Comparison Tool │          │     Dashboard      │
+     │ Experiment Tool  │          │     Dashboard      │
      │  (scripts/)      │          │  (use_cases/)      │
      │                  │          │                    │
      │  Current primary │          │  Future primary    │
@@ -91,7 +97,7 @@ active_learning_showcase/
      └──────────────────┘          └────────────────────┘
 ```
 
-**Current Reality:** Experimentation happens via `scripts/compare_models.py` for rapid iteration and validation.
+**Current Reality:** Experimentation happens via `scripts/run_experiment.py` for rapid iteration and validation.
 
 **Target State:** Dashboard becomes the primary interface for interactive active learning once model features stabilize.
 
@@ -100,23 +106,42 @@ active_learning_showcase/
 
 ## Quick Start
 
-Get your first results in under 3 minutes:
+Get your first results in under 10 seconds:
 
 ```bash
 # 1. Install dependencies (one-time setup)
 poetry install
 
-# 2. Run a model comparison
-poetry run python scripts/compare_models.py --models standard mixture_k10 --epochs 10
+# 2. Run a quick experiment
+JAX_PLATFORMS=cpu poetry run python scripts/run_experiment.py --config configs/quick.yaml
 ```
 
-**Output:** `artifacts/comparisons/20241031_143022/` with loss curves, latent visualizations, metrics, and checkpoints.
+**Output:** `artifacts/experiments/baseline_quick_<timestamp>/` with visualizations, metrics, and a human-readable report.
 
-**Next steps:** See [Documentation](#documentation) below for comprehensive guides.
+**Next steps:** See [Experiment Guide](#experiment-guide) for detailed workflows and configuration options.
 
 ---
 
 ## Documentation
+
+### 🚀 Experiment Guide
+
+**Primary workflow for training and evaluation:**
+- **[Experiment Guide](EXPERIMENT_GUIDE.md)** - Complete workflow guide: configuration → execution → interpretation
+
+**Quick reference:**
+```bash
+# Run quick test
+JAX_PLATFORMS=cpu poetry run python scripts/run_experiment.py --config configs/quick.yaml
+
+# Full baseline
+poetry run python scripts/run_experiment.py --config configs/default.yaml
+
+# Mixture model with evolution tracking
+poetry run python scripts/run_experiment.py --config configs/mixture_example.yaml
+```
+
+---
 
 ### 📖 Understanding the Project
 
@@ -129,18 +154,17 @@ poetry run python scripts/compare_models.py --models standard mixture_k10 --epoc
 
 **User Guides:**
 - **[Getting Started](docs/guides/getting_started.md)** - Installation, setup, and first successful run
-- **[Usage Guide](docs/guides/usage.md)** - Using the comparison tool, dashboard, and Python API
+- **[Usage Guide](docs/guides/usage.md)** - Dashboard and Python API usage
 
-**Quick examples:**
+**Python API example:**
 
-```bash
-# Compare two models
-poetry run python scripts/compare_models.py --models standard mixture_k10 --epochs 10
-
-# Python API
+```python
 from ssvae import SSVAE, SSVAEConfig
-config = SSVAEConfig(latent_dim=2, prior_type="mixture")
+
+config = SSVAEConfig(latent_dim=2, prior_type="mixture", num_components=10)
 model = SSVAE(input_dim=(28, 28), config=config)
+history = model.fit(X_train, y_train, "model.ckpt")
+z, recon, preds, cert = model.predict(X_test)
 ```
 
 ### 🏗️ Architecture & Development
@@ -153,7 +177,8 @@ model = SSVAE(input_dim=(28, 28), config=config)
 ### 🔧 Specialized Guides
 
 **Tool-Specific Documentation:**
-- **[Comparison Tool Details](configs/comparisons/README.md)** - YAML configs, advanced options, under-the-hood mechanics
+- **[Experiment Guide](EXPERIMENT_GUIDE.md)** - Primary experimentation workflow (config → run → interpret)
+- **[Verification Checklist](VERIFICATION_CHECKLIST.md)** - Comprehensive regression testing guide
 - **[Dashboard Overview](use_cases/dashboard/README.md)** - Interactive interface features and workflows
 - **[Dashboard Development](use_cases/dashboard/docs/DEVELOPER_GUIDE.md)** - Internal architecture and debugging
 - **[Dashboard Extensions](use_cases/dashboard/docs/AGENT_GUIDE.md)** - Adding custom commands and UI components
@@ -165,9 +190,13 @@ model = SSVAE(input_dim=(28, 28), config=config)
 
 ## Usage
 
-**Comparison Tool** (current primary workflow):
+**Experiment Tool** (current primary workflow):
 ```bash
-poetry run python scripts/compare_models.py --models standard mixture_k10 --epochs 10
+# Quick test
+JAX_PLATFORMS=cpu poetry run python scripts/run_experiment.py --config configs/quick.yaml
+
+# Full experiment
+poetry run python scripts/run_experiment.py --config configs/default.yaml
 ```
 
 **Interactive Dashboard:**
@@ -186,7 +215,7 @@ history = model.fit(X_train, y_train, "model.ckpt")
 z, recon, preds, cert = model.predict(X_test)
 ```
 
-See the [Usage Guide](docs/guides/usage.md) for detailed workflows and examples.
+See the [Experiment Guide](EXPERIMENT_GUIDE.md) for detailed workflows and configuration options.
 
 ---
 
