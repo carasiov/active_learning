@@ -264,9 +264,9 @@ Open http://localhost:8050 in your browser.
 - Production model training (use Python API)
 
 **Learn more:**
-- [Dashboard Overview](../use_cases/dashboard/README.md) - Features, architecture, routing
-- [Dashboard Developer Guide](../use_cases/dashboard/docs/DEVELOPER_GUIDE.md) - Internal architecture
-- [Dashboard Agent Guide](../use_cases/dashboard/docs/AGENT_GUIDE.md) - Extension patterns
+- [Dashboard Overview](../../use_cases/dashboard/README.md) - Features, architecture, routing
+- [Dashboard Developer Guide](../../use_cases/dashboard/docs/DEVELOPER_GUIDE.md) - Internal architecture
+- [Dashboard Agent Guide](../../use_cases/dashboard/docs/AGENT_GUIDE.md) - Extension patterns
 
 ---
 
@@ -395,7 +395,7 @@ mse = np.mean((X_test - recon) ** 2)
 - Automated experimentation
 - Production deployment
 
-**Learn more:** See [`docs/IMPLEMENTATION.md`](IMPLEMENTATION.md) for complete API reference, architecture details, and extension patterns.
+**Learn more:** See [Implementation Guide](../development/implementation.md) for complete API reference, architecture details, and extension patterns.
 
 ---
 

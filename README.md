@@ -112,39 +112,81 @@ poetry run python scripts/compare_models.py --models standard mixture_k10 --epoc
 
 **Output:** `artifacts/comparisons/20241031_143022/` with loss curves, latent visualizations, metrics, and checkpoints.
 
-**Next steps:** [Getting Started Guide](docs/GETTING_STARTED.md) for detailed setup and verification.
+**Next steps:** See [Documentation](#documentation) below for comprehensive guides.
+
+---
+
+## Documentation
+
+### 📖 Understanding the Project
+
+**Theoretical Foundation:**
+- **[Conceptual Model](docs/theory/conceptual_model.md)** - High-level vision and mental model for the RCM-VAE architecture
+- **[Mathematical Specification](docs/theory/mathematical_specification.md)** - Precise mathematical formulations, objectives, and training protocols
+- **[Implementation Roadmap](docs/theory/implementation_roadmap.md)** - Bridge between current implementation and full RCM-VAE system
+
+### 🚀 Getting Started & Usage
+
+**User Guides:**
+- **[Getting Started](docs/guides/getting_started.md)** - Installation, setup, and first successful run
+- **[Usage Guide](docs/guides/usage.md)** - Using the comparison tool, dashboard, and Python API
+
+**Quick examples:**
+
+```bash
+# Compare two models
+poetry run python scripts/compare_models.py --models standard mixture_k10 --epochs 10
+
+# Python API
+from ssvae import SSVAE, SSVAEConfig
+config = SSVAEConfig(latent_dim=2, prior_type="mixture")
+model = SSVAE(input_dim=(28, 28), config=config)
+```
+
+### 🏗️ Architecture & Development
+
+**For Developers:**
+- **[System Architecture](docs/development/architecture.md)** - Design patterns, component structure, and architectural decisions
+- **[Implementation Guide](docs/development/implementation.md)** - Module-by-module reference for working with the codebase
+- **[Extending the System](docs/development/extending.md)** - Step-by-step tutorials for adding new features (VampPrior, component-aware decoder, etc.)
+
+### 🔧 Specialized Guides
+
+**Tool-Specific Documentation:**
+- **[Comparison Tool Details](configs/comparisons/README.md)** - YAML configs, advanced options, under-the-hood mechanics
+- **[Dashboard Overview](use_cases/dashboard/README.md)** - Interactive interface features and workflows
+- **[Dashboard Development](use_cases/dashboard/docs/DEVELOPER_GUIDE.md)** - Internal architecture and debugging
+- **[Dashboard Extensions](use_cases/dashboard/docs/AGENT_GUIDE.md)** - Adding custom commands and UI components
+
+**Infrastructure:**
+- **[GPU Setup & Troubleshooting](.devcontainer/README.md)** - Devcontainer, CUDA, device selection
 
 ---
 
 ## Usage
 
-All usage patterns are documented in the [**Usage Guide**](docs/USAGE.md):
-
-- **[Comparison Tool](docs/USAGE.md#comparison-tool)** - Command-line experimentation (current primary workflow)
-- **[Interactive Dashboard](docs/USAGE.md#interactive-dashboard)** - Web interface for active learning  
-- **[Python API](docs/USAGE.md#python-api)** - Programmatic access for custom integration
-- **[Legacy Tools](docs/USAGE.md#legacy-tools)** - Single-model CLI scripts
-
-**Quick example:**
-
+**Comparison Tool** (current primary workflow):
 ```bash
-# Compare two models
 poetry run python scripts/compare_models.py --models standard mixture_k10 --epochs 10
 ```
 
-See the [Usage Guide](docs/USAGE.md) for detailed examples, workflows, and troubleshooting.
+**Interactive Dashboard:**
+```bash
+poetry run python use_cases/dashboard/app.py
+# Open http://localhost:8050
+```
+
+**Python API:**
+```python
+from ssvae import SSVAE, SSVAEConfig
+
+config = SSVAEConfig(latent_dim=2, prior_type="mixture", num_components=10)
+model = SSVAE(input_dim=(28, 28), config=config)
+history = model.fit(X_train, y_train, "model.ckpt")
+z, recon, preds, cert = model.predict(X_test)
+```
+
+See the [Usage Guide](docs/guides/usage.md) for detailed workflows and examples.
 
 ---
-
-**Context & Philosophy:**
-
-- 📖 [**Context & Motivation**](docs/CONTEXT.md) - Why this architecture? What's the target application? Why MNIST first?
-
-**Specialized Guides:**
-
-- 🐳 [GPU Setup & Troubleshooting](.devcontainer/README.md) - Devcontainer, CUDA, device selection
-- 🔬 [Comparison Tool Details](configs/comparisons/README.md) - YAML configs, options, troubleshooting  
-- 🎛️ [Dashboard Overview](use_cases/dashboard/README.md) - Features, routing, development
-- 🤖 [Dashboard Extensions](use_cases/dashboard/docs/AGENT_GUIDE.md) - Adding commands, UI, callbacks
-- 🔧 [Dashboard Internals](use_cases/dashboard/docs/DEVELOPER_GUIDE.md) - Architecture, debugging, state
 
