@@ -236,7 +236,7 @@ class TestLossV2MixturePrior:
             "classification_loss",
             "kl_z",
             "kl_c",
-            "usage_sparsity",
+            "usage_sparsity_loss",  # Backward-compatible naming for Trainer
             "component_entropy",
             "pi_entropy",
         }

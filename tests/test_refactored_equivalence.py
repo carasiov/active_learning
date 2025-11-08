@@ -158,7 +158,7 @@ class TestRefactoredComponentsIndependently:
         from ssvae.factory import SSVAEFactory
 
         factory = SSVAEFactory()
-        network, state, train_fn, eval_fn, shuffle_rng = factory.create_model(
+        network, state, train_fn, eval_fn, shuffle_rng, prior = factory.create_model(
             input_dim=(28, 28),
             config=SSVAEConfig(latent_dim=2),
         )
@@ -169,6 +169,8 @@ class TestRefactoredComponentsIndependently:
         assert callable(train_fn)
         assert callable(eval_fn)
         assert shuffle_rng is not None
+        assert prior is not None
+        assert prior.get_prior_type() == "standard"  # Default
 
     def test_checkpoint_manager_save_load(self, synthetic_data):
         """CheckpointManager should save and load state."""
@@ -179,7 +181,7 @@ class TestRefactoredComponentsIndependently:
         config = SSVAEConfig(latent_dim=2)
 
         factory = SSVAEFactory()
-        _, state1, _, _, _ = factory.create_model((28, 28), config)
+        _, state1, _, _, _, _ = factory.create_model((28, 28), config)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             path = str(Path(tmpdir) / "test.ckpt")
@@ -189,7 +191,7 @@ class TestRefactoredComponentsIndependently:
             mgr.save(state1, path)
 
             # Load
-            _, state2, _, _, _ = factory.create_model((28, 28), config)
+            _, state2, _, _, _, _ = factory.create_model((28, 28), config)
             state_loaded = mgr.load(state2, path)
 
             # Step should match

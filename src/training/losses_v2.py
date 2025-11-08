@@ -116,23 +116,42 @@ def compute_loss_and_metrics_v2(
         "weighted_classification_loss": cls_loss_weighted,
     }
 
-    # Add all KL terms from prior
+    # Add all KL terms from prior with backward-compatible names
     for key, value in kl_terms.items():
-        metrics[key] = value
+        # Map new names to old names for backward compatibility with Trainer
+        if key == "usage_sparsity":
+            metrics["usage_sparsity_loss"] = value
+        else:
+            metrics[key] = value
+
+    # Ensure all expected keys exist (Trainer expects them all)
+    zero = jnp.array(0.0, dtype=recon_loss.dtype)
+    if "kl_z" not in metrics:
+        metrics["kl_z"] = zero
+    if "kl_c" not in metrics:
+        metrics["kl_c"] = zero
+    if "dirichlet_penalty" not in metrics:
+        metrics["dirichlet_penalty"] = zero
+    if "usage_sparsity_loss" not in metrics:
+        metrics["usage_sparsity_loss"] = zero
+    if "component_entropy" not in metrics:
+        metrics["component_entropy"] = zero
+    if "pi_entropy" not in metrics:
+        metrics["pi_entropy"] = zero
 
     # Aggregate kl_loss for backward compatibility
-    metrics["kl_loss"] = metrics.get("kl_z", 0.0) + metrics.get("kl_c", 0.0)
+    metrics["kl_loss"] = metrics["kl_z"] + metrics["kl_c"]
 
     # Loss without global regularizers (for monitoring)
     metrics["loss_no_global_priors"] = (
         recon_loss
-        + metrics.get("kl_z", 0.0)
-        + metrics.get("kl_c", 0.0)
+        + metrics["kl_z"]
+        + metrics["kl_c"]
         + cls_loss_weighted
     )
 
     # Add contrastive loss placeholder for backward compatibility
-    metrics["contrastive_loss"] = jnp.array(0.0, dtype=recon_loss.dtype)
+    metrics["contrastive_loss"] = zero
 
     return total, metrics
 
