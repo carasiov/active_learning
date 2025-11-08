@@ -99,6 +99,7 @@ class Trainer:
     def __init__(self, config: SSVAEConfig):
         self.config = config
         self._latest_splits: DataSplits | None = None
+        self._current_state: SSVAETrainState | None = None  # For callback access during training
 
     @staticmethod
     def _init_history() -> HistoryDict:
@@ -198,6 +199,9 @@ class Trainer:
             )
             self._update_history(history, train_metrics, val_metrics)
 
+            # Store state for callback access
+            self._current_state = state
+
             metrics_bundle = {"train": train_metrics, "val": val_metrics}
             self._run_callbacks(callback_list, "on_epoch_end", epoch, metrics_bundle, history, self)
 
@@ -220,6 +224,10 @@ class Trainer:
 
         state = state.replace(rng=state_rng)
         self._run_callbacks(callback_list, "on_train_end", history, self)
+
+        # Clear state reference after training
+        self._current_state = None
+
         return state, shuffle_rng, history
 
     @property

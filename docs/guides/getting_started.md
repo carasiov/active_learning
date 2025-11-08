@@ -2,6 +2,8 @@
 
 Complete guide to installation, setup, and running your first experiment.
 
+> **Note:** This guide covers the legacy `compare_models.py` workflow and general Python API usage. For the current primary experimentation workflow using `run_experiment.py`, see the **[Experiment Guide](../../EXPERIMENT_GUIDE.md)**.
+
 ---
 
 ## Requirements
