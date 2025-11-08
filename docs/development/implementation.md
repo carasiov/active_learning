@@ -464,42 +464,137 @@ kl_c = jnp.sum(q_c * (jnp.log(q_c) - jnp.log(pi)), axis=-1)
 
 ### `trainer.py`
 
-**Purpose:** Main training loop with early stopping.
+**Purpose:** Main training loop with early stopping, data splitting, and checkpoint management.
 
-**Key Class: `Trainer`**
+**Key Classes:**
 
-**Methods:**
+**`DataSplits` (dataclass)**
+- Encapsulates train/validation split
+- Fields: `x_train`, `y_train`, `x_val`, `y_val`, `train_size`, `val_size`, `total_samples`, `labeled_count`
+- Property: `has_labels` - checks if any labeled samples exist
+- Method: `with_train()` - create new split with updated training data
 
-**`train(network, variables, train_data, train_labels, config, callbacks=None)`**
-- Main training loop
-- Handles batching, gradient updates, early stopping
-- Returns: `(final_variables, history)`
+**`TrainingSetup` (dataclass)**
+- Training configuration container
+- Fields: `batch_size`, `eval_batch_size`, `max_epochs`, `patience`, `monitor_metric`
 
-**Training Loop:**
+**`EarlyStoppingTracker` (dataclass)**
+- Tracks early stopping state
+- Fields: `monitor_metric`, `patience`, `best_val`, `wait`, `checkpoint_saved`, `halted_early`
+- Method: `update()` - update tracker and save checkpoint if improved
+
+**`Trainer`**
+- Main training orchestrator
+- Works with `SSVAETrainState` (not raw variables)
+- Integrates with callbacks for observability
+
+**Key Methods:**
+
+**`train(state, data, labels, weights_path, shuffle_rng, train_step_fn, eval_metrics_fn, save_fn, callbacks, num_epochs, patience)`**
+- Main training loop with functional state passing
+- Handles data splitting, batching, early stopping
+- Returns: `(final_state, final_rng, history)`
+
+**Training Loop Structure:**
 ```python
+# Split data
+splits = self._prepare_data_splits(data, labels)
+
+# Initialize history
+history = self._init_history()
+
+# Training loop
 for epoch in range(max_epochs):
-    # Training batches
-    for batch_x, batch_y in train_loader:
-        variables, loss = train_step(variables, batch_x, batch_y)
+    # Train epoch
+    state, train_metrics = train_epoch(state, splits, train_step_fn)
 
     # Validation
-    val_loss = validate(variables, val_data, val_labels)
+    val_metrics = eval_metrics_fn(state.params, splits.x_val, splits.y_val)
 
-    # Early stopping
-    if val_loss < best_loss:
-        best_loss = val_loss
-        patience_counter = 0
-    else:
-        patience_counter += 1
-        if patience_counter >= patience:
-            break
+    # Update history
+    history = update_history(history, train_metrics, val_metrics)
 
     # Callbacks
     for callback in callbacks:
         callback.on_epoch_end(epoch, history)
+
+    # Early stopping check
+    if early_stopping.update(val_metrics, state=state, save_fn=save_fn):
+        break
+
+return state, shuffle_rng, history
 ```
 
-**Optimizer:** Adam with configurable learning rate
+**Features:**
+- Functional state management (JAX style)
+- 80/20 train/validation split
+- Early stopping on configurable metric (default: `val_loss`)
+- Automatic checkpoint saving on improvement
+- Comprehensive metric tracking (20+ metrics in history)
+
+---
+
+### `interactive_trainer.py`
+
+**Purpose:** Stateful trainer for incremental/interactive training sessions.
+
+**Key Class: `InteractiveTrainer`**
+
+**Use Case:** Active learning workflows where training happens in multiple rounds with incrementally added labels.
+
+**Features:**
+- Preserves optimizer state across training sessions
+- Supports incremental label addition
+- Mirrors SSVAE interface while maintaining state
+- Used by dashboard for interactive training
+
+**Key Methods:**
+
+**`__init__(model, export_history=False, callbacks=None)`**
+- Wraps an SSVAE model instance
+- Maintains reference to model's state and RNG
+
+**`train_epochs(num_epochs, data, labels, weights_path=None, patience=None)`**
+- Train for N epochs while preserving optimizer state
+- Returns: Training history dict
+- Automatically resumes from current state
+
+**`get_latent_space(data)`**
+- Returns deterministic latent coordinates for visualization
+- Uses current model state
+
+**`predict(data, sample=False, num_samples=1)`**
+- Run inference using current state
+- Delegates to wrapped SSVAE model
+
+**`save_checkpoint(path)` / `load_checkpoint(path)`**
+- Persist/restore model state and optimizer state
+
+**Usage Pattern:**
+```python
+from ssvae import SSVAE
+from training.interactive_trainer import InteractiveTrainer
+
+# Create model and trainer
+model = SSVAE(input_dim=(28, 28), config=config)
+trainer = InteractiveTrainer(model)
+
+# Round 1: Train with initial labels
+history1 = trainer.train_epochs(10, X, y_initial)
+
+# Round 2: Add more labels, continue training
+y_updated = add_labels(y_initial, new_labels)
+history2 = trainer.train_epochs(10, X, y_updated)  # Resumes from previous state
+
+# Get results
+z = trainer.get_latent_space(X)
+preds = trainer.predict(X_test)
+```
+
+**Design:**
+- Wraps `Trainer` internally for actual training logic
+- Maintains state between calls (not functional like `Trainer`)
+- Ideal for interactive/dashboard workflows
 
 ---
 
@@ -568,23 +663,59 @@ loss_dict = {
 
 ### `train_state.py`
 
-**Purpose:** Manage training state (parameters, optimizer state).
+**Purpose:** Manage training state with RNG tracking.
 
-**Key Class: `TrainState`**
+**Key Class: `SSVAETrainState`**
+
+Extends Flax's `train_state.TrainState` to include RNG metadata.
 
 ```python
-@dataclass
-class TrainState:
-    step: int
-    params: FrozenDict
-    opt_state: optax.OptState
-    rng: PRNGKey
+class SSVAETrainState(train_state.TrainState):
+    """TrainState carrying RNG metadata required during training."""
+
+    rng: jax.Array  # Additional field for random number generation
+
+    # Inherited from train_state.TrainState:
+    # - step: int (training step counter)
+    # - apply_fn: Callable (model forward pass)
+    # - params: FrozenDict (model parameters)
+    # - tx: optax.GradientTransformation (optimizer)
+    # - opt_state: optax.OptState (optimizer state)
 ```
 
+**Class Method:**
+
+**`create(apply_fn, params, tx, rng, **kwargs)`**
+- Factory method to instantiate training state
+- Initializes optimizer state automatically
+- Returns: `SSVAETrainState` instance
+
 **Usage:**
+```python
+import optax
+from training.train_state import SSVAETrainState
+
+# Create training state
+state = SSVAETrainState.create(
+    apply_fn=network.apply,
+    params=initial_params,
+    tx=optax.adam(learning_rate=1e-3),
+    rng=jax.random.PRNGKey(42)
+)
+
+# Use in training
+new_state = state.replace(
+    step=state.step + 1,
+    params=updated_params,
+    opt_state=updated_opt_state
+)
+```
+
+**Design:**
 - Encapsulates all mutable training state
-- Enables functional training loop
-- Easy to checkpoint/restore
+- Enables pure functional training loop
+- RNG tracking ensures reproducibility
+- Easy to checkpoint/restore (all state in one object)
 
 ---
 
