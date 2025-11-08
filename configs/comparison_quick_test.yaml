@@ -1,0 +1,21 @@
+# Quick comparison config for testing the refactored architecture
+# Usage: poetry run python scripts/compare_models.py --config configs/comparison_quick_test.yaml
+
+data:
+  num_samples: 1000      # Training samples
+  num_labeled: 50        # Labeled samples
+  epochs: 10             # Training epochs
+  seed: 42               # Random seed for reproducibility
+
+models:
+  Standard Prior:
+    prior_type: standard
+    latent_dim: 2
+    max_epochs: 10
+
+  Mixture (K=5):
+    prior_type: mixture
+    num_components: 5
+    latent_dim: 2
+    kl_c_weight: 0.5
+    max_epochs: 10
