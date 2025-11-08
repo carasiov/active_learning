@@ -77,8 +77,8 @@ class MixtureHistoryTracker(TrainingCallback):
         if splits is None or splits.x_train.size == 0:
             return
 
-        # Get model state
-        state = getattr(trainer, '_state', None)
+        # Get model state (accessible during training via _current_state)
+        state = getattr(trainer, '_current_state', None)
         if state is None:
             return
 
@@ -91,7 +91,7 @@ class MixtureHistoryTracker(TrainingCallback):
 
         # Forward pass to get responsibilities
         try:
-            forward_output = state.apply_fn(state.params, x_train, training=False)
+            forward_output = state.apply_fn({"params": state.params}, x_train, training=False)
             component_logits, _, _, _, _, _, extras = forward_output
 
             # Extract responsibilities and π
