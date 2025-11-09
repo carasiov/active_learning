@@ -104,10 +104,12 @@ class SSVAENetwork(nn.Module):
         self.classifier = build_classifier(self.config, input_hw=self.input_hw)
         self.prior_module: MixturePriorParameters | None = None
         if self.config.prior_type == "mixture":
+            # Use component_embedding_dim for embeddings (defaults to latent_dim if not specified)
+            embed_dim = self.config.component_embedding_dim
             self.prior_module = MixturePriorParameters(
                 name="prior",
                 num_components=self.config.num_components,
-                embed_dim=self.latent_dim,
+                embed_dim=embed_dim,
             )
 
     def __call__(
@@ -131,11 +133,24 @@ class SSVAENetwork(nn.Module):
             batch_size = z.shape[0]
             num_components = self.config.num_components
 
+            # Tile z and embeddings for all components
             z_tiled = jnp.broadcast_to(z[:, None, :], (batch_size, num_components, self.latent_dim))
             embed_tiled = jnp.broadcast_to(embeddings[None, :, :], (batch_size, num_components, embeddings.shape[-1]))
-            decoder_inputs = jnp.concatenate([z_tiled, embed_tiled], axis=-1)
-            decoder_inputs_flat = decoder_inputs.reshape((batch_size * num_components, -1))
-            recon_per_component_flat = self.decoder(decoder_inputs_flat)
+
+            # Check if decoder is component-aware (has separate z and component_embedding parameters)
+            is_component_aware = self.config.use_component_aware_decoder
+
+            if is_component_aware:
+                # Component-aware decoder: pass z and component_embedding separately
+                z_flat = z_tiled.reshape((batch_size * num_components, -1))
+                embed_flat = embed_tiled.reshape((batch_size * num_components, -1))
+                recon_per_component_flat = self.decoder(z_flat, embed_flat)
+            else:
+                # Standard decoder: concatenate [z, e_c] as before
+                decoder_inputs = jnp.concatenate([z_tiled, embed_tiled], axis=-1)
+                decoder_inputs_flat = decoder_inputs.reshape((batch_size * num_components, -1))
+                recon_per_component_flat = self.decoder(decoder_inputs_flat)
+
             recon_per_component = recon_per_component_flat.reshape(
                 (batch_size, num_components, *self.output_hw)
             )

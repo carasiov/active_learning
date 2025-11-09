@@ -6,7 +6,12 @@ from flax import linen as nn
 
 from ssvae.config import SSVAEConfig
 from .classifier import Classifier
-from .decoders import ConvDecoder, DenseDecoder
+from .decoders import (
+    ComponentAwareConvDecoder,
+    ComponentAwareDenseDecoder,
+    ConvDecoder,
+    DenseDecoder,
+)
 from .encoders import ConvEncoder, DenseEncoder, MixtureDenseEncoder
 
 
@@ -47,13 +52,43 @@ def build_encoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = Non
 
 
 def build_decoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = None) -> nn.Module:
+    """Build decoder based on configuration.
+
+    For mixture prior with component-aware decoder enabled, creates decoders that
+    process z and component embeddings separately for functional specialization.
+    """
     resolved_hw = _resolve_input_hw(config, input_hw)
+
+    # Component-aware decoders for mixture prior
+    use_component_aware = (
+        config.prior_type == "mixture" and
+        config.use_component_aware_decoder
+    )
+
     if config.decoder_type == "dense":
         hidden_dims = _resolve_encoder_hidden_dims(config, resolved_hw)
         decoder_hidden_dims = tuple(reversed(hidden_dims)) or (config.latent_dim,)
-        return DenseDecoder(hidden_dims=decoder_hidden_dims, output_hw=resolved_hw)
+
+        if use_component_aware:
+            return ComponentAwareDenseDecoder(
+                hidden_dims=decoder_hidden_dims,
+                output_hw=resolved_hw,
+                component_embedding_dim=config.component_embedding_dim,
+                latent_dim=config.latent_dim,
+            )
+        else:
+            return DenseDecoder(hidden_dims=decoder_hidden_dims, output_hw=resolved_hw)
+
     if config.decoder_type == "conv":
-        return ConvDecoder(latent_dim=config.latent_dim, output_hw=resolved_hw)
+        if use_component_aware:
+            return ComponentAwareConvDecoder(
+                latent_dim=config.latent_dim,
+                output_hw=resolved_hw,
+                component_embedding_dim=config.component_embedding_dim,
+            )
+        else:
+            return ConvDecoder(latent_dim=config.latent_dim, output_hw=resolved_hw)
+
     raise ValueError(f"Unknown decoder type: {config.decoder_type}")
 
 

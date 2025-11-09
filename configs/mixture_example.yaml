@@ -1,7 +1,15 @@
 # ============================================================================
-# Mixture Prior Example Configuration
+# Mixture Prior Example Configuration with Component-Aware Decoder
 # ============================================================================
-# Demonstrates mixture prior with all tracking features enabled
+# Demonstrates mixture prior with component-aware decoder for functional
+# specialization. Components can now develop distinct decoding strategies
+# rather than just serving as soft labels.
+#
+# Key Features:
+# - Component-aware decoder with separate z and e_c processing
+# - Usage sparsity regularization (entropy-based diversity)
+# - Full mixture diagnostics tracking (π, usage, entropies)
+#
 # Usage:
 #   python scripts/run_experiment.py --config configs/mixture_example.yaml
 # ============================================================================
@@ -35,6 +43,12 @@ model:
   num_components: 10
   kl_c_weight: 0.0005
   kl_c_anneal_epochs: 0
+
+  # Component-aware decoder (NEW - enables functional specialization)
+  use_component_aware_decoder: true  # Separate processing for z and component embeddings
+  component_embedding_dim: 8  # Small dim (4-16 recommended) to avoid overwhelming latent info
+  top_m_gating: 0  # 0 = use all components; set to 5 for top-5 approximation
+  soft_embedding_warmup_epochs: 0  # 0 = no warmup; set to 5-10 for gradual hard sampling
 
   # Regularization for mixture
   dirichlet_alpha: 1.0

@@ -1,0 +1,48 @@
+# Quick test for component-aware decoder
+experiment:
+  name: "mixture_component_aware_test"
+  description: "Quick test of component-aware decoder"
+  tags: ["test", "mixture", "component-aware"]
+
+data:
+  num_samples: 1000
+  num_labeled: 20
+  seed: 42
+
+model:
+  # Architecture
+  encoder_type: "dense"
+  decoder_type: "dense"
+  classifier_type: "dense"
+  latent_dim: 2
+  hidden_dims: [128, 64]
+
+  # Loss
+  reconstruction_loss: "bce"
+  recon_weight: 1.0
+  kl_weight: 0.5
+  label_weight: 1.0
+
+  # Mixture prior
+  prior_type: "mixture"
+  num_components: 5
+  kl_c_weight: 0.001
+  kl_c_anneal_epochs: 0
+
+  # Component-aware decoder
+  use_component_aware_decoder: true
+  component_embedding_dim: 4
+  top_m_gating: 0
+  soft_embedding_warmup_epochs: 0
+
+  # Regularization
+  dirichlet_alpha: 1.0
+  dirichlet_weight: 1.0
+  usage_sparsity_weight: 0.1
+
+  # Training (minimal)
+  learning_rate: 0.001
+  batch_size: 128
+  max_epochs: 10
+  patience: 10
+  monitor_metric: "loss"
