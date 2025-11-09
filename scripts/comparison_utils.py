@@ -458,20 +458,27 @@ def plot_component_embedding_divergence(
 
         try:
             # Extract component embeddings from model parameters
-            if not hasattr(model, 'params') or model.params is None:
-                print(f"  Skipping {model_name}: no parameters loaded")
+            # SSVAE stores params in state.params, not directly in model.params
+            params = None
+            if hasattr(model, 'state') and hasattr(model.state, 'params'):
+                params = model.state.params
+            elif hasattr(model, 'params'):
+                params = model.params
+
+            if params is None:
+                print(f"  Skipping {model_name}: no parameters found")
                 continue
 
             # Navigate parameter dict to find component embeddings
             # Structure: params['prior']['component_embeddings'] for MixturePriorParameters
-            if 'prior' not in model.params or 'component_embeddings' not in model.params['prior']:
+            if 'prior' not in params or 'component_embeddings' not in params['prior']:
                 print(f"  Skipping {model_name}: component embeddings not found in params")
-                print(f"    Available keys in params: {list(model.params.keys())}")
-                if 'prior' in model.params:
-                    print(f"    Available keys in params['prior']: {list(model.params['prior'].keys())}")
+                print(f"    Available keys in params: {list(params.keys())}")
+                if 'prior' in params:
+                    print(f"    Available keys in params['prior']: {list(params['prior'].keys())}")
                 continue
 
-            embeddings = np.array(model.params['prior']['component_embeddings'])  # Shape: (K, embed_dim)
+            embeddings = np.array(params['prior']['component_embeddings'])  # Shape: (K, embed_dim)
             K, embed_dim = embeddings.shape
 
             # Compute pairwise distances
@@ -580,16 +587,22 @@ def plot_reconstruction_by_component(
                 x_input = samples[sample_idx:sample_idx+1]  # Keep batch dim
 
                 # Forward pass through model to get per-component reconstructions
-                if not hasattr(model, 'params') or model.params is None:
-                    print(f"  Skipping {model_name}: no parameters loaded")
+                # SSVAE provides _apply_fn that wraps model.apply
+                if hasattr(model, '_apply_fn') and hasattr(model, 'state'):
+                    output = model._apply_fn(
+                        model.state.params,
+                        jnp.asarray(x_input),
+                        training=False,
+                    )
+                elif hasattr(model, 'model') and hasattr(model, 'params'):
+                    output = model.model.apply(
+                        {"params": model.params},
+                        jnp.asarray(x_input),
+                        training=False,
+                    )
+                else:
+                    print(f"  Skipping {model_name}: cannot determine how to call model")
                     continue
-
-                # Call model forward pass
-                output = model.model.apply(
-                    model.params,
-                    jnp.asarray(x_input),
-                    training=False,
-                )
 
                 # Extract from ForwardOutput namedtuple
                 # ForwardOutput(component_logits, z_mean, z_log_var, z, recon, logits, extras)
