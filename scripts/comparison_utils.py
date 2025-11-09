@@ -416,6 +416,237 @@ def plot_mixture_evolution(
             print(f"Warning: Could not plot mixture evolution for {model_name}: {e}")
 
 
+def plot_component_embedding_divergence(
+    models: Dict[str, object],
+    output_dir: Path
+):
+    """Analyze and visualize component embedding divergence.
+
+    For component-aware decoders, this checks if learned component embeddings e_c
+    actually diverge from each other (indicating functional specialization).
+
+    Args:
+        models: Dictionary of model_name -> model
+        output_dir: Directory to save plots
+    """
+    component_aware_models = {
+        name: model for name, model in models.items()
+        if (hasattr(model.config, 'prior_type') and
+            model.config.prior_type == 'mixture' and
+            hasattr(model.config, 'use_component_aware_decoder') and
+            model.config.use_component_aware_decoder)
+    }
+
+    if not component_aware_models:
+        return
+
+    import jax.numpy as jnp
+    from scipy.spatial.distance import pdist, squareform
+
+    n_models = len(component_aware_models)
+    n_cols = min(2, n_models)
+    n_rows = (n_models + n_cols - 1) // n_cols
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(7 * n_cols, 6 * n_rows))
+    if n_models == 1:
+        axes = [axes]
+    else:
+        axes = axes.flatten() if n_models > 1 else [axes]
+
+    for idx, (model_name, model) in enumerate(component_aware_models.items()):
+        ax = axes[idx]
+
+        try:
+            # Extract component embeddings from model parameters
+            if not hasattr(model, 'params') or model.params is None:
+                print(f"  Skipping {model_name}: no parameters loaded")
+                continue
+
+            # Navigate parameter dict to find component embeddings
+            # Structure: params['prior']['embeddings'] for MixturePriorParameters
+            if 'prior' not in model.params or 'embeddings' not in model.params['prior']:
+                print(f"  Skipping {model_name}: component embeddings not found in params")
+                continue
+
+            embeddings = np.array(model.params['prior']['embeddings'])  # Shape: (K, embed_dim)
+            K, embed_dim = embeddings.shape
+
+            # Compute pairwise distances
+            distances = pdist(embeddings, metric='euclidean')
+            distance_matrix = squareform(distances)
+
+            # Visualize as heatmap
+            im = ax.imshow(distance_matrix, cmap='viridis', aspect='auto')
+            ax.set_xlabel('Component Index')
+            ax.set_ylabel('Component Index')
+            ax.set_title(f'{model_name}\nComponent Embedding Distances')
+
+            # Add colorbar
+            cbar = plt.colorbar(im, ax=ax)
+            cbar.set_label('Euclidean Distance', rotation=270, labelpad=20)
+
+            # Add text annotations for key statistics
+            mean_dist = np.mean(distances)
+            std_dist = np.std(distances)
+            min_dist = np.min(distances)
+            max_dist = np.max(distances)
+
+            stats_text = f'Mean: {mean_dist:.3f}\nStd: {std_dist:.3f}\nMin: {min_dist:.3f}\nMax: {max_dist:.3f}'
+            ax.text(0.02, 0.98, stats_text, transform=ax.transAxes,
+                   verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8),
+                   fontsize=9)
+
+            print(f"  {model_name}: Component embedding stats:")
+            print(f"    K={K}, embed_dim={embed_dim}")
+            print(f"    Distance: mean={mean_dist:.3f}, std={std_dist:.3f}, min={min_dist:.3f}, max={max_dist:.3f}")
+
+        except Exception as e:
+            print(f"Warning: Could not analyze embeddings for {model_name}: {e}")
+            ax.text(0.5, 0.5, f'Error: {str(e)}', transform=ax.transAxes,
+                   ha='center', va='center')
+
+    # Hide unused subplots
+    for idx in range(n_models, len(axes)):
+        axes[idx].set_visible(False)
+
+    plt.tight_layout()
+    output_path = output_dir / 'component_embedding_divergence.png'
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    print(f"  Saved: {output_path}")
+    plt.close()
+
+
+def plot_reconstruction_by_component(
+    models: Dict[str, object],
+    X_data: np.ndarray,
+    output_dir: Path,
+    *,
+    num_samples: int = 3,
+    seed: int = 42,
+):
+    """Visualize how each component reconstructs individual inputs.
+
+    For component-aware decoders, this shows whether components specialize
+    in different reconstruction strategies. For each input, we show:
+    - Original image
+    - Reconstructions from each of K components
+    - Final weighted reconstruction
+
+    Args:
+        models: Dictionary of model_name -> model
+        X_data: Input data
+        output_dir: Directory to save plots
+        num_samples: Number of input samples to visualize
+        seed: Random seed for sample selection
+    """
+    component_aware_models = {
+        name: model for name, model in models.items()
+        if (hasattr(model.config, 'prior_type') and
+            model.config.prior_type == 'mixture' and
+            hasattr(model.config, 'use_component_aware_decoder') and
+            model.config.use_component_aware_decoder)
+    }
+
+    if not component_aware_models:
+        return
+
+    import jax
+    import jax.numpy as jnp
+
+    rng = np.random.RandomState(seed)
+    num_samples = max(1, min(num_samples, X_data.shape[0]))
+    indices = np.sort(rng.choice(X_data.shape[0], size=num_samples, replace=False))
+    samples = X_data[indices]
+
+    def _prep_image(img: np.ndarray) -> np.ndarray:
+        if img.ndim == 3 and img.shape[-1] == 1:
+            return img[..., 0]
+        return img
+
+    for model_name, model in component_aware_models.items():
+        try:
+            K = model.config.num_components
+            use_sigmoid = model.config.reconstruction_loss == "bce"
+
+            # Create figure: num_samples rows, K+2 columns (original + K components + weighted)
+            fig, axes = plt.subplots(num_samples, K + 2, figsize=(1.5 * (K + 2), 1.8 * num_samples))
+            if num_samples == 1:
+                axes = axes.reshape(1, -1)
+
+            for sample_idx in range(num_samples):
+                x_input = samples[sample_idx:sample_idx+1]  # Keep batch dim
+
+                # Forward pass through model to get per-component reconstructions
+                if not hasattr(model, 'params') or model.params is None:
+                    print(f"  Skipping {model_name}: no parameters loaded")
+                    continue
+
+                # Call model forward pass
+                output = model.model.apply(
+                    model.params,
+                    jnp.asarray(x_input),
+                    training=False,
+                )
+
+                # Extract reconstructions
+                if len(output) >= 6:
+                    _, _, _, _, _, recon_per_component_flat, extras = output
+                else:
+                    print(f"  Skipping {model_name}: unexpected output format")
+                    continue
+
+                # Reshape reconstructions
+                recon_per_component = np.array(recon_per_component_flat).reshape(K, *x_input.shape[1:])
+
+                # Get responsibilities for weighted reconstruction
+                responsibilities = extras.get("responsibilities") if hasattr(extras, "get") else None
+                if responsibilities is None:
+                    print(f"  Skipping {model_name}: no responsibilities found")
+                    continue
+
+                resp_np = np.array(responsibilities)[0]  # Shape: (K,)
+
+                # Compute weighted reconstruction
+                weighted_recon = np.sum(recon_per_component * resp_np[:, None, None, None], axis=0)
+
+                # Apply sigmoid if needed
+                if use_sigmoid:
+                    recon_per_component = 1.0 / (1.0 + np.exp(-recon_per_component))
+                    weighted_recon = 1.0 / (1.0 + np.exp(-weighted_recon))
+
+                # Plot original
+                axes[sample_idx, 0].imshow(_prep_image(x_input[0]), cmap='gray')
+                axes[sample_idx, 0].set_title('Original' if sample_idx == 0 else '')
+                axes[sample_idx, 0].axis('off')
+
+                # Plot per-component reconstructions
+                for c in range(K):
+                    ax = axes[sample_idx, c + 1]
+                    ax.imshow(_prep_image(recon_per_component[c]), cmap='gray')
+                    title = f'C{c}\n(q={resp_np[c]:.2f})' if sample_idx == 0 else f'q={resp_np[c]:.2f}'
+                    ax.set_title(title, fontsize=8)
+                    ax.axis('off')
+
+                # Plot weighted reconstruction
+                axes[sample_idx, K + 1].imshow(_prep_image(weighted_recon), cmap='gray')
+                axes[sample_idx, K + 1].set_title('Weighted' if sample_idx == 0 else '')
+                axes[sample_idx, K + 1].axis('off')
+
+            plt.suptitle(f'{model_name}: Reconstruction by Component', fontsize=12, y=0.995)
+            plt.tight_layout()
+
+            filename = f"{_sanitize_model_name(model_name)}_reconstruction_by_component.png"
+            output_path = output_dir / filename
+            plt.savefig(output_path, dpi=150, bbox_inches='tight')
+            print(f"  Saved: {output_path}")
+            plt.close(fig)
+
+        except Exception as e:
+            print(f"Warning: Could not plot reconstruction by component for {model_name}: {e}")
+            import traceback
+            traceback.print_exc()
+
+
 def generate_report(
     summaries: Dict[str, Dict],
     histories: Dict[str, Dict],

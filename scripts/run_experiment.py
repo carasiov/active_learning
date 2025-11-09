@@ -34,6 +34,8 @@ from comparison_utils import (
     plot_reconstructions,
     plot_responsibility_histogram,
     plot_mixture_evolution,
+    plot_component_embedding_divergence,
+    plot_reconstruction_by_component,
 )
 
 
@@ -206,6 +208,10 @@ def generate_visualizations(model, history, X_train, y_true, output_dir: Path):
     plot_mixture_evolution(models, output_dir)
     recon_paths = plot_reconstructions(models, X_train, output_dir)
 
+    # Component-aware decoder validation
+    plot_component_embedding_divergence(models, output_dir)
+    plot_reconstruction_by_component(models, X_train, output_dir)
+
     return recon_paths
 
 
@@ -328,6 +334,20 @@ def generate_report(summary: dict, history: dict, experiment_config: dict, outpu
                 for plot_path in sorted(evolution_plots):
                     rel_path = plot_path.relative_to(output_dir)
                     f.write(f"![Mixture Evolution]({rel_path})\n\n")
+
+        # Component-aware decoder validation
+        if (output_dir / 'component_embedding_divergence.png').exists():
+            f.write("### Component Embedding Divergence\n\n")
+            f.write("Pairwise distances between learned component embeddings:\n\n")
+            f.write("![Component Embedding Divergence](component_embedding_divergence.png)\n\n")
+
+        recon_by_component_plots = list(output_dir.glob('*_reconstruction_by_component.png'))
+        if recon_by_component_plots:
+            f.write("### Reconstruction by Component\n\n")
+            f.write("How each component reconstructs individual inputs:\n\n")
+            for plot_path in sorted(recon_by_component_plots):
+                filename = plot_path.name
+                f.write(f"![Reconstruction by Component]({filename})\n\n")
 
     print(f"  Saved: {report_path}")
 
