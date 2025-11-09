@@ -6,6 +6,7 @@ from flax import linen as nn
 
 from ssvae.config import SSVAEConfig
 from .classifier import Classifier
+from .tau_classifier import TauClassifier
 from .decoders import (
     ComponentAwareConvDecoder,
     ComponentAwareDenseDecoder,
@@ -92,7 +93,23 @@ def build_decoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = Non
     raise ValueError(f"Unknown decoder type: {config.decoder_type}")
 
 
-def build_classifier(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = None) -> Classifier:
+def build_classifier(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = None) -> nn.Module:
+    """Build classifier based on configuration.
+
+    Returns TauClassifier for mixture prior when use_tau_classifier=True,
+    otherwise returns standard z-based Classifier.
+    """
+    # τ-based classifier for mixture prior
+    if config.use_tau_classifier:
+        if config.prior_type != "mixture":
+            raise ValueError("τ-classifier requires mixture prior")
+        return TauClassifier(
+            num_components=config.num_components,
+            num_classes=config.num_classes,
+            alpha_0=config.tau_alpha_0,
+        )
+
+    # Standard z-based classifier
     if config.classifier_type == "dense":
         resolved_hw = _resolve_input_hw(config, input_hw)
         hidden_dims = _resolve_encoder_hidden_dims(config, resolved_hw)

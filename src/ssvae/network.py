@@ -171,7 +171,16 @@ class SSVAENetwork(nn.Module):
             component_logits = None
             recon = self.decoder(z)
 
-        logits = self.classifier(z, training=training)
+        # Classification: use responsibilities for τ-classifier, z for standard classifier
+        if self.config.use_tau_classifier:
+            if self.config.prior_type != "mixture":
+                raise ValueError("τ-classifier requires mixture prior")
+            # TauClassifier expects responsibilities, not z
+            logits = self.classifier(responsibilities, training=training)
+        else:
+            # Standard classifier expects z
+            logits = self.classifier(z, training=training)
+
         return ForwardOutput(component_logits, z_mean, z_log, z, recon, logits, extras)
 
 

@@ -59,6 +59,8 @@ INFORMATIVE_HPARAMETERS = (
     "use_component_aware_decoder",
     "top_m_gating",
     "soft_embedding_warmup_epochs",
+    "use_tau_classifier",
+    "tau_alpha_0",
 )
 
 @dataclass
@@ -113,6 +115,10 @@ class SSVAEConfig:
             Reduces computation for large K. Default 0 means use all components.
         soft_embedding_warmup_epochs: If >0, use soft-weighted component embeddings for this many
             initial epochs before switching to hard sampling. Helps early training stability.
+        use_tau_classifier: If True, use τ-based classifier that leverages component specialization
+            via soft counts. Only applicable with mixture prior. Default False for backward compatibility.
+        tau_alpha_0: Dirichlet smoothing parameter for τ normalization (default: 1.0).
+            Controls the prior strength in τ_{c,y} = (s_{c,y} + α_0) / Σ_y'(s_{c,y'} + α_0).
     """
 
     num_classes: int = 10
@@ -152,6 +158,8 @@ class SSVAEConfig:
     use_component_aware_decoder: bool = True  # Enable by default for mixture prior
     top_m_gating: int = 0  # 0 means use all components; >0 uses top-M
     soft_embedding_warmup_epochs: int = 0  # 0 means no warmup
+    use_tau_classifier: bool = False  # Use τ-based classifier (requires mixture prior)
+    tau_alpha_0: float = 1.0  # Dirichlet smoothing for τ normalization
 
     def __post_init__(self):
         """Validate configuration after initialization."""
@@ -186,6 +194,12 @@ class SSVAEConfig:
             raise ValueError(f"top_m_gating ({self.top_m_gating}) cannot exceed num_components ({self.num_components})")
         if self.soft_embedding_warmup_epochs < 0:
             raise ValueError("soft_embedding_warmup_epochs must be >= 0")
+
+        # τ-classifier validation
+        if self.use_tau_classifier and self.prior_type != "mixture":
+            raise ValueError("τ-classifier requires mixture prior (prior_type='mixture')")
+        if self.tau_alpha_0 <= 0:
+            raise ValueError("tau_alpha_0 must be positive")
 
     def get_informative_hyperparameters(self) -> Dict[str, object]:
         return {name: getattr(self, name) for name in INFORMATIVE_HPARAMETERS}
