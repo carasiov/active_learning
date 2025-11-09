@@ -1,6 +1,11 @@
 # Extending the System
 
-> **Purpose:** Step-by-step tutorials for extending the SSVAE codebase with new features. For architectural overview, see [System Architecture](architecture.md). For module reference, see [Implementation Guide](implementation.md).
+> **Purpose:** Step-by-step tutorials for extending the **core model** (`/src/`) with new features.
+>
+> **Note:** This guide covers extending the SSVAE library itself. For using the model in experiments or the dashboard, see [Experiment Guide](../../use_cases/experiments/README.md) or [Dashboard Guide](../../use_cases/dashboard/README.md).
+>
+> **For architectural patterns:** See [Architecture](architecture.md)
+> **For module reference:** See [API Reference](api_reference.md)
 
 ---
 
@@ -780,7 +785,10 @@ When adding features, update:
 
 ## Related Documentation
 
+- **[Development Overview](OVERVIEW.md)** - Quick intro to codebase
 - **[System Architecture](architecture.md)** - Design patterns and principles
-- **[Implementation Guide](implementation.md)** - Module reference
+- **[API Reference](api_reference.md)** - Module reference
+- **[Status](STATUS.md)** - Current implementation status
+- **[Decisions](DECISIONS.md)** - Architectural choices
 - **[Mathematical Specification](../theory/mathematical_specification.md)** - Theoretical foundations
-- **[Implementation Roadmap](../theory/implementation_roadmap.md)** - Path to full RCM-VAE
+- **[Vision Gap](../theory/vision_gap.md)** - Current vs. target implementation

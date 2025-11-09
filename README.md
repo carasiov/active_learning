@@ -1,5 +1,51 @@
 # Active Learning – Semi-Supervised VAE (JAX/Flax)
 
+A JAX/Flax implementation of a semi-supervised variational autoencoder with mixture priors, component-aware decoding, and active learning capabilities.
+
+---
+
+## Getting Started
+
+Choose your path:
+
+### 🔬 Run an Experiment (5 minutes)
+
+```bash
+# Install dependencies
+poetry install
+
+# Run quick sanity check (~7 seconds)
+JAX_PLATFORMS=cpu poetry run python use_cases/experiments/run_experiment.py \
+  --config use_cases/experiments/configs/quick.yaml
+
+# View results
+cat use_cases/experiments/runs/baseline_quick_*/REPORT.md
+```
+
+**→ [Full Experiment Guide](use_cases/experiments/README.md)** for configuration, workflows, and interpreting results
+
+### 🎛️ Launch Interactive Dashboard
+
+```bash
+poetry run python use_cases/dashboard/app.py
+# Open http://localhost:8050
+```
+
+**→ [Dashboard Guide](use_cases/dashboard/README.md)** for features and usage
+
+### 📖 Understand the Theory
+
+**→ [Conceptual Model](docs/theory/conceptual_model.md)** - Mental model and core invariants
+
+**→ [Mathematical Specification](docs/theory/mathematical_specification.md)** - Precise formulations
+
+### 💻 Extend the Core Model
+
+**→ [Development Overview](docs/development/OVERVIEW.md)** - Quick intro to `/src/` codebase
+
+**→ [Architecture](docs/development/architecture.md)** - Design patterns and philosophy
+
+---
 
 # Project Structure
 
@@ -69,24 +115,35 @@ active_learning_showcase/
 
 **Find the right documentation for your role:**
 
-**👤 I'm a researcher interested in the theory:**
-- Start → [Conceptual Model](docs/theory/conceptual_model.md) - High-level vision and mental model
-- Then → [Mathematical Specification](docs/theory/mathematical_specification.md) - Precise mathematical formulations
-- Status → [Implementation Roadmap](docs/theory/implementation_roadmap.md) - Current implementation vs. full vision
+### 👤 Researchers (Theory Focus)
 
-**💻 I'm a developer extending the codebase:**
-- Start → [System Architecture](docs/development/architecture.md) - Design patterns and component structure
-- Then → [Implementation Guide](docs/development/implementation.md) - Module-by-module reference
-- How-to → [Extending the System](docs/development/extending.md) - Step-by-step tutorials for adding features
+**Understand the approach:**
+- [Conceptual Model](docs/theory/conceptual_model.md) - Mental model and core invariants
+- [Mathematical Specification](docs/theory/mathematical_specification.md) - Precise formulations
+- [Vision Gap](docs/theory/vision_gap.md) - Current implementation vs. full vision
 
-**🔬 I'm running experiments:**
-- Start → [Experiment Guide](experiments/README.md) - Primary workflow (configuration → execution → interpretation)
-- Dashboard → [Interactive Interface](use_cases/dashboard/README.md) - Web-based active learning (future primary)
+### 💻 Developers (Extending Core Model)
 
-**🎓 I'm new to the project:**
-- Quick Start → See [Experiment Guide](experiments/README.md) for installation and first run
-- Theory → [Conceptual Model](docs/theory/conceptual_model.md) for understanding the approach
-- Code → [System Architecture](docs/development/architecture.md) for navigating the codebase
+**Work with `/src/` codebase:**
+- [Development Overview](docs/development/OVERVIEW.md) - Quick intro to codebase structure
+- [Architecture](docs/development/architecture.md) - Design patterns and philosophy
+- [API Reference](docs/development/api_reference.md) - Module-by-module guide
+- [Status](docs/development/STATUS.md) - Current implementation status
+- [Decisions](docs/development/DECISIONS.md) - Why we chose specific approaches
+- [Extending](docs/development/extending.md) - Step-by-step tutorials for adding features
+
+### 🔬 Users (Running Experiments)
+
+**Use the model:**
+- [Experiment Guide](use_cases/experiments/README.md) - Batch experimentation workflow
+- [Dashboard Guide](use_cases/dashboard/README.md) - Interactive active learning interface
+
+### 🎓 New to the Project?
+
+**Quick paths:**
+- **Run first experiment** → [Getting Started](#getting-started) (above)
+- **Understand theory** → [Conceptual Model](docs/theory/conceptual_model.md)
+- **Navigate code** → [Development Overview](docs/development/OVERVIEW.md)
 
 
 ### 🔧 Dashboard Guides

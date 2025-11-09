@@ -93,5 +93,6 @@ We freeze the core symbols: $c$ (channel), $z$ (latent), $r$ (responsibilities),
 ## Related Documentation
 
 - **[Mathematical Specification](mathematical_specification.md)** - Precise objectives, training protocol, and mathematical formulations
-- **[Implementation Roadmap](implementation_roadmap.md)** - Current implementation status and path to full system
+- **[Vision Gap](vision_gap.md)** - Current implementation vs. target state
 - **[System Architecture](../development/architecture.md)** - Design patterns and component structure in the codebase
+- **[Implementation Status](../development/STATUS.md)** - Detailed feature status and recent updates

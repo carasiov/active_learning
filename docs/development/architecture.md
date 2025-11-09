@@ -1,6 +1,10 @@
 # System Architecture
 
-> **Purpose:** This document describes the design patterns, component structure, and architectural decisions in the current SSVAE codebase. For theoretical foundations, see [Conceptual Model](../theory/conceptual_model.md). For module-level implementation details, see [Implementation Guide](implementation.md).
+> **Purpose:** This document describes the design patterns and architectural decisions in the SSVAE codebase.
+>
+> **For detailed module reference:** See [API Reference](api_reference.md)
+> **For theoretical foundations:** See [Conceptual Model](../theory/conceptual_model.md)
+> **For implementation status:** See [Status](STATUS.md)
 
 ---
 
@@ -211,101 +215,25 @@ class SSVAEConfig:
 - Easy to add new metrics without touching core code
 - Provides consistent metric reporting across tools
 
+**Note:** For detailed component APIs and interfaces, see [API Reference](api_reference.md).
+
 ---
 
-## Component Structure
+## Component Overview
 
-### Encoders
+The system is organized into four main layers:
 
-**Location:** `src/ssvae/components/encoders/`
+**Network Components** (`src/ssvae/components/`):
+- Encoders: Produce latent distribution parameters
+- Decoders: Reconstruct inputs from latent vectors
+- Classifiers: Map latents to class predictions
+- See [API Reference](api_reference.md#network-components-srcssvaecomponents) for details
 
-**Types:**
-- `DenseEncoder`: Fully connected layers
-- `ConvEncoder`: Convolutional layers (for image data)
-
-**Interface:**
-```python
-class Encoder(nn.Module):
-    latent_dim: int
-    hidden_dims: Tuple[int, ...]
-
-    def __call__(self, x, deterministic=True):
-        # Returns: z_mean, z_logvar, [component_logits]
-        ...
-```
-
-**Design:**
-- Encoders produce distribution parameters, not samples
-- Separate mean and log-variance outputs
-- Mixture encoder adds component logits output
-- Dropout support via `deterministic` flag
-
-### Decoders
-
-**Location:** `src/ssvae/components/decoders/`
-
-**Types:**
-- `DenseDecoder`: Fully connected layers
-- `ConvDecoder`: Transposed convolutional layers
-
-**Interface:**
-```python
-class Decoder(nn.Module):
-    output_shape: Tuple[int, ...]
-    hidden_dims: Tuple[int, ...]
-
-    def __call__(self, z, deterministic=True):
-        # Returns: reconstructed x
-        ...
-```
-
-**Design:**
-- Mirrors encoder architecture (symmetric VAE)
-- Output shape matches input data shape
-- Sigmoid activation for [0,1] pixel values
-
-### Classifiers
-
-**Location:** `src/ssvae/components/classifiers/`
-
-**Current Implementation:**
-- `DenseClassifier`: Simple MLP with softmax output
-
-**Interface:**
-```python
-class Classifier(nn.Module):
-    num_classes: int
-    hidden_dim: int
-
-    def __call__(self, z):
-        # Returns: class logits
-        ...
-```
-
-**Note:** This will be replaced by latent-only $\tau$-based classification in the RCM-VAE architecture.
-
-### Priors
-
-**Location:** `src/ssvae/components/priors/`
-
-**Implementations:**
-
-**StandardPrior** (`standard.py`):
-- Simple $\mathcal{N}(0, I)$ prior
-- KL divergence: analytical formula
-- No learnable parameters
-
-**MixturePrior** (`mixture.py`):
-- Mixture of Gaussians: $p(z) = \sum_k \pi_k \mathcal{N}(0, I)$
-- Learnable mixture weights $\pi$ (via logits)
-- Optional Dirichlet prior on $\pi$
-- Usage sparsity regularization
-- Component-wise KL: $\text{KL}(q(c|x) || \pi)$
-
-**Design:**
-- Both implement `PriorMode` protocol
-- Stateless (pure functions)
-- Easy to add VampPrior, flows, etc.
+**Prior Distributions** (`src/ssvae/priors/`):
+- Implement `PriorMode` protocol for pluggability
+- StandardPrior: $\mathcal{N}(0, I)$ baseline
+- MixturePrior: Mixture of Gaussians with diversity control
+- See [API Reference](api_reference.md#prior-distributions-srcssvaepriors) for details
 
 ---
 
@@ -507,7 +435,10 @@ class ComponentAwareDecoder(nn.Module):
 
 ## Related Documentation
 
-- **[Conceptual Model](../theory/conceptual_model.md)** - Theoretical foundation and mental model
-- **[Implementation Guide](implementation.md)** - Module-by-module reference
+- **[Development Overview](OVERVIEW.md)** - Quick intro to the codebase
+- **[API Reference](api_reference.md)** - Module-by-module reference
+- **[Status](STATUS.md)** - Current implementation status
+- **[Decisions](DECISIONS.md)** - Architectural choices and rationale
 - **[Extending the System](extending.md)** - Step-by-step tutorials for adding features
-- **[Implementation Roadmap](../theory/implementation_roadmap.md)** - Path to full RCM-VAE system
+- **[Conceptual Model](../theory/conceptual_model.md)** - Theoretical foundation and mental model
+- **[Vision Gap](../theory/vision_gap.md)** - Current vs. target implementation
