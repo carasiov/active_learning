@@ -126,34 +126,43 @@ poetry run python -c "import jax; print(jax.devices())"
 
 ## Quick Start
 
-### Run Your First Comparison
+### Run Your First Experiment
 
-Train two models and compare their behavior:
+Train a model and generate a comprehensive analysis:
 
 ```bash
-poetry run python scripts/compare_models.py --models standard mixture_k10 --epochs 10
+# Quick test (7 seconds)
+JAX_PLATFORMS=cpu poetry run python scripts/run_experiment.py --config configs/quick.yaml
+
+# View results
+cat artifacts/experiments/baseline_quick_*/REPORT.md
 ```
 
 **What this does:**
-1. Loads MNIST (5,000 samples, 50 labeled)
-2. Trains a standard Gaussian prior model
-3. Trains a mixture-of-10-Gaussians prior model
-4. Generates comparison visualizations
+1. Loads MNIST (1,000 samples for quick test)
+2. Trains a standard VAE model
+3. Generates visualizations, metrics, and a human-readable report
 
-**Expected output:** `artifacts/comparisons/20241031_143022/`
+**Expected output:** `artifacts/experiments/baseline_quick_<timestamp>/`
 ```
-├── loss_comparison.png        # Training/validation loss curves
-├── latent_spaces.png          # 2D latent space visualizations
-├── summary.json               # Final metrics (loss, accuracy, training time)
-├── COMPARISON_REPORT.md       # Comprehensive analysis
-├── standard_checkpoint.ckpt   # Model weights
-└── mixture_k10_checkpoint.ckpt
+├── REPORT.md                  # Human-readable summary with embedded visualizations
+├── config.yaml                # Configuration snapshot
+├── checkpoint.ckpt            # Trained model weights
+├── summary.json               # Structured metrics
+├── visualizations/
+│   ├── loss_comparison.png    # Training curves
+│   ├── latent_spaces.png      # 2D latent space by class
+│   └── model_reconstructions.png  # Input/output samples
+└── diagnostics/checkpoint/
+    └── latent.npz             # Latent embeddings
 ```
 
 **Typical results:**
-- Both models converge in 10 epochs
-- Mixture model often shows better-separated clusters in latent space
-- Training time: ~1 minute on GPU, ~5 minutes on CPU
+- Model converges in ~10 epochs
+- Loss decreases smoothly
+- Runtime: ~7 seconds on CPU, ~3 seconds on GPU
+
+**Next:** Try a full experiment with `configs/default.yaml` or `configs/mixture_example.yaml`
 
 ---
 
@@ -189,47 +198,54 @@ Open http://localhost:8050 and verify the interface loads.
 
 ## What Just Happened?
 
-When you ran `compare_models.py`:
+When you ran `run_experiment.py`:
 
-1. **Data preparation:** MNIST loaded, 5,000 samples randomly selected (seed=42)
-2. **Label masking:** Only 50 samples kept their labels (rest set to NaN)
-3. **Model initialization:** Two SSVAE models created with different priors
-4. **Training:** Each model trained for 10 epochs with early stopping
-5. **Evaluation:** Loss metrics computed on validation set (20% of data)
-6. **Visualization:** Loss curves and latent spaces plotted
-7. **Reporting:** Summary metrics and checkpoints saved
+1. **Configuration loading:** YAML config parsed and validated
+2. **Data preparation:** MNIST loaded with specified sample size (1,000 for quick test)
+3. **Label masking:** Only specified labeled samples kept (rest set to NaN)
+4. **Model initialization:** SSVAE model created based on config (architecture, prior type)
+5. **Training:** Model trained with early stopping and progress tracking
+6. **Evaluation:** Comprehensive metrics computed (loss, clustering, mixture diagnostics)
+7. **Visualization:** Multiple plots generated (losses, latent spaces, reconstructions)
+8. **Reporting:** Human-readable report and structured JSON saved
 
-**Key insight:** Both models learned from 99% unlabeled data, demonstrating semi-supervised learning.
+**Key insight:** The model learned from mostly unlabeled data, demonstrating semi-supervised learning. The experiment workflow is configuration-driven, making it easy to reproduce and modify.
 
 ---
 
 ## Next Steps
 
-**Explore the tools:**
-- 📖 [Usage Guide](usage.md) - Detailed examples for all tools
-- 🔬 [Comparison Tool](../../configs/comparisons/README.md) - YAML configs, advanced options
-- 🎛️ [Dashboard](../../use_cases/dashboard/README.md) - Interactive interface
+**Master the primary workflow:**
+- 📖 [Experiment Guide](../../EXPERIMENT_GUIDE.md) - Complete workflow: configuration → execution → interpretation
+- 🔬 Try different configs in `configs/` directory
+
+**Explore other tools:**
+- 📖 [Usage Guide](usage.md) - Dashboard, Python API, and legacy comparison tool
+- 🎛️ [Dashboard](../../use_cases/dashboard/README.md) - Interactive interface for active learning
 
 **Understand the model:**
+- 📚 [Conceptual Model](../theory/conceptual_model.md) - High-level vision and design rationale
 - 📚 [Implementation Guide](../development/implementation.md) - Architecture, API reference, internals
 
 **Start experimenting:**
-- Try different priors: `--models standard mixture_k5 mixture_k20`
-- Adjust labeled data: `--num-labeled 10` (extreme few-shot) or `--num-labeled 500`
+- Try mixture prior: `poetry run python scripts/run_experiment.py --config configs/mixture_example.yaml`
+- Adjust hyperparameters: Copy and edit configs (e.g., `kl_weight`, `num_components`)
 - Test architectures: Modify YAML configs to use convolutional encoders
-- Hyperparameter search: Create custom YAML configs
+- Check status: Review [Implementation Roadmap](../theory/implementation_roadmap.md) for available features
 
 **Common first experiments:**
 
 ```bash
-# How few labels can we use?
-poetry run python scripts/compare_models.py --num-labeled 10 --epochs 20
+# Full baseline with standard prior
+poetry run python scripts/run_experiment.py --config configs/default.yaml
 
-# Does more data help?
-poetry run python scripts/compare_models.py --num-samples 20000 --epochs 30
+# Mixture model with evolution tracking
+poetry run python scripts/run_experiment.py --config configs/mixture_example.yaml
 
-# Compare many mixture sizes
-poetry run python scripts/compare_models.py --models standard mixture_k5 mixture_k10 mixture_k20
+# Create custom experiment
+cp configs/default.yaml configs/my_experiment.yaml
+# Edit my_experiment.yaml, then:
+poetry run python scripts/run_experiment.py --config configs/my_experiment.yaml
 ```
 
 ---

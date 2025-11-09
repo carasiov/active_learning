@@ -2,8 +2,6 @@
 
 Comprehensive guide to all ways of working with the SSVAE model.
 
-> **Note:** For the current primary experimentation workflow using `run_experiment.py`, see the **[Experiment Guide](../../EXPERIMENT_GUIDE.md)**. This guide covers legacy tools and the Python API.
-
 ---
 
 ## Overview
@@ -11,17 +9,57 @@ Comprehensive guide to all ways of working with the SSVAE model.
 There are multiple ways to use the SSVAE:
 
 1. **[Experiment Tool](../../EXPERIMENT_GUIDE.md)** - Single-model workflow with config-driven experiments (current primary workflow)
-2. **[Comparison Tool](#comparison-tool)** - Legacy multi-model comparison tool
-3. **[Interactive Dashboard](#interactive-dashboard)** - Web-based interface for active learning (future primary interface)
-4. **[Python API](#python-api)** - Programmatic access for custom integration
+2. **[Interactive Dashboard](#interactive-dashboard)** - Web-based interface for active learning (future primary interface)
+3. **[Python API](#python-api)** - Programmatic access for custom integration
+4. **[Legacy Tools](#legacy-tools)** - Older comparison and CLI tools (see appendix)
 
 ---
 
-## Comparison Tool
+## Experiment Tool (Primary Workflow)
 
-**Purpose:** Rapidly compare different model configurations, validate new features, and generate analysis artifacts.
+**Purpose:** Configuration-driven single-model training and evaluation with comprehensive reporting.
 
-**Status:** Current primary workflow for development and experimentation.
+**Status:** Current primary workflow for experimentation and development.
+
+### Quick Start
+
+```bash
+# Quick test (7 seconds)
+JAX_PLATFORMS=cpu poetry run python scripts/run_experiment.py --config configs/quick.yaml
+
+# Full baseline
+poetry run python scripts/run_experiment.py --config configs/default.yaml
+
+# Mixture model with evolution tracking
+poetry run python scripts/run_experiment.py --config configs/mixture_example.yaml
+```
+
+### Output Structure
+
+Each experiment generates a timestamped directory:
+
+```
+artifacts/experiments/<name>_<timestamp>/
+├── REPORT.md                    # Human-readable summary
+├── config.yaml                  # Configuration snapshot
+├── checkpoint.ckpt              # Trained model weights
+├── summary.json                 # Structured metrics
+├── visualizations/              # Loss curves, latent spaces, reconstructions
+└── diagnostics/checkpoint/      # Latent embeddings, mixture evolution
+```
+
+### When to Use
+
+✅ **Use experiment tool for:**
+- Training and evaluating individual models
+- Testing configurations and hyperparameters
+- Generating comprehensive analysis reports
+- Tracking mixture prior evolution
+- Standard experimentation workflow
+
+**For detailed workflow, configuration options, and interpretation guide, see [Experiment Guide](../../EXPERIMENT_GUIDE.md).**
+
+---
 
 ### Basic Usage
 
@@ -116,66 +154,6 @@ artifacts/comparisons/20241031_143022/
 └── mixture_k10_checkpoint.ckpt   # Model weights (mixture)
 ```
 
-### Common Use Cases
-
-**1. Hyperparameter tuning:**
-```bash
-poetry run python scripts/compare_models.py \
-  --config configs/comparisons/hyperparameter_search.yaml
-```
-
-**2. Architecture comparison:**
-```yaml
-models:
-  Dense:
-    encoder_type: dense
-    hidden_dims: [256, 128, 64]
-  
-  Conv:
-    encoder_type: conv
-    hidden_dims: [32, 64, 128]
-```
-
-**3. Few-shot learning experiments:**
-```bash
-# Extreme few-shot (10 labels)
-poetry run python scripts/compare_models.py --num-labeled 10 --epochs 50
-
-# Standard semi-supervised (100 labels)
-poetry run python scripts/compare_models.py --num-labeled 100 --epochs 30
-```
-
-**4. Loss function comparison:**
-```yaml
-models:
-  MSE:
-    reconstruction_loss: mse
-    recon_weight: 500.0
-  
-  BCE:
-    reconstruction_loss: bce
-    recon_weight: 1.0   # decoder outputs logits; visualization applies sigmoid
-```
-
-### Mixture Prior (Priors v1)
-
-Key config knobs (per model in YAML):
-```yaml
-prior_type: mixture
-num_components: 10
-kl_c_weight: 1.0              # weight on KL(q(c|x)||π)
-dirichlet_alpha: 0.5          # optional; encourages sparse π for α<1
-dirichlet_weight: 1.0         # scales Dirichlet MAP term
-component_diversity_weight: 0.0    # entropy-like penalty on empirical usage (negative = diversity reward)
-kl_c_anneal_epochs: 0         # 0 = off; else linear warm-up
-```
-
-Report changes:
-- Adds per-model Reconstruction grids.
-- Adds Mixture Diagnostics section: π values, component usage, entropies, and link to saved diagnostics folder.
-
-Tip: When `dirichlet_alpha < 1` the total “loss” can become negative due to the (negative) Dirichlet MAP term. Use the `Train.loss_np/Val.loss_np` columns (recon + KL only) in logs to compare model fit across runs.
-```
 
 ### When to Use
 
@@ -270,252 +248,3 @@ Open http://localhost:8050 in your browser.
 - [Dashboard Overview](../../use_cases/dashboard/README.md) - Features, architecture, routing
 - [Dashboard Developer Guide](../../use_cases/dashboard/docs/DEVELOPER_GUIDE.md) - Internal architecture
 - [Dashboard Agent Guide](../../use_cases/dashboard/docs/AGENT_GUIDE.md) - Extension patterns
-
----
-
-## Python API
-
-**Purpose:** Programmatic access for custom workflows, notebooks, and integration into other tools.
-
-### Basic Example
-
-```python
-import numpy as np
-from ssvae import SSVAE, SSVAEConfig
-
-# Configure model
-config = SSVAEConfig(
-    latent_dim=2,
-    prior_type="mixture",
-    num_components=10,
-    max_epochs=50,
-    learning_rate=1e-3
-)
-
-# Initialize model
-vae = SSVAE(input_dim=(28, 28), config=config)
-
-# Prepare semi-supervised labels (NaN = unlabeled)
-labels = np.full(1000, np.nan)
-labels[:10] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]  # Only 10 labeled
-
-# Train
-history = vae.fit(X_train, labels, "model.ckpt")
-
-# Inference
-z, recon, preds, cert = vae.predict(X_test)
-```
-
-### Key APIs
-
-**`SSVAE` class:**
-- `__init__(input_dim, config)` - Initialize model
-- `fit(data, labels, weights_path)` - Train and save checkpoint
-- `predict(data, sample=False, num_samples=1)` - Run inference
-- `load_model_weights(weights_path)` - Load from checkpoint
-
-**`SSVAEConfig` dataclass:**
-- Architecture: `latent_dim`, `hidden_dims`, `encoder_type`, `decoder_type`, `prior_type`
-- Loss weights: `recon_weight`, `kl_weight`, `label_weight`, `reconstruction_loss`
-- Training: `batch_size`, `learning_rate`, `max_epochs`, `patience`
-
-**Returns:**
-- `fit()` → `dict` with keys: `loss`, `val_loss`, `reconstruction_loss`, `kl_loss`, `classification_loss`
-- `predict()` → 4-tuple: `(latent, reconstruction, predictions, certainty)`
-
-### Common Patterns
-
-**Pattern 1: Active Learning Loop**
-
-```python
-from ssvae import SSVAE, SSVAEConfig
-
-config = SSVAEConfig(latent_dim=2, max_epochs=30)
-vae = SSVAE(input_dim=(28, 28), config=config)
-
-# Start with minimal labels
-labels = np.full(len(X_pool), np.nan)
-labels[:10] = initial_labels
-
-for round in range(5):
-    # Train
-    vae.fit(X_pool, labels, "model.ckpt")
-    
-    # Find uncertain samples
-    z, recon, preds, cert = vae.predict(X_pool)
-    uncertain_idx = cert.argsort()[:10]  # 10 most uncertain
-    
-    # Label them (oracle or human)
-    labels[uncertain_idx] = oracle(X_pool[uncertain_idx])
-    
-    print(f"Round {round}: {np.sum(~np.isnan(labels))} labels")
-```
-
-**Pattern 2: Configuration Search**
-
-```python
-configs = [
-    SSVAEConfig(prior_type="standard", latent_dim=2),
-    SSVAEConfig(prior_type="mixture", num_components=5, latent_dim=2),
-    SSVAEConfig(prior_type="mixture", num_components=10, latent_dim=2),
-]
-
-results = []
-for i, config in enumerate(configs):
-    vae = SSVAE(input_dim=(28, 28), config=config)
-    history = vae.fit(X_train, labels, f"model_{i}.ckpt")
-    results.append({
-        'config': config,
-        'final_loss': history['loss'][-1],
-        'final_accuracy': compute_accuracy(vae, X_test, y_test)
-    })
-
-best = min(results, key=lambda x: x['final_loss'])
-```
-
-**Pattern 3: Custom Evaluation**
-
-```python
-vae = SSVAE(input_dim=(28, 28), config=config)
-vae.load_model_weights("trained_model.ckpt")
-
-# Latent space analysis
-z, _, _, _ = vae.predict(X_test)
-from sklearn.cluster import KMeans
-clusters = KMeans(n_clusters=10).fit_predict(z)
-
-# Reconstruction quality
-_, recon, _, _ = vae.predict(X_test)
-mse = np.mean((X_test - recon) ** 2)
-```
-
-### When to Use
-
-✅ **Use Python API for:**
-- Jupyter notebooks and research workflows
-- Custom active learning strategies
-- Integration into larger pipelines
-- Automated experimentation
-- Production deployment
-
-**Learn more:** See [Implementation Guide](../development/implementation.md) for complete API reference, architecture details, and extension patterns.
-
----
-
-## Legacy Tools
-
-Single-model CLI scripts predating the comparison tool. Still functional but less feature-rich.
-
-### Train Script
-
-```bash
-poetry run python use_cases/scripts/train.py \
-  --labels data/mnist/labels.csv \
-  --weights artifacts/checkpoints/ssvae.ckpt
-```
-
-Trains a single model using labels from CSV file (format: `Serial,label`).
-
-### Inference Script
-
-```bash
-poetry run python use_cases/scripts/infer.py \
-  --weights artifacts/checkpoints/ssvae.ckpt \
-  --output data/output_latent.npz \
-  --split train
-```
-
-Runs inference and saves latent representations to NumPy archive.
-
-### Legacy Viewer
-
-```bash
-poetry run python use_cases/scripts/view_latent.py
-```
-
-Simple visualization of latent space (predates dashboard).
-
-### Migration Note
-
-For new experiments, prefer:
-- **Comparison tool** for experimentation
-- **Dashboard** for interactive exploration
-- **Python API** for custom workflows
-
-Legacy scripts remain for backward compatibility and simple single-model use cases.
-
----
-
-## Common Workflows
-
-### Workflow 1: Quick Experiment
-
-```bash
-# Test if mixture prior helps
-poetry run python scripts/compare_models.py --models standard mixture_k10 --epochs 20
-```
-
-### Workflow 2: Hyperparameter Search
-
-1. Create YAML config with parameter grid
-2. Run comparison tool with config
-3. Analyze `summary.json` for best configuration
-4. Use best config in production
-
-### Workflow 3: Active Learning Session
-
-1. Start dashboard: `poetry run python use_cases/dashboard/app.py`
-2. Create model with initial configuration
-3. Label 10-20 samples manually
-4. Train model
-5. Sort by uncertainty, label more samples
-6. Retrain and repeat until satisfied
-
-### Workflow 4: Custom Integration
-
-1. Use Python API to load data
-2. Configure model with `SSVAEConfig`
-3. Implement custom training loop or evaluation
-4. Export results in desired format
-
----
-
-## Troubleshooting
-
-### Comparison Tool Issues
-
-**"Comparison hangs or is very slow"**
-- Use CPU mode: `JAX_PLATFORMS=cpu python scripts/compare_models.py`
-- Reduce samples: `--num-samples 1000`
-- Reduce epochs: `--epochs 10`
-
-**"Out of memory"**
-- Reduce batch size in YAML config: `batch_size: 64`
-- Use fewer samples: `--num-samples 3000`
-- Close other GPU applications
-
-### Dashboard Issues
-
-**"Dashboard won't start"**
-- Check port 8050 is free: `lsof -i :8050`
-- Check logs: `tail -f /tmp/ssvae_dashboard.log`
-- Try different port: Edit `app.py` to change port
-
-**"Training stuck or crashes"**
-- Check logs for error messages
-- Try simpler configuration (standard prior, fewer epochs)
-- Restart dashboard
-
-### API Issues
-
-**"Model not converging"**
-- Check label format (NaN for unlabeled)
-- Increase `max_epochs` or adjust `patience`
-- Verify `recon_weight` appropriate for loss type (BCE ~1.0, MSE ~500)
-
-**"Checkpoint errors"**
-- Ensure parent directory exists
-- Check write permissions
-- Use absolute paths for `weights_path`
-
-For more help, see specialized guides in the [Documentation Map](../README.md#documentation-map).
