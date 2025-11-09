@@ -220,7 +220,8 @@ When you ran `run_experiment.py`:
 - 🔬 Try different configs in `experiments/configs/` directory
 
 **Explore other tools:**
-- 📖 [Usage Guide](usage.md) - Dashboard, Python API, and legacy comparison tool
+- 📖 [Experiment Guide](../../experiments/README.md) - Configuration-driven experimentation
+- 📖 [Dashboard Guide](../../use_cases/dashboard/README.md) - Interactive interface
 - 🎛️ [Dashboard](../../use_cases/dashboard/README.md) - Interactive interface for active learning
 
 **Understand the model:**

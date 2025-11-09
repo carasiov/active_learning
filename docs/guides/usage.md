@@ -11,7 +11,7 @@ There are multiple ways to use the SSVAE:
 1. **[Experiment Tool](../../EXPERIMENT_GUIDE.md)** - Single-model workflow with config-driven experiments (current primary workflow)
 2. **[Interactive Dashboard](#interactive-dashboard)** - Web-based interface for active learning (future primary interface)
 3. **[Python API](#python-api)** - Programmatic access for custom integration
-4. **[Legacy Tools](#legacy-tools)** - Older comparison and CLI tools (see appendix)
+
 
 ---
 
@@ -154,23 +154,6 @@ artifacts/comparisons/20241031_143022/
 └── mixture_k10_checkpoint.ckpt   # Model weights (mixture)
 ```
 
-
-### When to Use
-
-✅ **Use comparison tool for:**
-- Testing new architectures or loss functions
-- Hyperparameter tuning and ablation studies
-- Validating model behavior before dashboard integration
-- Generating publication-quality figures
-- Batch experimentation (multiple configs)
-
-❌ **Don't use for:**
-- Interactive labeling sessions (use dashboard)
-- Real-time exploration (use dashboard)
-- Non-technical users (use dashboard)
-
-**Learn more:** See [`configs/comparisons/README.md`](../configs/comparisons/README.md) for detailed configuration syntax, troubleshooting, and examples.
-
 ---
 
 ## Interactive Dashboard
@@ -229,20 +212,6 @@ Open http://localhost:8050 in your browser.
 - `/model/{id}` - Main dashboard (visualization + labeling)
 - `/model/{id}/training-hub` - Training controls and monitoring
 - `/model/{id}/configure-training` - Hyperparameter configuration
-
-### When to Use
-
-✅ **Use dashboard for:**
-- Interactive active learning sessions
-- Demonstrations and presentations
-- Real-time exploration of latent space
-- Rapid prototyping with visual feedback
-- Teaching and education
-
-❌ **Don't use for:**
-- Batch experimentation (use comparison tool)
-- Automated hyperparameter search (use comparison tool)
-- Production model training (use Python API)
 
 **Learn more:**
 - [Dashboard Overview](../../use_cases/dashboard/README.md) - Features, architecture, routing

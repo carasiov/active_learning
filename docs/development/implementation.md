@@ -999,4 +999,5 @@ pytest --cov=src tests/
 - **[System Architecture](architecture.md)** - Design patterns and principles
 - **[Extending the System](extending.md)** - How-to tutorials
 - **[Conceptual Model](../theory/conceptual_model.md)** - Theoretical foundation
-- **[Usage Guide](../guides/usage.md)** - User-facing workflows
+- **[Experiment Guide](../../experiments/README.md)** - Primary experimentation workflow
+- **[Dashboard Guide](../../use_cases/dashboard/README.md)** - Interactive active learning interface

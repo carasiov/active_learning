@@ -81,7 +81,7 @@ active_learning_showcase/
 
 **🔬 I'm running experiments:**
 - Start → [Experiment Guide](experiments/README.md) - Primary workflow (configuration → execution → interpretation)
-- Or → [Usage Guide](docs/guides/usage.md) - All available tools (comparison, dashboard, Python API)
+- Dashboard → [Interactive Interface](use_cases/dashboard/README.md) - Web-based active learning (future primary)
 
 **🎓 I'm new to the project:**
 - Start → [Getting Started](docs/guides/getting_started.md) - Installation, setup, first run
