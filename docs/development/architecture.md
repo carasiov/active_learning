@@ -161,7 +161,7 @@ class SSVAEConfig:
     kl_c_weight: float = 1.0  # mixture KL weight
 
     # Regularization
-    usage_sparsity_weight: float = 0.0
+    component_diversity_weight: float = 0.0
     dirichlet_alpha: Optional[float] = None
     dirichlet_weight: float = 1.0
 

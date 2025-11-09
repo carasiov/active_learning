@@ -36,7 +36,7 @@ The current codebase implements a **foundational semi-supervised VAE** with the 
 - **Factory pattern:** Centralized component creation with validation
 
 **Recent Achievements (Nov 2025):**
-- ✅ **Resolved mode collapse:** Successfully tuned entropy reward (`usage_sparsity_weight: -0.05`) and Dirichlet prior (`alpha: 5.0`) to maintain 9/10 active components
+- ✅ **Resolved mode collapse:** Successfully tuned entropy reward (`component_diversity_weight: -0.05`) and Dirichlet prior (`alpha: 5.0`) to maintain 9/10 active components
 - ✅ **Validated parsimony mechanisms:** K_eff = 6.7 with confident responsibility assignments (mean = 0.87)
 - ✅ **Demonstrated multimodal capability:** Multiple components naturally map to same labels via $\tau$
 - ⚠️ **Identified architectural limitation:** Without component-aware decoder or VampPrior, components lack spatial separation in latent space (all encode near origin due to identical $\mathcal{N}(0,I)$ priors)
@@ -202,14 +202,12 @@ The path forward is **incremental enhancement**, not refactoring. Each RCM-VAE f
 
 **Effective configuration for preventing collapse:**
 ```yaml
-usage_sparsity_weight: -0.05  # NEGATIVE = entropy reward (not penalty)
-dirichlet_alpha: 5.0           # Stronger than default 1.0
-kl_c_weight: 0.001             # 2× baseline to prevent concentration
+component_diversity_weight: -0.05  # NEGATIVE = entropy reward (not penalty)
+dirichlet_alpha: 5.0               # Stronger than default 1.0
+kl_c_weight: 0.001                 # 2× baseline to prevent concentration
 ```
 
-**Naming clarification:** The parameter `usage_sparsity_weight` is a misnomer when negative. It actually implements **diversity encouragement**. The spec's "minimize entropy" phrasing assumes positive weight (minimize $-H$ = maximize $H$); our negative weight achieves same effect but inverts the algebra.
-
-**Recommendation:** Consider renaming to `component_diversity_weight` or adding configuration option `encourage_diversity: bool` for clarity.
+**Naming clarification:** The parameter was renamed from `usage_sparsity_weight` to `component_diversity_weight` for clarity. When negative, it implements **diversity encouragement**. The spec's "minimize entropy" phrasing assumes positive weight (minimize $-H$ = maximize $H$); our negative weight achieves same effect but inverts the algebra.
 
 ### Component-Label Alignment
 

@@ -23,7 +23,7 @@ model:
   prior_type: "mixture"
   num_components: 5
   kl_c_weight: 0.001
-  usage_sparsity_weight: 0.01
+  component_diversity_weight: 0.01
   mixture_history_log_every: 1
 
   # Training (minimal)

@@ -53,7 +53,7 @@ model:
   # Regularization for mixture (CRITICAL: negative weight = diversity reward!)
   dirichlet_alpha: 5.0  # Stronger than default 1.0
   dirichlet_weight: 1.0
-  usage_sparsity_weight: -0.05  # NEGATIVE = entropy reward (prevents collapse!)
+  component_diversity_weight: -0.05  # NEGATIVE = entropy reward (prevents collapse!)
 
   # Mixture tracking
   mixture_history_log_every: 1  # Track every epoch (set to 5 for less overhead)

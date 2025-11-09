@@ -46,7 +46,7 @@ INFORMATIVE_HPARAMETERS = (
     "kl_c_weight",
     "dirichlet_alpha",
     "dirichlet_weight",
-    "usage_sparsity_weight",
+    "component_diversity_weight",  # Renamed from usage_sparsity_weight
     "weight_decay",
     "dropout_rate",
     "monitor_metric",
@@ -100,9 +100,14 @@ class SSVAEConfig:
         kl_c_weight: Scaling factor applied to KL(q(c|x) || π) when mixture prior is active.
         dirichlet_alpha: Optional scalar prior strength for Dirichlet-MAP regularization on π.
         dirichlet_weight: Scaling applied to the Dirichlet-MAP penalty (no effect when alpha is None).
-        usage_sparsity_weight: Scaling factor for empirical component usage sparsity penalty.
+        component_diversity_weight: Scaling factor for component usage diversity regularization.
+            CRITICAL: Loss term is λ × (-H[p̂_c]) where H is entropy.
+            - NEGATIVE values (e.g., -0.05): Encourage diversity (maximize entropy)
+            - POSITIVE values: Discourage diversity (minimize entropy, causes collapse!)
+            Recommended: -0.05 for healthy mixture training.
         kl_c_anneal_epochs: If >0, linearly ramp kl_c_weight from 0 to its configured value across this many epochs.
         component_kl_weight: Deprecated alias for kl_c_weight kept for backward compatibility.
+        usage_sparsity_weight: Deprecated alias for component_diversity_weight (backward compatibility).
         component_embedding_dim: Dimensionality of component embeddings (default: same as latent_dim).
             Small values (4-16) recommended to avoid overwhelming latent information.
         use_component_aware_decoder: If True, use component-aware decoder architecture that processes
@@ -143,7 +148,8 @@ class SSVAEConfig:
     kl_c_weight: float = 1.0
     dirichlet_alpha: float | None = None
     dirichlet_weight: float = 1.0
-    usage_sparsity_weight: float = 0.0
+    component_diversity_weight: float = 0.0  # Primary name (negative = diversity reward)
+    usage_sparsity_weight: float | None = None  # Deprecated alias
     kl_c_anneal_epochs: int = 0
     mixture_history_log_every: int = 1  # Track π and usage every N epochs
     component_embedding_dim: int | None = None  # Defaults to latent_dim if None
@@ -167,6 +173,23 @@ class SSVAEConfig:
                 self.kl_c_weight = float(self.component_kl_weight)
         # Mirror into legacy field for any downstream code still reading it.
         self.component_kl_weight = float(self.kl_c_weight)
+
+        # Backward compatibility: usage_sparsity_weight → component_diversity_weight
+        if self.usage_sparsity_weight is not None:
+            default_diversity = SSVAEConfig.__dataclass_fields__["component_diversity_weight"].default
+            if self.component_diversity_weight == default_diversity:
+                self.component_diversity_weight = float(self.usage_sparsity_weight)
+                import warnings
+                warnings.warn(
+                    "Parameter 'usage_sparsity_weight' is deprecated and will be removed in a future version. "
+                    "Use 'component_diversity_weight' instead. "
+                    "Note: NEGATIVE values encourage diversity (prevent collapse), POSITIVE values cause collapse!",
+                    DeprecationWarning,
+                    stacklevel=2
+                )
+        # Mirror into legacy field for any downstream code still reading it
+        self.usage_sparsity_weight = float(self.component_diversity_weight)
+
         if self.kl_c_anneal_epochs < 0:
             raise ValueError("kl_c_anneal_epochs must be >= 0")
         if self.dirichlet_alpha is not None and self.dirichlet_alpha <= 0.0:

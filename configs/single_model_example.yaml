@@ -41,7 +41,7 @@ models:
     kl_c_anneal_epochs: 0.0
     dirichlet_alpha: 1.0
     dirichlet_weight: 1.0
-    usage_sparsity_weight: 0.1
+    component_diversity_weight: 0.1
     
     # Training
     learning_rate: 0.001

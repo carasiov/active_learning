@@ -31,7 +31,7 @@ model:
 
   dirichlet_alpha: 5.0        # Encourage uniform π
   dirichlet_weight: 1.0
-  usage_sparsity_weight: 0.0  # Remove sparsity penalty for this ablation
+  component_diversity_weight: 0.0  # Remove sparsity penalty for this ablation
 
   mixture_history_log_every: 1
 

@@ -256,7 +256,7 @@ reconstruction_loss: str = "bce"         # "bce" or "mse"
 
 **Regularization:**
 ```python
-usage_sparsity_weight: float = 0.0       # Channel usage sparsity
+component_diversity_weight: float = 0.0  # Component usage diversity (negative = reward)
 dirichlet_alpha: Optional[float] = None  # Dirichlet prior concentration
 dirichlet_weight: float = 1.0            # Dirichlet prior weight
 ```
@@ -957,7 +957,7 @@ config = SSVAEConfig(
     prior_type="mixture",
     num_components=20,
     kl_c_weight=0.5,
-    usage_sparsity_weight=1.0
+    component_diversity_weight=1.0
 )
 ```
 

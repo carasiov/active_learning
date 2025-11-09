@@ -92,9 +92,9 @@ class MixtureGaussianPrior:
             weight=config.dirichlet_weight,
         )
 
-        usage_penalty = usage_sparsity_penalty(
+        diversity_penalty = usage_sparsity_penalty(
             responsibilities,
-            weight=config.usage_sparsity_weight,
+            weight=config.component_diversity_weight,  # Renamed from usage_sparsity_weight
         )
 
         # Diagnostic metrics (entropy calculations)
@@ -109,7 +109,8 @@ class MixtureGaussianPrior:
             "kl_z": kl_z,
             "kl_c": kl_c,
             "dirichlet_penalty": dirichlet_penalty,
-            "usage_sparsity": usage_penalty,
+            "component_diversity": diversity_penalty,  # Renamed from usage_sparsity
+            "usage_sparsity": diversity_penalty,  # Deprecated alias (backward compat)
             "component_entropy": component_entropy,
             "pi_entropy": pi_entropy,
         }

@@ -253,7 +253,7 @@ Watch for these warning signs:
 **Fixes:**
 - Reduce `kl_c_weight` (try 0.0001 instead of 0.0005)
 - Increase `dirichlet_alpha` (try 2.0 or 5.0)
-- Increase `usage_sparsity_weight` carefully
+- Use NEGATIVE `component_diversity_weight` (try -0.05) to encourage diversity
 
 ---
 

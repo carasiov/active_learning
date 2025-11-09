@@ -38,7 +38,7 @@ model:
   # Regularization
   dirichlet_alpha: 1.0
   dirichlet_weight: 1.0
-  usage_sparsity_weight: 0.1
+  component_diversity_weight: 0.1
 
   # Training (minimal)
   learning_rate: 0.001

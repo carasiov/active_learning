@@ -4,7 +4,7 @@
 
 experiment:
   name: "mixture_ablation_entropy_reward"
-  description: "Mild KL_c with Dirichlet alpha=5 and negative usage_sparsity_weight to encourage spread"
+  description: "Mild KL_c with Dirichlet alpha=5 and negative component_diversity_weight to encourage spread"
   tags: ["ablation", "parsimony", "entropy-reward"]
 
 data:
@@ -31,7 +31,7 @@ model:
 
   dirichlet_alpha: 5.0
   dirichlet_weight: 1.0
-  usage_sparsity_weight: -0.05   # reward higher usage entropy
+  component_diversity_weight: -0.05   # reward higher usage entropy
 
   mixture_history_log_every: 1
 

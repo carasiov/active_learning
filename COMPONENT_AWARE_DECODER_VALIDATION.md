@@ -49,20 +49,20 @@ Initial experiment showed **severe mode collapse**:
 
 ###Root Cause
 
-**Incorrect sign on `usage_sparsity_weight`:**
+**Incorrect sign on `component_diversity_weight`:**
 
 ```yaml
 # WRONG (causes collapse):
-usage_sparsity_weight: 0.1  # Positive = penalizes entropy = encourages collapse
+component_diversity_weight: 0.1  # Positive = penalizes entropy = encourages collapse
 
 # CORRECT (prevents collapse):
-usage_sparsity_weight: -0.05  # Negative = rewards entropy = encourages diversity
+component_diversity_weight: -0.05  # Negative = rewards entropy = encourages diversity
 ```
 
 ### Why This Matters
 
 From `docs/theory/implementation_roadmap.md`:
-> The parameter `usage_sparsity_weight` is a misnomer when negative. It actually implements **diversity encouragement**.
+> The parameter `component_diversity_weight` (formerly `usage_sparsity_weight`) implements **diversity encouragement** when negative.
 
 The loss term is: `λ_u × (-H[p̂_c])`
 - Positive λ: minimize `-H` = minimize entropy = collapse
@@ -76,7 +76,7 @@ The loss term is: `λ_u × (-H[p̂_c])`
 
 **Config:**
 ```yaml
-usage_sparsity_weight: 0.1
+component_diversity_weight: 0.1
 dirichlet_alpha: 1.0
 kl_c_weight: 0.0005
 ```
@@ -96,7 +96,7 @@ kl_c_weight: 0.0005
 
 **Config:**
 ```yaml
-usage_sparsity_weight: -0.05  # NEGATIVE = diversity reward
+component_diversity_weight: -0.05  # NEGATIVE = diversity reward
 dirichlet_alpha: 5.0           # Stronger than default
 kl_c_weight: 0.001             # 2× baseline
 ```
@@ -173,12 +173,10 @@ From `docs/theory/implementation_roadmap.md`:
 
 ### 1. **Hyperparameter Sign Matters Critically**
 
-The sign of `usage_sparsity_weight` is **not intuitive**:
-- Name suggests "sparsity" (fewer components)
-- But negative value actually encourages **diversity** (more components)
-- Positive value causes mode collapse
-
-**Recommendation:** Rename to `component_diversity_weight` or add boolean flag `encourage_diversity`.
+The sign of `component_diversity_weight` (formerly `usage_sparsity_weight`) is **critical**:
+- Negative value encourages **diversity** (more components) - RECOMMENDED
+- Positive value penalizes diversity and causes mode collapse
+- The parameter was renamed from `usage_sparsity_weight` to clarify this behavior
 
 ### 2. **Dirichlet Prior Strength**
 
@@ -210,7 +208,7 @@ component_embedding_dim: 8  # Small (4-16 recommended)
 
 # CRITICAL: Diversity regularization
 dirichlet_alpha: 5.0              # Strong uniform prior
-usage_sparsity_weight: -0.05      # NEGATIVE = diversity reward!
+component_diversity_weight: -0.05      # NEGATIVE = diversity reward!
 ```
 
 ---
@@ -243,7 +241,7 @@ usage_sparsity_weight: -0.05      # NEGATIVE = diversity reward!
 
 ## Conclusion
 
-The **component-aware decoder is working as intended**. The initial mode collapse was entirely due to **hyperparameter misconfiguration** (positive vs negative `usage_sparsity_weight`).
+The **component-aware decoder is working as intended**. The initial mode collapse was entirely due to **hyperparameter misconfiguration** (positive vs negative `component_diversity_weight`).
 
 With correct configuration:
 - ✅ Components develop functional specialization
