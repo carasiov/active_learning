@@ -11,7 +11,7 @@
 The current codebase implements a **foundational semi-supervised VAE** with the following features:
 
 **Core Architecture:**
-- **Mixture of Gaussians prior** with learnable mixture weights $\pi$
+- **Mixture of Gaussians prior** with learnable mixture weights $\pi$ and identical $p(z|c) = \mathcal{N}(0, I)$ for all components
 - **Standard encoder-decoder** architecture (dense and convolutional options)
 - **Separate classifier head** for supervised classification
 - **Component factory pattern** via `PriorMode` protocol for pluggable priors
@@ -20,7 +20,7 @@ The current codebase implements a **foundational semi-supervised VAE** with the 
 **Training Infrastructure:**
 - Semi-supervised training loop with labeled and unlabeled data
 - Loss function components: reconstruction, KL divergence, classification
-- Usage sparsity regularization on mixture components
+- **Entropy-based diversity regularization** on mixture components (negative usage sparsity weight)
 - Optional Dirichlet prior on mixture weights $\pi$
 - Callback-based training observability (logging, plotting)
 - Early stopping and checkpoint management
@@ -34,6 +34,12 @@ The current codebase implements a **foundational semi-supervised VAE** with the 
 - **Protocol-based prior abstraction:** The `PriorMode` protocol enables easy integration of new priors (VampPrior, flows, etc.) without modifying core model code
 - **Configuration-driven:** All hyperparameters exposed via `SSVAEConfig` dataclass
 - **Factory pattern:** Centralized component creation with validation
+
+**Recent Achievements (Nov 2025):**
+- ✅ **Resolved mode collapse:** Successfully tuned entropy reward (`usage_sparsity_weight: -0.05`) and Dirichlet prior (`alpha: 5.0`) to maintain 9/10 active components
+- ✅ **Validated parsimony mechanisms:** K_eff = 6.7 with confident responsibility assignments (mean = 0.87)
+- ✅ **Demonstrated multimodal capability:** Multiple components naturally map to same labels via $\tau$
+- ⚠️ **Identified architectural limitation:** Without component-aware decoder or VampPrior, components lack spatial separation in latent space (all encode near origin due to identical $\mathcal{N}(0,I)$ priors)
 
 ### What We're Building Toward
 
@@ -82,36 +88,86 @@ This means:
 
 ### What Needs Development
 
-**Near-term (Foundation):**
-1. **Component-aware decoder:**
-   - Extend decoder to accept channel index/embedding
-   - Implement Top-$M$ gating for efficient training
-   - Add soft-embedding warm-up option
+**CRITICAL NEXT STEP (Immediate Priority):**
+
+**🎯 Component-aware decoder** - **STATUS: URGENT**
+
+**Why This Is Critical:**
+Current experiments (Nov 2025) show components have **no spatial separation** in latent space—all points cluster near origin with overlapping component assignments. This is because:
+- All priors are identical: $p(z|c) = \mathcal{N}(0, I)$ for every component
+- Decoder doesn't see component identity: $p_\theta(x|z)$ (not $p_\theta(x|z,c)$)
+- Components can only differentiate through $\tau$ mappings, not functional specialization
+
+**Impact:** Components exist as "soft labels" without architectural grounding. They cannot develop specialized decoding strategies (e.g., "component 3 decodes thick strokes well"). This limits representation power and makes latent space visualizations uninformative.
+
+**Implementation Plan:**
+1. **Decoder modification:**
+   ```python
+   # Current: decode(z) → x
+   # Target:  decode([z; e_c]) → x  where e_c is learned component embedding
+   ```
+   - Add `component_embeddings` parameter to decoder (shape: `[K, embedding_dim]`)
+   - Concatenate `e_c` with `z` before first decoder layer
+   - Keep embedding_dim small (4-16) to avoid overwhelming latent information
+
+2. **Training with Top-$M$ gating (efficiency):**
+   - Compute reconstruction as weighted sum over top-M components (default M=5)
+   - Full K-way sum is expensive; top-M approximation validated in spec
+   - Implementation: `top_m_indices = jnp.argsort(q_c)[-M:]`
+
+3. **Optional soft-embedding warm-up:**
+   - First 5-10 epochs: use soft weighting `z_tilde = [z; sum_c q(c|x) * e_c]`
+   - Later epochs: sample hard c and use `z_tilde = [z; e_c]`
+   - Helps early training stability (similar to Gumbel-Softmax annealing)
+
+4. **Testing & validation:**
+   - Verify components develop distinct decoding strategies (check `component_embeddings` divergence)
+   - Expect improved reconstruction and classification accuracy
+   - Monitor for over-fragmentation (components becoming too specialized)
+
+**Expected Outcomes:**
+- Components gain **functional identity** beyond soft label assignments
+- Better reconstruction quality (specialized decoders per component)
+- Improved classification (components aligned with semantic features)
+- Latent space may remain spatially overlapping (this is acceptable per spec)
+
+**Reference:** [Math Spec Section 3.3](mathematical_specification.md) - Component-Aware Decoder
+
+---
+
+**Near-term (Foundation - After Component-Aware Decoder):**
 
 2. **Responsibility-based classifier:**
    - Replace separate classifier head with $\tau$ map computation
    - Implement soft count accumulation $s_{c,y}$
    - Add stop-gradient treatment in supervised loss
+   - **Blocker:** Should be done AFTER component-aware decoder to ensure components have meaningful specialization
 
 3. **Heteroscedastic decoder:**
    - Add variance head to decoder (per-image scalar)
-   - Implement variance clamping
-   - Integrate into reconstruction loss
+   - Implement variance clamping $\sigma(x) \in [0.05, 0.5]$
+   - Integrate into reconstruction loss: $-\mathbb{E}[\log p(x|z,c)] = \frac{||x - \hat{x}||^2}{2\sigma^2} + \log \sigma$
+   - Enables aleatoric uncertainty quantification
 
 **Medium-term (Advanced Features):**
-4. **VampPrior implementation:**
-   - Pseudo-input learning
-   - Prior shaping (MMD/MC-KL)
+
+4. **VampPrior implementation (Alternative to Component-Aware Decoder):**
+   - **Purpose:** If spatial clustering is desired, VampPrior provides learned per-component centers
+   - Pseudo-input learning: $u_1, \ldots, u_K$ where $p(z|c) = q_\phi(z|u_c)$
+   - Prior shaping (MMD/MC-KL) to match target distributions
    - Integration via existing `PriorMode` protocol
+   - **Trade-off:** More complex than component-aware decoder; induces topology in latent space
+   - **Decision Point:** Choose ONE of {component-aware decoder, VampPrior} based on whether spatial clustering is needed
 
 5. **OOD detection:**
-   - Implement $r \times \tau$ scoring
+   - Implement $r \times \tau$ scoring: $s_{\text{OOD}} = 1 - \max_c r_c(z) \cdot \max_y \tau_{c,y}$
    - Integrate with active learning workflows
    - Add to comparison tool metrics
+   - Test on Fashion-MNIST and unseen MNIST digits
 
 6. **Dynamic label addition:**
-   - Free channel detection logic
-   - Channel claiming mechanism
+   - Free channel detection logic: `is_free = (usage < 1e-3) OR (max_y tau_{c,y} < 0.05)`
+   - Channel claiming mechanism for new labels
    - Dashboard integration for interactive labeling
 
 ---
@@ -127,6 +183,42 @@ The current implementation was explicitly designed to support the RCM-VAE vision
 - **Comparison tool:** Ready to evaluate new features systematically
 
 The path forward is **incremental enhancement**, not refactoring. Each RCM-VAE feature can be added as an option while maintaining backward compatibility with the current standard/mixture prior modes.
+
+---
+
+## Implementation Notes from Nov 2025 Experiments
+
+### Key Finding: Components Need Functional Differentiation
+
+**Observation:** With identical priors ($p(z|c) = \mathcal{N}(0,I)$ for all $c$) and no component-aware decoder, all components encode to the same spatial region (near origin). Components differentiate only through:
+- Soft label assignments via $\tau$ map
+- Subtle directional biases in latent space (visible in plots but weak)
+
+**Implication:** This validates the spec's design choice: components should specialize via **decoder pathways** (component-aware decoder) OR **prior centers** (VampPrior), not just responsibilities.
+
+**Visualization Impact:** "Latent by Component" plots show heavy overlap—this is expected and acceptable per [Math Spec Section 6](mathematical_specification.md): *"When all $p(z|c)$ are identical standard normals, latent density alone is uninformative by design."*
+
+### Entropy Reward Discovery
+
+**Effective configuration for preventing collapse:**
+```yaml
+usage_sparsity_weight: -0.05  # NEGATIVE = entropy reward (not penalty)
+dirichlet_alpha: 5.0           # Stronger than default 1.0
+kl_c_weight: 0.001             # 2× baseline to prevent concentration
+```
+
+**Naming clarification:** The parameter `usage_sparsity_weight` is a misnomer when negative. It actually implements **diversity encouragement**. The spec's "minimize entropy" phrasing assumes positive weight (minimize $-H$ = maximize $H$); our negative weight achieves same effect but inverts the algebra.
+
+**Recommendation:** Consider renaming to `component_diversity_weight` or adding configuration option `encourage_diversity: bool` for clarity.
+
+### Component-Label Alignment
+
+**Observed:** Component majority labels `[9,5,6,7,7,6,5,6,6,6]` show natural multimodality (multiple components per digit) without explicit supervision. This validates the soft-count $s_{c,y} \to \tau_{c,y}$ mechanism.
+
+**Negative ARI = -0.096:** Components don't align with digit identity because:
+1. No architectural pressure to cluster by label (encoder is mostly unsupervised)
+2. Decoder doesn't differentiate by component (no specialization incentive)
+3. This will improve with component-aware decoder + stronger $\tau$-based supervision
 
 ---
 
