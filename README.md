@@ -84,8 +84,9 @@ active_learning_showcase/
 - Dashboard → [Interactive Interface](use_cases/dashboard/README.md) - Web-based active learning (future primary)
 
 **🎓 I'm new to the project:**
-- Start → [Getting Started](docs/guides/getting_started.md) - Installation, setup, first run
-- Then → Pick a path above based on your goals
+- Quick Start → See [Experiment Guide](experiments/README.md) for installation and first run
+- Theory → [Conceptual Model](docs/theory/conceptual_model.md) for understanding the approach
+- Code → [System Architecture](docs/development/architecture.md) for navigating the codebase
 
 
 ### 🔧 Dashboard Guides

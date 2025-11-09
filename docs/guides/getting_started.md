@@ -2,36 +2,12 @@
 
 Complete guide to installation, setup, and running your first experiment.
 
-> **Note:** This guide covers the legacy `compare_models.py` workflow and general Python API usage. For the current primary experimentation workflow using `run_experiment.py`, see the **[Experiment Guide](../../EXPERIMENT_GUIDE.md)**.
+> For the current primary experimentation workflow using `run_experiment.py`, see the **[Experiment Guide](../../EXPERIMENT_GUIDE.md)**.
 
 ---
 
 ## Requirements
 
-### System Requirements
-
-- **Python:** 3.11 or higher
-- **Operating System:** Linux (Ubuntu 22.04 tested), macOS, Windows with WSL2
-- **Memory:** 8GB RAM minimum (16GB recommended for full MNIST dataset)
-- **GPU (optional):** NVIDIA GPU with CUDA 12+ for acceleration
-  - CPU-only mode fully supported (slower training)
-  - JAX automatically detects and uses available GPU
-
-### Key Dependencies
-
-Automatically installed via Poetry:
-- **JAX/JAXlib:** Numerical computing and auto-differentiation
-- **Flax:** Neural network library built on JAX
-- **Optax:** Gradient-based optimization
-- **NumPy:** Array operations
-- **Matplotlib/Seaborn:** Visualization (for comparison tool)
-
-### Optional Dependencies
-
-- **PyYAML:** For YAML-based configuration files (comparison tool)
-- **Dash/Plotly:** For interactive dashboard (included by default)
-
----
 
 ## Installation
 
