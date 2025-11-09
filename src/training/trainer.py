@@ -11,6 +11,7 @@ import numpy as np
 from callbacks import TrainingCallback
 from ssvae.config import SSVAEConfig
 from training.train_state import SSVAETrainState
+from ssvae.components.tau_classifier import accumulate_soft_counts, update_tau_in_params
 
 MetricsDict = Dict[str, jnp.ndarray]
 HistoryDict = Dict[str, list[float]]
@@ -100,6 +101,7 @@ class Trainer:
         self.config = config
         self._latest_splits: DataSplits | None = None
         self._current_state: SSVAETrainState | None = None  # For callback access during training
+        self._soft_counts: np.ndarray | None = None  # For τ-classifier soft count accumulation
 
     @staticmethod
     def _init_history() -> HistoryDict:
@@ -169,6 +171,13 @@ class Trainer:
         tracker = EarlyStoppingTracker(monitor_metric=setup.monitor_metric, patience=setup.patience)
         callback_list = list(callbacks or [])
 
+        # Initialize τ-classifier soft counts
+        if self.config.use_tau_classifier:
+            self._soft_counts = np.zeros(
+                (self.config.num_components, self.config.num_classes),
+                dtype=np.float32,
+            )
+
         self._run_callbacks(callback_list, "on_train_start", self)
 
         if setup.max_epochs <= 0:
@@ -193,6 +202,11 @@ class Trainer:
                 kl_c_scale=kl_c_scale,
             )
             self._latest_splits = splits
+
+            # τ-classifier: accumulate soft counts and update τ matrix
+            if self.config.use_tau_classifier:
+                self._accumulate_tau_counts(state, splits, setup.eval_batch_size)
+                state = self._update_tau_parameters(state)
 
             train_metrics, val_metrics = self._evaluate_both_splits(
                 state.params, splits, eval_metrics_fn=eval_metrics_fn, eval_batch_size=setup.eval_batch_size
@@ -227,6 +241,12 @@ class Trainer:
 
         # Clear state reference after training
         self._current_state = None
+
+        # Clean up τ-classifier soft counts
+        if self.config.use_tau_classifier:
+            total_counts = np.sum(self._soft_counts) if self._soft_counts is not None else 0
+            print(f"τ-classifier: Accumulated {total_counts:.0f} total soft counts over training.")
+            self._soft_counts = None
 
         return state, shuffle_rng, history
 
@@ -368,6 +388,94 @@ class Trainer:
         batch_key = jax.random.fold_in(raw_key, int(state.step))
         state, _ = train_step_fn(state, batch_x, batch_y, batch_key, kl_c_scale)
         return state, state_rng
+
+    def _accumulate_tau_counts(
+        self,
+        state: SSVAETrainState,
+        splits: DataSplits,
+        eval_batch_size: int,
+    ) -> None:
+        """Accumulate soft counts for τ-classifier from labeled training samples.
+
+        This method runs a forward pass on all labeled training samples to extract
+        responsibilities and accumulate soft counts for τ matrix updates.
+
+        Args:
+            state: Current training state
+            splits: Data splits containing training/validation data
+            eval_batch_size: Batch size for evaluation passes
+        """
+        if not self.config.use_tau_classifier or not splits.has_labels:
+            return
+
+        # Initialize soft counts on first call
+        if self._soft_counts is None:
+            self._soft_counts = np.zeros(
+                (self.config.num_components, self.config.num_classes),
+                dtype=np.float32,
+            )
+
+        # Process training data in chunks
+        x_data = splits.x_train
+        y_data = splits.y_train
+
+        # Filter to labeled samples only
+        labeled_mask = ~np.isnan(np.array(y_data))
+        if not np.any(labeled_mask):
+            return
+
+        x_labeled = x_data[labeled_mask]
+        y_labeled = y_data[labeled_mask]
+
+        num_samples = x_labeled.shape[0]
+
+        # Forward pass to get responsibilities
+        for start_idx in range(0, num_samples, eval_batch_size):
+            end_idx = min(start_idx + eval_batch_size, num_samples)
+            batch_x = x_labeled[start_idx:end_idx]
+            batch_y = y_labeled[start_idx:end_idx]
+
+            # Run forward pass (no gradient computation)
+            output = state.apply_fn(
+                {"params": state.params},
+                batch_x,
+                training=False,
+            )
+
+            # Extract responsibilities if available
+            if hasattr(output, 'extras') and output.extras and 'responsibilities' in output.extras:
+                responsibilities = output.extras['responsibilities']
+
+                # Accumulate soft counts
+                batch_counts = accumulate_soft_counts(
+                    responsibilities,
+                    batch_y,
+                    self.config.num_classes,
+                    mask=None,  # Already filtered to labeled samples
+                )
+                self._soft_counts += np.array(batch_counts)
+
+    def _update_tau_parameters(self, state: SSVAETrainState) -> SSVAETrainState:
+        """Update τ matrix in model parameters from accumulated soft counts.
+
+        Args:
+            state: Current training state
+
+        Returns:
+            Updated training state with new τ matrix
+        """
+        if not self.config.use_tau_classifier or self._soft_counts is None:
+            return state
+
+        # Update τ from accumulated counts
+        new_params = update_tau_in_params(
+            state.params,
+            jnp.array(self._soft_counts),
+            alpha_0=self.config.tau_alpha_0,
+        )
+
+        # Create new state with updated parameters
+        return state.replace(params=new_params)
 
     def _evaluate_both_splits(
         self,

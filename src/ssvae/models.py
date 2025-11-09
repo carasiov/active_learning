@@ -190,9 +190,31 @@ class SSVAE:
         forward = self._apply_fn(self.state.params, x, training=False)
         component_logits, z_mean, _, _, recon, logits, extras = forward
 
-        probs = softmax(logits, axis=1)
+        # For τ-classifier, logits are already log probabilities
+        # For standard classifier, logits need softmax
+        if self.config.use_tau_classifier:
+            # logits = log(p(y|x)) from τ-classifier
+            probs = jnp.exp(logits)  # Convert log probs back to probs
+        else:
+            # Standard classifier: apply softmax to get probabilities
+            probs = softmax(logits, axis=1)
+
         pred_class = jnp.argmax(probs, axis=1)
         pred_certainty = jnp.max(probs, axis=1)
+
+        # For τ-classifier with mixture prior, use component-aware certainty
+        if self.config.use_tau_classifier and self.config.prior_type == "mixture":
+            from ssvae.components.tau_classifier import get_certainty, extract_tau_from_params
+
+            responsibilities = extras.get("responsibilities") if hasattr(extras, "get") else None
+            if responsibilities is not None:
+                try:
+                    tau = extract_tau_from_params(self.state.params)
+                    # Use τ-based certainty: max_c (r_c · max_y τ_{c,y})
+                    pred_certainty = get_certainty(responsibilities, tau)
+                except (ValueError, KeyError):
+                    # Fall back to max probability if τ not available
+                    pass
 
         result = (
             np.array(z_mean),
@@ -251,7 +273,14 @@ class SSVAE:
         recon_stack = jnp.stack(recon_samples) if num_samples > 1 else recon_samples[0]
         logits_stack = jnp.stack(logits_samples) if num_samples > 1 else logits_samples[0]
 
-        probs = softmax(logits_stack, axis=-1)
+        # Handle τ-classifier vs standard classifier
+        if self.config.use_tau_classifier:
+            # logits are already log probabilities
+            probs = jnp.exp(logits_stack)
+        else:
+            # Standard classifier: apply softmax
+            probs = softmax(logits_stack, axis=-1)
+
         if num_samples > 1:
             pred_class = jnp.argmax(probs, axis=-1)
             pred_certainty = jnp.max(probs, axis=-1)
