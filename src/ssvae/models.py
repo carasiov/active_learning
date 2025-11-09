@@ -362,6 +362,17 @@ class SSVAE:
             batch_size=min(self.config.batch_size, 1024),
         )
 
+        # Generate τ matrix visualizations if τ-classifier is enabled
+        if self.config.use_tau_classifier:
+            self._diagnostics.visualize_tau_with_usage(
+                params=self.state.params,
+                output_dir=diag_dir,
+            )
+            self._diagnostics.save_tau_summary(
+                params=self.state.params,
+                output_dir=diag_dir,
+            )
+
     @property
     def last_diagnostics_dir(self) -> Path | None:
         """Get directory where diagnostics were last saved."""

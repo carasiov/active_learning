@@ -13,6 +13,13 @@ import numpy as np
 
 from ssvae.config import SSVAEConfig
 
+try:
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    PLOTTING_AVAILABLE = True
+except ImportError:
+    PLOTTING_AVAILABLE = False
+
 
 class DiagnosticsCollector:
     """Collects and saves model diagnostics, especially for mixture priors.
@@ -329,3 +336,263 @@ class DiagnosticsCollector:
             "nmi": float(nmi),
             "ari": float(ari),
         }
+
+    def visualize_tau_matrix(
+        self,
+        params: Dict,
+        output_dir: Path | None = None,
+        *,
+        title: str = "Component → Label Associations (τ matrix)",
+        annotate_values: bool = True,
+        figsize: tuple = (12, 8),
+    ) -> Path | None:
+        """Visualize τ matrix showing component→label associations.
+
+        This visualization shows the τ_{c,y} matrix where each row is a component
+        and each column is a label. High values indicate strong associations.
+
+        Args:
+            params: Model parameters containing τ matrix
+            output_dir: Directory to save figure (uses last if None)
+            title: Figure title
+            annotate_values: Whether to annotate cells with values
+            figsize: Figure size (width, height)
+
+        Returns:
+            Path to saved figure or None if plotting unavailable
+
+        Example:
+            >>> diagnostics = DiagnosticsCollector(config)
+            >>> diagnostics.visualize_tau_matrix(
+            ...     model.state.params,
+            ...     output_dir=Path("results"),
+            ... )
+        """
+        if not PLOTTING_AVAILABLE:
+            print("Warning: matplotlib/seaborn not available. Skipping τ matrix visualization.")
+            return None
+
+        if not self.config.use_tau_classifier:
+            print("Warning: τ-classifier not enabled. Skipping τ matrix visualization.")
+            return None
+
+        dir_path = Path(output_dir) if output_dir else self._last_output_dir
+        if dir_path is None:
+            print("Warning: No output directory specified. Skipping τ matrix visualization.")
+            return None
+
+        dir_path.mkdir(parents=True, exist_ok=True)
+
+        # Extract τ matrix from parameters
+        try:
+            from ssvae.components.tau_classifier import extract_tau_from_params
+            tau = extract_tau_from_params(params)
+            tau_np = np.array(tau)
+        except (ValueError, KeyError) as e:
+            print(f"Warning: Could not extract τ matrix: {e}")
+            return None
+
+        # Create heatmap
+        fig, ax = plt.subplots(figsize=figsize)
+
+        # Use seaborn for nice heatmap
+        sns.heatmap(
+            tau_np,
+            annot=annotate_values,
+            fmt='.3f' if annotate_values else None,
+            cmap='YlOrRd',
+            cbar_kws={'label': 'Association Strength τ_{c,y}'},
+            xticklabels=[f'{i}' for i in range(self.config.num_classes)],
+            yticklabels=[f'{i}' for i in range(self.config.num_components)],
+            ax=ax,
+            vmin=0,
+            vmax=1,
+        )
+
+        ax.set_title(title, fontsize=14, fontweight='bold')
+        ax.set_xlabel('Label (y)', fontsize=12)
+        ax.set_ylabel('Component (c)', fontsize=12)
+
+        # Add grid for better readability
+        ax.set_xticks(np.arange(self.config.num_classes) + 0.5, minor=False)
+        ax.set_yticks(np.arange(self.config.num_components) + 0.5, minor=False)
+
+        plt.tight_layout()
+
+        # Save figure
+        output_path = dir_path / "tau_matrix.png"
+        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+        plt.close()
+
+        print(f"τ matrix visualization saved to: {output_path}")
+        return output_path
+
+    def visualize_tau_with_usage(
+        self,
+        params: Dict,
+        output_dir: Path | None = None,
+        *,
+        title: str = "Component Specialization Analysis",
+        figsize: tuple = (16, 8),
+    ) -> Path | None:
+        """Visualize τ matrix alongside component usage statistics.
+
+        Creates a two-panel figure showing:
+        1. τ matrix heatmap
+        2. Component usage bar chart
+
+        This helps identify which components are active and their label specializations.
+
+        Args:
+            params: Model parameters containing τ matrix
+            output_dir: Directory to save figure (uses last if None)
+            title: Figure title
+            figsize: Figure size (width, height)
+
+        Returns:
+            Path to saved figure or None if plotting unavailable
+        """
+        if not PLOTTING_AVAILABLE:
+            print("Warning: matplotlib/seaborn not available. Skipping visualization.")
+            return None
+
+        if not self.config.use_tau_classifier:
+            print("Warning: τ-classifier not enabled. Skipping visualization.")
+            return None
+
+        dir_path = Path(output_dir) if output_dir else self._last_output_dir
+        if dir_path is None:
+            print("Warning: No output directory specified. Skipping visualization.")
+            return None
+
+        dir_path.mkdir(parents=True, exist_ok=True)
+
+        # Extract τ matrix
+        try:
+            from ssvae.components.tau_classifier import extract_tau_from_params
+            tau = extract_tau_from_params(params)
+            tau_np = np.array(tau)
+        except (ValueError, KeyError) as e:
+            print(f"Warning: Could not extract τ matrix: {e}")
+            return None
+
+        # Load component usage
+        usage = self.load_component_usage(dir_path)
+        if usage is None:
+            print("Warning: Component usage not available. Falling back to simple visualization.")
+            return self.visualize_tau_matrix(params, output_dir, title=title)
+
+        # Create two-panel figure
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize, gridspec_kw={'width_ratios': [3, 1]})
+
+        # Panel 1: τ matrix heatmap
+        sns.heatmap(
+            tau_np,
+            annot=False,  # Too crowded with many components
+            cmap='YlOrRd',
+            cbar_kws={'label': 'τ_{c,y}'},
+            xticklabels=[f'{i}' for i in range(self.config.num_classes)],
+            yticklabels=[f'{i}' for i in range(self.config.num_components)],
+            ax=ax1,
+            vmin=0,
+            vmax=1,
+        )
+
+        ax1.set_title('Component → Label Associations (τ)', fontsize=12, fontweight='bold')
+        ax1.set_xlabel('Label', fontsize=10)
+        ax1.set_ylabel('Component', fontsize=10)
+
+        # Panel 2: Component usage bar chart
+        component_indices = np.arange(self.config.num_components)
+        colors = ['green' if u > 0.01 else 'gray' for u in usage]
+
+        ax2.barh(component_indices, usage, color=colors, alpha=0.7)
+        ax2.set_ylim(-0.5, self.config.num_components - 0.5)
+        ax2.invert_yaxis()  # Match τ matrix orientation
+        ax2.set_xlabel('Usage', fontsize=10)
+        ax2.set_title('Component Usage', fontsize=12, fontweight='bold')
+        ax2.axvline(0.01, color='red', linestyle='--', linewidth=1, alpha=0.5, label='Active threshold')
+        ax2.legend(fontsize=8)
+
+        # Add overall title
+        fig.suptitle(title, fontsize=14, fontweight='bold', y=1.02)
+
+        plt.tight_layout()
+
+        # Save figure
+        output_path = dir_path / "tau_analysis.png"
+        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+        plt.close()
+
+        print(f"τ analysis visualization saved to: {output_path}")
+        return output_path
+
+    def save_tau_summary(
+        self,
+        params: Dict,
+        output_dir: Path | None = None,
+    ) -> Path | None:
+        """Save τ matrix summary statistics to text file.
+
+        Args:
+            params: Model parameters containing τ matrix
+            output_dir: Directory to save summary (uses last if None)
+
+        Returns:
+            Path to saved summary file or None if unavailable
+        """
+        if not self.config.use_tau_classifier:
+            return None
+
+        dir_path = Path(output_dir) if output_dir else self._last_output_dir
+        if dir_path is None:
+            return None
+
+        dir_path.mkdir(parents=True, exist_ok=True)
+
+        # Extract τ matrix
+        try:
+            from ssvae.components.tau_classifier import extract_tau_from_params
+            tau = extract_tau_from_params(params)
+            tau_np = np.array(tau)
+        except (ValueError, KeyError) as e:
+            print(f"Warning: Could not extract τ matrix: {e}")
+            return None
+
+        # Compute summary statistics
+        max_tau_per_component = tau_np.max(axis=1)
+        dominant_label_per_component = tau_np.argmax(axis=1)
+        components_per_label = [np.sum(dominant_label_per_component == label) for label in range(self.config.num_classes)]
+
+        # Write summary
+        summary_path = dir_path / "tau_summary.txt"
+        with open(summary_path, 'w') as f:
+            f.write("="*80 + "\n")
+            f.write("τ MATRIX SUMMARY\n")
+            f.write("="*80 + "\n\n")
+
+            f.write(f"Matrix shape: [{self.config.num_components} components, {self.config.num_classes} labels]\n")
+            f.write(f"Smoothing parameter α₀: {self.config.tau_alpha_0}\n\n")
+
+            f.write("Component Specializations:\n")
+            f.write("-"*80 + "\n")
+            f.write(f"{'Component':<12} {'Dominant Label':<15} {'Confidence':<12} {'Label Distribution'}\n")
+            f.write("-"*80 + "\n")
+
+            for c in range(self.config.num_components):
+                dominant = dominant_label_per_component[c]
+                confidence = max_tau_per_component[c]
+                distribution = ', '.join([f"{label}:{tau_np[c, label]:.3f}" for label in range(self.config.num_classes)])
+                f.write(f"{c:<12} {dominant:<15} {confidence:<12.3f} {distribution}\n")
+
+            f.write("\n" + "="*80 + "\n")
+            f.write("Label Coverage:\n")
+            f.write("-"*80 + "\n")
+            for label in range(self.config.num_classes):
+                count = components_per_label[label]
+                f.write(f"Label {label}: {count} component(s) specialized\n")
+
+            f.write("\n" + "="*80 + "\n")
+
+        print(f"τ summary saved to: {summary_path}")
+        return summary_path
