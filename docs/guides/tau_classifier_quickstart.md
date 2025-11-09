@@ -5,29 +5,22 @@ This guide will get you running the τ-classifier validation experiments in 5 mi
 ## Prerequisites
 
 - Python 3.8+
+- Poetry installed (`pip install poetry`)
 - Git repository cloned
 - Terminal access
 
 ## Quick Setup
 
 ```bash
-# 1. Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# 2. Install dependencies
-pip install --upgrade pip
-pip install jax jaxlib flax optax numpy matplotlib seaborn
-
-# 3. Install package in development mode
-pip install -e .
+# Install all dependencies using Poetry
+poetry install
 ```
 
 ## Run Validation Experiment
 
 ```bash
 # Run the validation experiment (compares z-based vs τ-based classifiers)
-python experiments/validate_tau_classifier.py
+poetry run python experiments/validate_tau_classifier.py
 ```
 
 **Expected runtime:** 10-15 minutes on CPU, 2-3 minutes on GPU
@@ -186,21 +179,19 @@ print(f"Mean certainty: {certainty.mean():.4f}")
 If you see warnings about CUDA not found but have a GPU:
 
 ```bash
-# Uninstall CPU version
-pip uninstall jax jaxlib
-
-# Install GPU version (CUDA 12.x)
-pip install jax[cuda12]
+# Add JAX GPU version to your pyproject.toml dependencies
+poetry add jax[cuda12]
+poetry install
 ```
 
 ### Issue 2: ModuleNotFoundError
 
 ```bash
-# Make sure you installed in development mode
-pip install -e .
+# Make sure Poetry installed the package
+poetry install
 
 # Verify installation
-python -c "from ssvae import SSVAE; print('Success!')"
+poetry run python -c "from ssvae import SSVAE; print('Success!')"
 ```
 
 ### Issue 3: Out of memory
@@ -256,16 +247,14 @@ If you encounter issues:
    - Error message
    - Steps to reproduce
    - Python version and JAX version
-   - Output of `python -c "import jax; print(jax.devices())"`
+   - Output of `poetry run python -c "import jax; print(jax.devices())"`
 
 ---
 
 **Quick Summary:**
 ```bash
-python -m venv venv && source venv/bin/activate
-pip install jax flax optax numpy matplotlib seaborn
-pip install -e .
-python experiments/validate_tau_classifier.py
+poetry install
+poetry run python experiments/validate_tau_classifier.py
 ```
 
 That's it! You should see comparative results showing τ-classifier performance.
