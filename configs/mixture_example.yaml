@@ -41,7 +41,7 @@ model:
   # Mixture prior
   prior_type: "mixture"
   num_components: 10
-  kl_c_weight: 0.001  # 2× baseline to prevent concentration
+  kl_c_weight: 0.001  
   kl_c_anneal_epochs: 0
 
   # Component-aware decoder (NEW - enables functional specialization)
