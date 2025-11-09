@@ -1,12 +1,32 @@
+---
+**Status:** Current implementation as of November 2025
+**Reflects:** Component-aware decoder complete, τ-classifier next
+**For planned features:** See [Implementation Roadmap](../theory/implementation_roadmap.md)
+**For contributing:** See [CONTRIBUTING.md](CONTRIBUTING.md)
+---
+
 # System Architecture
 
-> **Purpose:** This document describes the design patterns, component structure, and architectural decisions in the current SSVAE codebase. For theoretical foundations, see [Conceptual Model](../theory/conceptual_model.md). For module-level implementation details, see [Implementation Guide](implementation.md).
+> **Purpose:** Understand why the SSVAE system is designed this way
+> **Audience:** Researchers, code reviewers, developers seeking design rationale
+> **For implementation details:** See code docstrings and [CONTRIBUTING.md](CONTRIBUTING.md)
 
 ---
 
 ## Overview
 
-The system implements a semi-supervised variational autoencoder (SSVAE) with a modular, protocol-based architecture designed for extensibility and experimentation. The core philosophy is **configuration-driven components** with **pluggable abstractions** for priors, encoders, and decoders.
+The system implements a semi-supervised variational autoencoder (SSVAE) with a modular,
+protocol-based architecture designed for extensibility and experimentation. The core
+philosophy is **configuration-driven components** with **pluggable abstractions** for
+priors, encoders, and decoders.
+
+**Current state (November 2025):**
+- ✅ Mixture prior with K components
+- ✅ Component-aware decoder (separate z and e_c pathways)
+- ✅ Usage-entropy diversity regularization
+- 🚧 τ-classifier implementation (next priority)
+
+For current implementation status, see [Implementation Roadmap](../theory/implementation_roadmap.md).
 
 ### Design Principles
 
@@ -75,33 +95,12 @@ The system implements a semi-supervised variational autoencoder (SSVAE) with a m
 
 **Location:** `src/ssvae/components/priors/protocol.py`
 
-**Interface:**
-```python
-class PriorMode(Protocol):
-    """Protocol defining interface for different prior modes."""
-
-    def kl_divergence(
-        self,
-        z_mean: Array,
-        z_logvar: Array,
-        component_logits: Optional[Array] = None
-    ) -> Array:
-        """Compute KL divergence for this prior mode."""
-        ...
-
-    def sample(
-        self,
-        key: PRNGKey,
-        latent_dim: int,
-        num_samples: int = 1
-    ) -> Array:
-        """Sample from the prior distribution."""
-        ...
-```
+**Interface contract:**
+See `src/ssvae/priors/base.py` for protocol definition.
 
 **Implementations:**
-- `StandardPrior`: Simple $\mathcal{N}(0, I)$ Gaussian
-- `MixturePrior`: Mixture of Gaussians with learnable weights $\pi$
+- `StandardPrior` in `priors/standard.py` - Simple N(0,I)
+- `MixturePrior` in `priors/mixture.py` - Mixture with embeddings
 
 **Design Rationale:**
 - Protocol (not abstract base class) for static type checking without runtime overhead
@@ -114,20 +113,12 @@ class PriorMode(Protocol):
 
 **Location:** `src/ssvae/factory.py`
 
-**Responsibilities:**
-- Create encoders, decoders, classifiers based on configuration
-- Validate hyperparameters (e.g., latent_dim matches architecture)
-- Ensure compatible component combinations
+**Key responsibilities:**
+- Create encoders, decoders, classifiers
+- Validate configuration consistency
 - Initialize network weights
 
-**Example:**
-```python
-network, variables = SSVAEFactory.create_network(
-    config=config,
-    input_shape=(28, 28),
-    key=jax.random.PRNGKey(42)
-)
-```
+See `src/ssvae/factory.py` for implementation details.
 
 **Design Rationale:**
 - Single source of truth for component creation
@@ -141,36 +132,9 @@ network, variables = SSVAEFactory.create_network(
 
 **Location:** `src/ssvae/config.py`
 
-**Key Parameters:**
-```python
-@dataclass
-class SSVAEConfig:
-    # Architecture
-    latent_dim: int = 2
-    hidden_dims: Tuple[int, ...] = (256, 128, 64)
-    num_classes: int = 10
+**Purpose:** Type-safe configuration with defaults
 
-    # Prior
-    prior_type: str = "standard"  # or "mixture"
-    num_components: int = 10  # for mixture prior
-
-    # Loss weights
-    recon_weight: float = 1.0
-    kl_weight: float = 1.0
-    label_weight: float = 1.0
-    kl_c_weight: float = 1.0  # mixture KL weight
-
-    # Regularization
-    component_diversity_weight: float = 0.0
-    dirichlet_alpha: Optional[float] = None
-    dirichlet_weight: float = 1.0
-
-    # Training
-    batch_size: int = 128
-    learning_rate: float = 1e-3
-    max_epochs: int = 100
-    patience: int = 10
-```
+See `src/ssvae/config.py` for all 25+ parameters with descriptions.
 
 **Design Rationale:**
 - Dataclass provides free validation, serialization, equality
@@ -223,22 +187,12 @@ class SSVAEConfig:
 - `DenseEncoder`: Fully connected layers
 - `ConvEncoder`: Convolutional layers (for image data)
 
-**Interface:**
-```python
-class Encoder(nn.Module):
-    latent_dim: int
-    hidden_dims: Tuple[int, ...]
+**Key properties:**
+- Produce distribution parameters (mean, log-variance)
+- Mixture encoder adds component logits
+- Dropout support for regularization
 
-    def __call__(self, x, deterministic=True):
-        # Returns: z_mean, z_logvar, [component_logits]
-        ...
-```
-
-**Design:**
-- Encoders produce distribution parameters, not samples
-- Separate mean and log-variance outputs
-- Mixture encoder adds component logits output
-- Dropout support via `deterministic` flag
+See `src/ssvae/components/encoders.py` for implementation.
 
 ### Decoders
 
@@ -248,21 +202,12 @@ class Encoder(nn.Module):
 - `DenseDecoder`: Fully connected layers
 - `ConvDecoder`: Transposed convolutional layers
 
-**Interface:**
-```python
-class Decoder(nn.Module):
-    output_shape: Tuple[int, ...]
-    hidden_dims: Tuple[int, ...]
-
-    def __call__(self, z, deterministic=True):
-        # Returns: reconstructed x
-        ...
-```
-
-**Design:**
+**Key properties:**
 - Mirrors encoder architecture (symmetric VAE)
-- Output shape matches input data shape
-- Sigmoid activation for [0,1] pixel values
+- Output shape matches input data
+- Sigmoid activation for pixel values
+
+See `src/ssvae/components/decoders.py` for implementation.
 
 ### Classifiers
 
@@ -271,18 +216,9 @@ class Decoder(nn.Module):
 **Current Implementation:**
 - `DenseClassifier`: Simple MLP with softmax output
 
-**Interface:**
-```python
-class Classifier(nn.Module):
-    num_classes: int
-    hidden_dim: int
+**Note:** This will be replaced by latent-only τ-based classification in the RCM-VAE architecture.
 
-    def __call__(self, z):
-        # Returns: class logits
-        ...
-```
-
-**Note:** This will be replaced by latent-only $\tau$-based classification in the RCM-VAE architecture.
+See `src/ssvae/components/classifier.py` for implementation.
 
 ### Priors
 
@@ -410,59 +346,25 @@ Reconstruction  Predictions + Certainty
 
 ---
 
-## Extension Points
+## Extension Philosophy
 
-### Adding a New Prior
+**When to extend vs. configure:**
 
-1. **Implement PriorMode protocol:**
-```python
-class VampPrior:
-    def kl_divergence(self, z_mean, z_logvar, component_logits=None):
-        # Your VampPrior KL computation
-        ...
+| Goal | Approach | Example |
+|------|----------|---------|
+| Change hyperparameter | Configure | Adjust `kl_weight` in config |
+| Add prior distribution | Extend | Implement `PriorMode` protocol |
+| Add regularizer | Extend | Add loss term to `losses.py` |
+| Add architecture | Extend | Register in factory |
+| Add observability | Extend | Create callback class |
 
-    def sample(self, key, latent_dim, num_samples=1):
-        # Sample from learned pseudo-inputs
-        ...
-```
+**Extension patterns:**
+1. **Protocol implementation** - Priors (see [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-prior))
+2. **Factory registration** - Components (see [CONTRIBUTING.md](CONTRIBUTING.md#adding-components))
+3. **Callback hooks** - Observability (see [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-callback))
+4. **Configuration parameters** - Hyperparameters
 
-2. **Register in factory:**
-```python
-# In factory.py
-if config.prior_type == "vamp":
-    prior = VampPrior(...)
-```
-
-3. **No changes to SSVAE class required!**
-
-### Adding a New Encoder
-
-1. **Create encoder module:**
-```python
-class TransformerEncoder(nn.Module):
-    def __call__(self, x, deterministic=True):
-        # Your architecture
-        return z_mean, z_logvar
-```
-
-2. **Register in factory:**
-```python
-if config.encoder_type == "transformer":
-    encoder = TransformerEncoder(...)
-```
-
-### Adding Component-Aware Features
-
-1. **Extend decoder to accept channel:**
-```python
-class ComponentAwareDecoder(nn.Module):
-    def __call__(self, z, channel_embedding, deterministic=True):
-        combined = jnp.concatenate([z, channel_embedding], axis=-1)
-        # Decode combined representation
-        ...
-```
-
-2. **Update factory and SSVAE to pass channel info**
+For step-by-step guides, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
@@ -508,6 +410,6 @@ class ComponentAwareDecoder(nn.Module):
 ## Related Documentation
 
 - **[Conceptual Model](../theory/conceptual_model.md)** - Theoretical foundation and mental model
-- **[Implementation Guide](implementation.md)** - Module-by-module reference
-- **[Extending the System](extending.md)** - Step-by-step tutorials for adding features
-- **[Implementation Roadmap](../theory/implementation_roadmap.md)** - Path to full RCM-VAE system
+- **[Mathematical Specification](../theory/mathematical_specification.md)** - Precise objectives and formulations
+- **[Implementation Roadmap](../theory/implementation_roadmap.md)** - Current status and next steps
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - How to extend and modify the system (step-by-step guides)

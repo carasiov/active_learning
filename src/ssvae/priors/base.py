@@ -29,10 +29,60 @@ class EncoderOutput(NamedTuple):
 
 
 class PriorMode(Protocol):
-    """Protocol defining the interface for all prior modes.
+    """Protocol for implementing custom priors.
 
-    All prior implementations must provide these methods to be compatible
-    with the SSVAE training pipeline.
+    All prior implementations must provide these methods to integrate
+    with the SSVAE training pipeline. This protocol enables pluggable
+    prior distributions without modifying core model code.
+
+    Implementation Guide:
+        To add a custom prior:
+
+        1. Create new file in src/ssvae/priors/ implementing this protocol
+        2. Register in priors/__init__.py: PRIOR_REGISTRY["my_prior"] = MyPrior
+        3. Add config parameters to SSVAEConfig (if needed)
+        4. Write tests in tests/test_my_prior.py
+
+    Required Methods:
+        - compute_kl_terms(): Return dict of KL divergences
+        - compute_reconstruction_loss(): Compute reconstruction loss
+        - get_prior_type(): Return string identifier
+        - requires_component_embeddings(): Whether decoder needs embeddings
+
+    Example Implementation:
+        >>> class MyPrior:
+        ...     def compute_kl_terms(self, encoder_output, config):
+        ...         kl_z = kl_divergence(
+        ...             encoder_output.z_mean,
+        ...             encoder_output.z_log_var,
+        ...             weight=config.kl_weight
+        ...         )
+        ...         return {"kl_z": kl_z}
+        ...
+        ...     def compute_reconstruction_loss(self, x_true, x_recon, encoder_output, config):
+        ...         if config.reconstruction_loss == "mse":
+        ...             return reconstruction_loss_mse(x_true, x_recon, config.recon_weight)
+        ...         elif config.reconstruction_loss == "bce":
+        ...             return reconstruction_loss_bce(x_true, x_recon, config.recon_weight)
+        ...
+        ...     def get_prior_type(self) -> str:
+        ...         return "my_prior"
+        ...
+        ...     def requires_component_embeddings(self) -> bool:
+        ...         return False
+
+    Reference Implementations:
+        - StandardGaussianPrior (src/ssvae/priors/standard.py):
+          Simple N(0,I) prior - good starting point
+        - MixtureGaussianPrior (src/ssvae/priors/mixture.py):
+          Complete mixture prior with regularization - advanced example
+
+    Testing:
+        See tests/test_mixture_prior_regression.py for test patterns.
+
+    See Also:
+        - CONTRIBUTING.md > Adding a Prior
+        - docs/theory/mathematical_specification.md for theory
     """
 
     def compute_kl_terms(

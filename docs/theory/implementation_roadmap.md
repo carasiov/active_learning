@@ -325,9 +325,8 @@ model:
 - **[Mathematical Specification](mathematical_specification.md)** — Precise objectives, training protocol, math formulations
 
 ### Implementation & Code
-- **[System Architecture](../development/architecture.md)** — Design patterns and component structure
-- **[Implementation Guide](../development/implementation.md)** — Module-by-module code reference
-- **[Extending the System](../development/extending.md)** — How to add new features (step-by-step tutorials)
+- **[System Architecture](../development/ARCHITECTURE.md)** — Design patterns and component structure
+- **[Contributing Guide](../development/CONTRIBUTING.md)** — How to extend and modify the system
 
 ### Usage & Experimentation
 - **[Experiment Guide](../../EXPERIMENT_GUIDE.md)** — Configuration → execution → interpretation workflow

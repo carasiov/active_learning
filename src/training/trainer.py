@@ -1,4 +1,107 @@
 from __future__ import annotations
+"""
+Trainer - JAX training loop with early stopping and validation.
+
+This module provides the main training orchestration for SSVAE models.
+It handles data splitting, batching, training/validation loops, early stopping,
+and callback hooks for observability.
+
+Key Features:
+    - Automatic train/validation split (configurable)
+    - Early stopping with patience
+    - Best model checkpointing
+    - Callback system for logging, plotting, diagnostics
+    - KL annealing (for mixture prior KL_c term)
+    - Labeled sample detection and monitoring
+
+Design Philosophy:
+    The Trainer uses pure functional JAX style:
+    - State (SSVAETrainState) is passed explicitly
+    - No hidden mutable state
+    - JIT-compiled train/eval functions passed in
+    - Returns new state rather than modifying in-place
+
+Usage:
+    >>> from training.trainer import Trainer
+    >>> from ssvae import SSVAE, SSVAEConfig
+    >>>
+    >>> # Trainer is used internally by SSVAE.fit()
+    >>> model = SSVAE(input_dim=(28, 28), config=SSVAEConfig())
+    >>> history = model.fit(X_train, y_train, "model.ckpt")
+    >>>
+    >>> # Or use directly for more control
+    >>> trainer = Trainer(config)
+    >>> state, rng, history = trainer.train(
+    ...     state,
+    ...     data=X,
+    ...     labels=y,
+    ...     weights_path="model.ckpt",
+    ...     shuffle_rng=rng,
+    ...     train_step_fn=train_step,
+    ...     eval_metrics_fn=eval_fn,
+    ...     save_fn=checkpoint_manager.save,
+    ...     callbacks=[ConsoleLogger(), CSVExporter("history.csv")]
+    ... )
+
+Training Flow:
+    1. Data Preparation:
+       - Split into train/validation (default 80/20)
+       - Shuffle training data each epoch
+       - Count labeled samples
+
+    2. Training Loop:
+       - For each epoch:
+         a. Shuffle training data
+         b. Train on batches
+         c. Evaluate on both train and val splits
+         d. Update history
+         e. Call callbacks
+         f. Check early stopping
+         g. Save checkpoint if improved
+
+    3. Return:
+       - Updated state with trained parameters
+       - Final RNG state
+       - Complete training history
+
+Early Stopping:
+    Monitors a configurable metric (default: "classification_loss" if labeled,
+    "loss" if unlabeled). Stops training if metric doesn't improve for
+    `patience` epochs.
+
+    Best model is automatically saved to weights_path when improvement occurs.
+
+KL Annealing:
+    If config.kl_c_anneal_epochs > 0, the KL_c term (mixture component KL)
+    is linearly annealed from 0 to kl_c_weight over the specified epochs.
+
+    This helps stabilize early training of mixture priors.
+
+Callbacks:
+    The trainer calls callbacks at three points:
+    - on_train_start: Before any training
+    - on_epoch_end: After each epoch (with metrics)
+    - on_train_end: After training completes
+
+    Common callbacks:
+    - ConsoleLogger: Print metrics table
+    - CSVExporter: Save history to CSV
+    - LossCurvePlotter: Generate loss plots
+    - MixtureHistoryTracker: Track mixture dynamics
+
+Data Structures:
+    - DataSplits: Train/val split with metadata
+    - TrainingSetup: Configuration for training session
+    - EarlyStoppingTracker: Tracks best metric and patience
+
+    These are dataclasses for type safety and clarity.
+
+See Also:
+    - Training state: src/training/train_state.py
+    - Loss functions: src/training/losses.py
+    - Callbacks: src/callbacks/
+    - Interactive training: src/training/interactive_trainer.py
+"""
 
 from dataclasses import dataclass
 from pathlib import Path

@@ -75,9 +75,9 @@ active_learning_showcase/
 - Status → [Implementation Roadmap](docs/theory/implementation_roadmap.md) - Current implementation vs. full vision
 
 **💻 I'm a developer extending the codebase:**
-- Start → [System Architecture](docs/development/architecture.md) - Design patterns and component structure
-- Then → [Implementation Guide](docs/development/implementation.md) - Module-by-module reference
-- How-to → [Extending the System](docs/development/extending.md) - Step-by-step tutorials for adding features
+- Start → [System Architecture](docs/development/architecture.md) - Design rationale
+- Then → [Contributing Guide](docs/development/CONTRIBUTING.md) - How to make changes
+- Reference → Code docstrings (start with `src/ssvae/models.py`)
 
 **🔬 I'm running experiments:**
 - Start → [Experiment Guide](experiments/README.md) - Primary workflow (configuration → execution → interpretation)

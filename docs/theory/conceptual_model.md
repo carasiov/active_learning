@@ -94,4 +94,5 @@ We freeze the core symbols: $c$ (channel), $z$ (latent), $r$ (responsibilities),
 
 - **[Mathematical Specification](mathematical_specification.md)** - Precise objectives, training protocol, and mathematical formulations
 - **[Implementation Roadmap](implementation_roadmap.md)** - Current implementation status and path to full system
-- **[System Architecture](../development/architecture.md)** - Design patterns and component structure in the codebase
+- **[System Architecture](../development/ARCHITECTURE.md)** - Design patterns and component structure in the codebase
+- **[Contributing Guide](../development/CONTRIBUTING.md)** - How to extend and modify the system

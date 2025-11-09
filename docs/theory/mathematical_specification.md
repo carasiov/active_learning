@@ -230,4 +230,5 @@ Default: shared trunk with small per-channel heads for $q(z\mid x,c)$. Heavy K-b
 
 - **[Conceptual Model](conceptual_model.md)** - High-level intuition and stable mental model
 - **[Implementation Roadmap](implementation_roadmap.md)** - Current implementation status and next steps
-- **[System Architecture](../development/architecture.md)** - Design patterns and component structure in the codebase
+- **[System Architecture](../development/ARCHITECTURE.md)** - Design patterns and component structure in the codebase
+- **[Contributing Guide](../development/CONTRIBUTING.md)** - How to extend and modify the system

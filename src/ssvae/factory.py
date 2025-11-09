@@ -2,7 +2,73 @@
 SSVAEFactory - Pure factory for creating model components.
 
 This module separates model initialization from the SSVAE class,
-making it easier to test and reuse components.
+following the Factory Pattern to centralize component creation,
+validation, and wiring.
+
+Purpose:
+    - Create compatible encoder/decoder/classifier components
+    - Initialize parameters with correct shapes
+    - Validate configuration consistency
+    - Build train/eval functions with proper JIT compilation
+    - Apply weight decay masking selectively
+
+Benefits:
+    - Single source of truth for component creation
+    - Easy to test in isolation
+    - Reusable across different model types
+    - Early validation catches configuration errors
+
+Usage:
+    Typically called by SSVAE.__init__, but can be used standalone:
+
+    >>> from ssvae.factory import SSVAEFactory
+    >>> from ssvae.config import SSVAEConfig
+    >>>
+    >>> config = SSVAEConfig(latent_dim=2, prior_type="mixture")
+    >>> network, state, train_fn, eval_fn, rng, prior = SSVAEFactory.create_model(
+    ...     input_dim=(28, 28),
+    ...     config=config
+    ... )
+    >>>
+    >>> # Now you have everything needed for training
+    >>> state, rng, history = trainer.train(
+    ...     state, data, labels, train_step_fn=train_fn, ...
+    ... )
+
+Component Creation:
+    The factory handles these creation tasks:
+
+    1. Build encoder based on config.encoder_type
+    2. Build decoder based on config.decoder_type
+    3. Build classifier
+    4. Create prior instance (StandardGaussianPrior or MixtureGaussianPrior)
+    5. Initialize parameters with dummy input
+    6. Create optimizer with weight decay masking
+    7. Build JIT-compiled train/eval functions
+    8. Return complete bundle ready for training
+
+Weight Decay Masking:
+    The factory automatically excludes certain parameters from weight decay:
+    - Bias terms (name contains "bias")
+    - Scale terms (name contains "scale")
+    - Prior parameters (pi_logits, component_embeddings)
+
+    See _make_weight_decay_mask() for implementation.
+
+Extension:
+    To add a new component type:
+    1. Create the component class (e.g., in components/)
+    2. Add case to factory methods (e.g., in create_encoder)
+    3. Add config parameter (e.g., encoder_type="my_encoder")
+    4. Factory handles the rest automatically
+
+    See CONTRIBUTING.md > Adding Components for guide.
+
+See Also:
+    - Component implementations: src/ssvae/components/
+    - Prior implementations: src/ssvae/priors/
+    - Configuration: src/ssvae/config.py
+    - Architecture: docs/development/ARCHITECTURE.md
 """
 from __future__ import annotations
 

@@ -63,7 +63,88 @@ INFORMATIVE_HPARAMETERS = (
 
 @dataclass
 class SSVAEConfig:
-    """Hyperparameters controlling the SSVAE architecture and training loop.
+    """Configuration for SSVAE models.
+
+    This dataclass contains all hyperparameters for model architecture,
+    training, and regularization.
+
+    Quick Configurations:
+        # Standard VAE (baseline)
+        >>> config = SSVAEConfig(prior_type="standard")
+
+        # Mixture VAE (recommended for semi-supervised)
+        >>> config = SSVAEConfig(
+        ...     prior_type="mixture",
+        ...     num_components=50,
+        ...     use_component_aware_decoder=True,
+        ...     component_diversity_weight=-0.05  # Encourage diversity
+        ... )
+
+        # High-dimensional latent space
+        >>> config = SSVAEConfig(
+        ...     latent_dim=16,
+        ...     hidden_dims=(512, 256, 128)
+        ... )
+
+        # Custom loss weights
+        >>> config = SSVAEConfig(
+        ...     recon_weight=500.0,  # MSE scale
+        ...     kl_weight=5.0,
+        ...     kl_c_weight=0.001    # Mixture component KL
+        ... )
+
+    Reconstruction Loss Guide:
+        The reconstruction_loss parameter affects the appropriate recon_weight:
+
+        - "mse" (Mean Squared Error):
+          * For: Natural images, grayscale images
+          * Typical weight: 500.0
+          * Treats pixels as continuous Gaussian variables
+
+        - "bce" (Binary Cross-Entropy):
+          * For: Binary images (e.g., binarized MNIST)
+          * Typical weight: 1.0
+          * Treats pixels as Bernoulli variables
+          * Already pixel-wise summed, so needs lower weight
+
+    Mixture Prior Regularization:
+        When using prior_type="mixture", several regularization options:
+
+        - kl_c_weight: Weight on KL(q(c|x) || π)
+          * Default: 1.0
+          * Lower values (0.001) allow more flexible component usage
+
+        - component_diversity_weight: Entropy-based usage diversity
+          * NEGATIVE values encourage diversity (recommended: -0.05)
+          * POSITIVE values encourage sparsity (may cause collapse)
+          * Zero disables this regularization
+
+        - dirichlet_alpha: Prior on mixture weights π
+          * None disables (default)
+          * Values < 1.0 encourage sparse π
+          * Values > 1.0 encourage uniform π
+
+    Component-Aware Decoder:
+        - use_component_aware_decoder: Enables separate z and e_c pathways
+        - component_embedding_dim: Size of component embeddings (default: latent_dim)
+        - Recommended: Keep embeddings small (4-16) to not overwhelm z information
+
+    Training Configuration:
+        - max_epochs: Maximum epochs (early stopping may end sooner)
+        - patience: Early stopping patience in epochs
+        - monitor_metric: Metric to monitor ("loss" or "classification_loss")
+        - val_split: Fraction of data reserved for validation (default: 0.1)
+
+    Architecture Options:
+        - encoder_type: "dense" or "conv"
+        - decoder_type: "dense" or "conv"
+        - hidden_dims: Layer sizes for dense architecture
+        - Conv architecture is hardcoded for MNIST (28x28)
+
+    See Also:
+        - Mathematical details: docs/theory/mathematical_specification.md
+        - Implementation: docs/development/ARCHITECTURE.md
+        - Usage examples: src/ssvae/models.py module docstring
 
     Attributes:
         num_classes: Number of output classes for the classifier head.

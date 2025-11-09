@@ -1,13 +1,82 @@
 """
 Refactored SSVAE - Cleaner architecture using focused components.
 
-This is the new implementation that delegates to:
-- SSVAEFactory: Model creation
-- CheckpointManager: Save/load
-- DiagnosticsCollector: Diagnostics generation
-- Trainer: Training loop
+This module provides the main user-facing interface for the Semi-Supervised
+Variational Autoencoder (SSVAE) model.
 
-Once validated, this will replace the original models.py.
+Quick Start:
+    >>> from ssvae import SSVAE, SSVAEConfig
+    >>>
+    >>> # Create model with mixture prior (recommended)
+    >>> config = SSVAEConfig(
+    ...     latent_dim=2,
+    ...     prior_type="mixture",
+    ...     num_components=50
+    ... )
+    >>> model = SSVAE(input_dim=(28, 28), config=config)
+    >>>
+    >>> # Train with semi-supervised labels (NaN = unlabeled)
+    >>> import numpy as np
+    >>> labels = np.array([0, 1, np.nan, np.nan, 2, ...])  # Mix labeled/unlabeled
+    >>> history = model.fit(X_train, labels, "model.ckpt")
+    >>>
+    >>> # Inference
+    >>> z, recon, predictions, certainty = model.predict(X_test)
+
+Architecture:
+    The SSVAE delegates to several focused components:
+
+    - SSVAEFactory: Creates model components with validation
+    - CheckpointManager: Handles state persistence
+    - DiagnosticsCollector: Generates mixture prior statistics
+    - Trainer: Orchestrates training loop with early stopping
+    - Callbacks: Extensible training observability
+
+    This separation makes the codebase easier to test, maintain, and extend.
+
+    For design rationale, see docs/development/ARCHITECTURE.md
+
+Configuration:
+    All hyperparameters are controlled via SSVAEConfig:
+
+    >>> # Standard VAE (simple baseline)
+    >>> config = SSVAEConfig(prior_type="standard")
+    >>>
+    >>> # Mixture VAE with custom architecture
+    >>> config = SSVAEConfig(
+    ...     latent_dim=16,
+    ...     prior_type="mixture",
+    ...     num_components=100,
+    ...     hidden_dims=(512, 256, 128),
+    ...     kl_c_weight=0.5,
+    ...     component_diversity_weight=-0.05  # Negative = encourage diversity
+    ... )
+
+    See src/ssvae/config.py for all parameters with descriptions.
+
+Training Details:
+    - Semi-supervised: Pass NaN for unlabeled samples in labels array
+    - Early stopping: Monitors validation loss (configurable via monitor_metric)
+    - Checkpointing: Saves best model to weights_path
+    - Callbacks: Logging, plotting, mixture history tracking
+
+    For training internals, see src/training/trainer.py
+
+Extending:
+    Common extension points:
+    - New priors: Implement PriorMode protocol (see priors/base.py)
+    - New components: Add to components/ and register in factory
+    - New losses: Add to training/losses.py
+    - New callbacks: Inherit from TrainingCallback
+
+    See CONTRIBUTING.md for step-by-step guides.
+
+See Also:
+    - Public API: SSVAE class (this file)
+    - Configuration: SSVAEConfig (src/ssvae/config.py)
+    - Architecture: docs/development/ARCHITECTURE.md
+    - Contributing: CONTRIBUTING.md
+    - Theory: docs/theory/conceptual_model.md
 """
 from __future__ import annotations
 
