@@ -1,0 +1,49 @@
+# ============================================================================
+# Ablation: Reward component usage entropy (5k / 50 labels)
+# ============================================================================
+
+experiment:
+  name: "mixture_ablation_entropy_reward"
+  description: "Mild KL_c with Dirichlet alpha=5 and negative usage_sparsity_weight to encourage spread"
+  tags: ["ablation", "parsimony", "entropy-reward"]
+
+data:
+  num_samples: 5000
+  num_labeled: 50
+  seed: 42
+
+model:
+  encoder_type: "dense"
+  decoder_type: "dense"
+  classifier_type: "dense"
+  latent_dim: 2
+  hidden_dims: [256, 128, 64]
+
+  reconstruction_loss: "bce"
+  recon_weight: 1.0
+  kl_weight: 0.50
+  label_weight: 1.0
+
+  prior_type: "mixture"
+  num_components: 10
+  kl_c_weight: 0.001
+  kl_c_anneal_epochs: 0
+
+  dirichlet_alpha: 5.0
+  dirichlet_weight: 1.0
+  usage_sparsity_weight: -0.05   # reward higher usage entropy
+
+  mixture_history_log_every: 1
+
+  learning_rate: 0.001
+  batch_size: 128
+  max_epochs: 100
+  patience: 30
+  val_split: 0.1
+  random_seed: 42
+
+  grad_clip_norm: 1.0
+  weight_decay: 0.0001
+  dropout_rate: 0.2
+
+  monitor_metric: "loss"

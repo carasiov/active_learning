@@ -81,6 +81,8 @@ class DiagnosticsCollector:
         usage_sum: np.ndarray | None = None
         entropy_sum = 0.0
         count = 0
+        component_label_counts: np.ndarray | None = None
+        num_classes = int(self.config.num_classes)
 
         z_records: List[np.ndarray] = []
         resp_records: List[np.ndarray] = []
@@ -114,6 +116,20 @@ class DiagnosticsCollector:
             entropy_sum += entropy_batch.sum()
             count += resp_np.shape[0]
 
+            # Accumulate component-label statistics (ignore unlabeled samples)
+            batch_labels = labels[start:end]
+            if component_label_counts is None:
+                num_components = resp_np.shape[1]
+                component_label_counts = np.zeros((num_components, num_classes), dtype=np.float64)
+            valid_mask = ~np.isnan(batch_labels)
+            if valid_mask.any():
+                label_int = batch_labels[valid_mask].astype(np.int32)
+                label_int = np.clip(label_int, 0, num_classes - 1)
+                resp_valid = resp_np[valid_mask]
+                one_hot = np.zeros((label_int.size, num_classes), dtype=np.float64)
+                one_hot[np.arange(label_int.size), label_int] = 1.0
+                component_label_counts += resp_valid.T @ one_hot
+
             # Collect latent space data (for visualization)
             z_records.append(np.asarray(z_mean))
             resp_records.append(resp_np)
@@ -138,6 +154,20 @@ class DiagnosticsCollector:
 
         if pi_array is not None:
             np.save(output_dir / "pi.npy", pi_array.astype(np.float32))
+
+        if component_label_counts is not None:
+            component_label_counts = component_label_counts.astype(np.float32)
+            np.save(output_dir / "component_label_counts.npy", component_label_counts)
+            csv_path = output_dir / "component_label_counts.csv"
+            totals = component_label_counts.sum(axis=1, keepdims=True)
+            with open(csv_path, "w", encoding="utf-8") as f:
+                f.write("component,label,count,proportion\n")
+                for comp_idx in range(component_label_counts.shape[0]):
+                    total = totals[comp_idx, 0]
+                    for label_idx in range(num_classes):
+                        count_val = component_label_counts[comp_idx, label_idx]
+                        proportion = (count_val / total) if total > 0 else 0.0
+                        f.write(f"{comp_idx},{label_idx},{count_val:.6f},{proportion:.6f}\n")
 
         # Compute derived metrics
         eps = 1e-8
@@ -170,11 +200,25 @@ class DiagnosticsCollector:
             )
 
         # Return computed metrics
-        return {
+        metrics = {
             "K_eff": K_eff,
             "active_components": active_components,
             "responsibility_confidence_mean": responsibility_confidence_mean,
         }
+
+        if component_label_counts is not None:
+            totals = component_label_counts.sum(axis=1)
+            majority_labels = component_label_counts.argmax(axis=1).astype(int)
+            majority_conf = np.divide(
+                component_label_counts[np.arange(component_label_counts.shape[0]), majority_labels],
+                np.maximum(totals, eps),
+                out=np.zeros_like(totals),
+                where=totals > 0,
+            )
+            metrics["component_majority_labels"] = majority_labels.tolist()
+            metrics["component_majority_confidence"] = majority_conf.tolist()
+
+        return metrics
 
     @property
     def last_output_dir(self) -> Path | None:

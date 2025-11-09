@@ -146,6 +146,10 @@ def train_model(model_config: dict, X_train, y_train, y_true, output_dir: Path):
             mixture_summary['K_eff'] = mixture_metrics.get('K_eff', 0.0)
             mixture_summary['active_components'] = mixture_metrics.get('active_components', 0)
             mixture_summary['responsibility_confidence_mean'] = mixture_metrics.get('responsibility_confidence_mean', 0.0)
+            if "component_majority_labels" in mixture_metrics:
+                mixture_summary['component_majority_labels'] = mixture_metrics["component_majority_labels"]
+            if "component_majority_confidence" in mixture_metrics:
+                mixture_summary['component_majority_confidence'] = mixture_metrics["component_majority_confidence"]
 
         # Add π statistics if available
         diag_dir = model.last_diagnostics_dir
