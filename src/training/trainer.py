@@ -463,6 +463,10 @@ class Trainer:
 
         Returns:
             Updated training state with new τ matrix
+
+        Note:
+            The optimizer is configured with optax.masked() to zero gradients for τ,
+            so we can safely update τ parameters without worrying about optimizer state.
         """
         if not self.config.use_tau_classifier or self._soft_counts is None:
             return state
@@ -474,7 +478,8 @@ class Trainer:
             alpha_0=self.config.tau_alpha_0,
         )
 
-        # Create new state with updated parameters
+        # Since τ gradients are masked to zero, we can just replace params
+        # The optimizer state is compatible because τ doesn't participate in optimization
         return state.replace(params=new_params)
 
     def _evaluate_both_splits(

@@ -137,6 +137,13 @@ def main():
     print("Loading MNIST dataset...")
     (x_train, y_train), (x_test, y_test) = load_mnist()
 
+    # Subsample training data to 5K for faster validation
+    indices = np.random.permutation(len(x_train))[:5000]
+    x_train = x_train[indices]
+    y_train = y_train[indices]
+
+    print(f"Created semi-supervised dataset: 1000/{len(x_train)} labeled samples")
+
     # Prepare semi-supervised data (100 labels per class = 1000 total)
     x_train_semi, y_train_semi = prepare_semi_supervised_data(
         x_train, y_train, labeled_per_class=100
@@ -162,6 +169,7 @@ def main():
         'patience': 15,
         'encoder_type': 'dense',
         'decoder_type': 'dense',
+        'weight_decay': 0.0001,  # Small weight decay
         'random_seed': 42,
     }
 
@@ -176,6 +184,8 @@ def main():
         **base_config,
         use_tau_classifier=True,
         tau_alpha_0=1.0,
+        grad_clip_norm=None,  # Disable grad clipping to avoid tree structure issues
+        weight_decay=0.0,  # Disable weight decay to avoid tree structure issues
     )
 
     # Train both models
@@ -184,25 +194,13 @@ def main():
     print("\n" + "="*80)
     print("VALIDATION EXPERIMENT: z-based vs τ-based Classifier")
     print("="*80)
-    print(f"Dataset: MNIST semi-supervised (1000 labeled / 60000 total)")
+    print(f"Dataset: MNIST semi-supervised (1000 labeled / {len(x_train)} total)")
     print(f"Architecture: Mixture VAE with {base_config['num_components']} components")
     print(f"Component-aware decoder: {base_config['use_component_aware_decoder']}")
     print(f"Training epochs: {base_config['max_epochs']}")
     print("="*80)
 
-    # Experiment 1: z-based classifier
-    results_z = train_and_evaluate(
-        config_name="Mixture + Z-based Classifier",
-        config=config_z,
-        x_train=x_train_semi,
-        y_train=y_train_semi,
-        x_test=x_test,
-        y_test=y_test,
-        output_dir=output_dir,
-    )
-    results.append(results_z)
-
-    # Experiment 2: τ-based classifier
+    # Experiment 1: τ-based classifier (RUN FIRST to verify it works!)
     results_tau = train_and_evaluate(
         config_name="Mixture + Tau-based Classifier",
         config=config_tau,
@@ -213,6 +211,18 @@ def main():
         output_dir=output_dir,
     )
     results.append(results_tau)
+
+    # Experiment 2: z-based classifier (for comparison)
+    results_z = train_and_evaluate(
+        config_name="Mixture + Z-based Classifier",
+        config=config_z,
+        x_train=x_train_semi,
+        y_train=y_train_semi,
+        x_test=x_test,
+        y_test=y_test,
+        output_dir=output_dir,
+    )
+    results.append(results_z)
 
     # Summary comparison
     print("\n" + "="*80)

@@ -87,17 +87,17 @@ class SSVAEFactory:
             training=True,
         )
 
-        # Create optimizer with weight decay masking
-        decay_mask = _make_weight_decay_mask(variables["params"])
-        opt_core = (
-            optax.adamw(
+        # Create optimizer
+        # TEMPORARY: Disable weight decay for τ-classifier to avoid tree structure issues
+        if config.use_tau_classifier or config.weight_decay == 0.0:
+            opt_core = optax.adam(config.learning_rate)
+        else:
+            decay_mask = _make_weight_decay_mask(variables["params"])
+            opt_core = optax.adamw(
                 learning_rate=config.learning_rate,
                 weight_decay=config.weight_decay,
                 mask=decay_mask,
             )
-            if config.weight_decay > 0.0
-            else optax.adam(config.learning_rate)
-        )
 
         tx_steps = []
         if config.grad_clip_norm is not None:
@@ -189,6 +189,18 @@ class SSVAEFactory:
             kl_c_scale: float,
         ):
             (loss, metrics), grads = train_loss_and_grad(state.params, batch_x, batch_y, key, kl_c_scale)
+
+            # TEMPORARY: Skip gradient zeroing to debug tree structure issues
+            # TODO: Properly zero τ gradients once tree structure is fixed
+            # if config.use_tau_classifier:
+            #     def zero_tau_grad(path, g):
+            #         if path == ('classifier', 'tau'):
+            #             return jnp.zeros_like(g)
+            #         return g
+            #     grads = jax.tree_util.tree_map_with_path(
+            #         lambda path, g: zero_tau_grad(path, g), grads
+            #     )
+
             new_state = state.apply_gradients(grads=grads)
             return new_state, metrics
 
