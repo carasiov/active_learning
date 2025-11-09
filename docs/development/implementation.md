@@ -737,7 +737,7 @@ preds = trainer.predict(X_test)
 - `kl_divergence()` - Standard Gaussian KL
 - `categorical_kl()` - Component assignment KL
 - `dirichlet_map_penalty()` - Dirichlet prior regularization
-- `usage_sparsity_penalty()` - Channel usage sparsity
+- `usage_sparsity_penalty()` - Component diversity regularization
 - `classification_loss()` - Cross-entropy on labeled samples
 
 **Main Loss Function:**
@@ -770,7 +770,7 @@ Protocol-based loss computation that delegates to priors for their specific logi
     'kl_loss': kl_z + kl_c,
     'classification_loss': cls_unweighted,
     'weighted_classification_loss': cls_weighted,
-    'usage_sparsity_loss': sparsity,
+    'component_diversity': diversity,
     'component_entropy': entropy,
     'pi_entropy': pi_entropy,
     'dirichlet_penalty': dirichlet,

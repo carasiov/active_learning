@@ -46,7 +46,7 @@ INFORMATIVE_HPARAMETERS = (
     "kl_c_weight",
     "dirichlet_alpha",
     "dirichlet_weight",
-    "component_diversity_weight",  # Renamed from usage_sparsity_weight
+    "component_diversity_weight",
     "weight_decay",
     "dropout_rate",
     "monitor_metric",
@@ -105,7 +105,6 @@ class SSVAEConfig:
             - POSITIVE: Discourage diversity (causes mode collapse)
         kl_c_anneal_epochs: If >0, linearly ramp kl_c_weight from 0 to its configured value across this many epochs.
         component_kl_weight: Deprecated alias for kl_c_weight kept for backward compatibility.
-        usage_sparsity_weight: Deprecated alias for component_diversity_weight.
         component_embedding_dim: Dimensionality of component embeddings (default: same as latent_dim).
             Small values (4-16) recommended to avoid overwhelming latent information.
         use_component_aware_decoder: If True, use component-aware decoder architecture that processes
@@ -146,8 +145,7 @@ class SSVAEConfig:
     kl_c_weight: float = 1.0
     dirichlet_alpha: float | None = None
     dirichlet_weight: float = 1.0
-    component_diversity_weight: float = 0.0  # Primary name (negative = diversity reward)
-    usage_sparsity_weight: float | None = None  # Deprecated alias
+    component_diversity_weight: float = 0.0
     kl_c_anneal_epochs: int = 0
     mixture_history_log_every: int = 1  # Track π and usage every N epochs
     component_embedding_dim: int | None = None  # Defaults to latent_dim if None
@@ -171,19 +169,6 @@ class SSVAEConfig:
                 self.kl_c_weight = float(self.component_kl_weight)
         # Mirror into legacy field for any downstream code still reading it.
         self.component_kl_weight = float(self.kl_c_weight)
-
-        # Backward compatibility: usage_sparsity_weight → component_diversity_weight
-        if self.usage_sparsity_weight is not None:
-            default_diversity = SSVAEConfig.__dataclass_fields__["component_diversity_weight"].default
-            if self.component_diversity_weight == default_diversity:
-                self.component_diversity_weight = float(self.usage_sparsity_weight)
-                import warnings
-                warnings.warn(
-                    "Parameter 'usage_sparsity_weight' is deprecated. Use 'component_diversity_weight'.",
-                    DeprecationWarning,
-                    stacklevel=2
-                )
-        self.usage_sparsity_weight = float(self.component_diversity_weight)
 
         if self.kl_c_anneal_epochs < 0:
             raise ValueError("kl_c_anneal_epochs must be >= 0")

@@ -252,7 +252,7 @@ def compute_loss_and_metrics_v2(
     # Assemble total loss
     total_kl = sum(
         v for k, v in kl_terms.items()
-        if k in ("kl_z", "kl_c", "dirichlet_penalty", "usage_sparsity")
+        if k in ("kl_z", "kl_c", "dirichlet_penalty", "component_diversity")
     )
     total = recon_loss + total_kl + cls_loss_weighted
 
@@ -264,13 +264,9 @@ def compute_loss_and_metrics_v2(
         "weighted_classification_loss": cls_loss_weighted,
     }
 
-    # Add all KL terms from prior with backward-compatible names
+    # Add all KL terms from prior
     for key, value in kl_terms.items():
-        # Map new names to old names for backward compatibility with Trainer
-        if key == "usage_sparsity":
-            metrics["usage_sparsity_loss"] = value
-        else:
-            metrics[key] = value
+        metrics[key] = value
 
     # Ensure all expected keys exist (Trainer expects them all)
     zero = jnp.array(0.0, dtype=recon_loss.dtype)
@@ -280,8 +276,8 @@ def compute_loss_and_metrics_v2(
         metrics["kl_c"] = zero
     if "dirichlet_penalty" not in metrics:
         metrics["dirichlet_penalty"] = zero
-    if "usage_sparsity_loss" not in metrics:
-        metrics["usage_sparsity_loss"] = zero
+    if "component_diversity" not in metrics:
+        metrics["component_diversity"] = zero
     if "component_entropy" not in metrics:
         metrics["component_entropy"] = zero
     if "pi_entropy" not in metrics:

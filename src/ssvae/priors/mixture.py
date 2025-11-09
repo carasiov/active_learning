@@ -38,7 +38,7 @@ class MixtureGaussianPrior:
         >>> prior = MixtureGaussianPrior()
         >>> kl_terms = prior.compute_kl_terms(encoder_output, config)
         >>> kl_terms.keys()
-        dict_keys(['kl_z', 'kl_c', 'dirichlet_penalty', 'usage_sparsity'])
+        dict_keys(['kl_z', 'kl_c', 'dirichlet_penalty', 'component_diversity'])
     """
 
     def compute_kl_terms(
@@ -59,7 +59,7 @@ class MixtureGaussianPrior:
                 - kl_z: KL(q(z|x,c) || N(0,I))
                 - kl_c: KL(q(c|x) || π)
                 - dirichlet_penalty: (optional) Dirichlet MAP on π
-                - usage_sparsity: (optional) entropy penalty on component usage
+                - component_diversity: (optional) entropy-based diversity regularization
                 - component_entropy: (diagnostic) H[q(c|x)]
                 - pi_entropy: (diagnostic) H[π]
         """
@@ -94,7 +94,7 @@ class MixtureGaussianPrior:
 
         diversity_penalty = usage_sparsity_penalty(
             responsibilities,
-            weight=config.component_diversity_weight,  # Renamed from usage_sparsity_weight
+            weight=config.component_diversity_weight,
         )
 
         # Diagnostic metrics (entropy calculations)
@@ -109,8 +109,7 @@ class MixtureGaussianPrior:
             "kl_z": kl_z,
             "kl_c": kl_c,
             "dirichlet_penalty": dirichlet_penalty,
-            "component_diversity": diversity_penalty,  # Renamed from usage_sparsity
-            "usage_sparsity": diversity_penalty,  # Deprecated alias (backward compat)
+            "component_diversity": diversity_penalty,
             "component_entropy": component_entropy,
             "pi_entropy": pi_entropy,
         }
