@@ -46,7 +46,7 @@ INFORMATIVE_HPARAMETERS = (
     "kl_c_weight",
     "dirichlet_alpha",
     "dirichlet_weight",
-    "usage_sparsity_weight",
+    "component_diversity_weight",
     "weight_decay",
     "dropout_rate",
     "monitor_metric",
@@ -55,6 +55,10 @@ INFORMATIVE_HPARAMETERS = (
     "prior_type",
     "num_components",
     "kl_c_anneal_epochs",
+    "component_embedding_dim",
+    "use_component_aware_decoder",
+    "top_m_gating",
+    "soft_embedding_warmup_epochs",
 )
 
 @dataclass
@@ -96,9 +100,19 @@ class SSVAEConfig:
         kl_c_weight: Scaling factor applied to KL(q(c|x) || π) when mixture prior is active.
         dirichlet_alpha: Optional scalar prior strength for Dirichlet-MAP regularization on π.
         dirichlet_weight: Scaling applied to the Dirichlet-MAP penalty (no effect when alpha is None).
-        usage_sparsity_weight: Scaling factor for empirical component usage sparsity penalty.
+        component_diversity_weight: Component usage diversity regularization. Loss: λ × (-H[p̂_c])
+            - NEGATIVE (e.g., -0.05): Encourage diversity - RECOMMENDED
+            - POSITIVE: Discourage diversity (causes mode collapse)
         kl_c_anneal_epochs: If >0, linearly ramp kl_c_weight from 0 to its configured value across this many epochs.
         component_kl_weight: Deprecated alias for kl_c_weight kept for backward compatibility.
+        component_embedding_dim: Dimensionality of component embeddings (default: same as latent_dim).
+            Small values (4-16) recommended to avoid overwhelming latent information.
+        use_component_aware_decoder: If True, use component-aware decoder architecture that processes
+            z and component embeddings separately (recommended for mixture prior).
+        top_m_gating: If >0, compute reconstruction using only top-M components by responsibility.
+            Reduces computation for large K. Default 0 means use all components.
+        soft_embedding_warmup_epochs: If >0, use soft-weighted component embeddings for this many
+            initial epochs before switching to hard sampling. Helps early training stability.
     """
 
     num_classes: int = 10
@@ -131,9 +145,13 @@ class SSVAEConfig:
     kl_c_weight: float = 1.0
     dirichlet_alpha: float | None = None
     dirichlet_weight: float = 1.0
-    usage_sparsity_weight: float = 0.0
+    component_diversity_weight: float = 0.0
     kl_c_anneal_epochs: int = 0
     mixture_history_log_every: int = 1  # Track π and usage every N epochs
+    component_embedding_dim: int | None = None  # Defaults to latent_dim if None
+    use_component_aware_decoder: bool = True  # Enable by default for mixture prior
+    top_m_gating: int = 0  # 0 means use all components; >0 uses top-M
+    soft_embedding_warmup_epochs: int = 0  # 0 means no warmup
 
     def __post_init__(self):
         """Validate configuration after initialization."""
@@ -151,10 +169,23 @@ class SSVAEConfig:
                 self.kl_c_weight = float(self.component_kl_weight)
         # Mirror into legacy field for any downstream code still reading it.
         self.component_kl_weight = float(self.kl_c_weight)
+
         if self.kl_c_anneal_epochs < 0:
             raise ValueError("kl_c_anneal_epochs must be >= 0")
         if self.dirichlet_alpha is not None and self.dirichlet_alpha <= 0.0:
             raise ValueError("dirichlet_alpha must be positive when provided")
+
+        # Component-aware decoder defaults and validation
+        if self.component_embedding_dim is None:
+            self.component_embedding_dim = self.latent_dim
+        if self.component_embedding_dim <= 0:
+            raise ValueError("component_embedding_dim must be positive")
+        if self.top_m_gating < 0:
+            raise ValueError("top_m_gating must be >= 0")
+        if self.top_m_gating > self.num_components:
+            raise ValueError(f"top_m_gating ({self.top_m_gating}) cannot exceed num_components ({self.num_components})")
+        if self.soft_embedding_warmup_epochs < 0:
+            raise ValueError("soft_embedding_warmup_epochs must be >= 0")
 
     def get_informative_hyperparameters(self) -> Dict[str, object]:
         return {name: getattr(self, name) for name in INFORMATIVE_HPARAMETERS}

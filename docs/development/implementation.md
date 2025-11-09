@@ -256,7 +256,7 @@ reconstruction_loss: str = "bce"         # "bce" or "mse"
 
 **Regularization:**
 ```python
-usage_sparsity_weight: float = 0.0       # Channel usage sparsity
+component_diversity_weight: float = 0.0  # Component usage diversity (negative = reward)
 dirichlet_alpha: Optional[float] = None  # Dirichlet prior concentration
 dirichlet_weight: float = 1.0            # Dirichlet prior weight
 ```
@@ -737,7 +737,7 @@ preds = trainer.predict(X_test)
 - `kl_divergence()` - Standard Gaussian KL
 - `categorical_kl()` - Component assignment KL
 - `dirichlet_map_penalty()` - Dirichlet prior regularization
-- `usage_sparsity_penalty()` - Channel usage sparsity
+- `usage_sparsity_penalty()` - Component diversity regularization
 - `classification_loss()` - Cross-entropy on labeled samples
 
 **Main Loss Function:**
@@ -770,7 +770,7 @@ Protocol-based loss computation that delegates to priors for their specific logi
     'kl_loss': kl_z + kl_c,
     'classification_loss': cls_unweighted,
     'weighted_classification_loss': cls_weighted,
-    'usage_sparsity_loss': sparsity,
+    'component_diversity': diversity,
     'component_entropy': entropy,
     'pi_entropy': pi_entropy,
     'dirichlet_penalty': dirichlet,
@@ -957,7 +957,7 @@ config = SSVAEConfig(
     prior_type="mixture",
     num_components=20,
     kl_c_weight=0.5,
-    usage_sparsity_weight=1.0
+    component_diversity_weight=1.0
 )
 ```
 

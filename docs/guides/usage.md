@@ -166,7 +166,7 @@ num_components: 10
 kl_c_weight: 1.0              # weight on KL(q(c|x)||π)
 dirichlet_alpha: 0.5          # optional; encourages sparse π for α<1
 dirichlet_weight: 1.0         # scales Dirichlet MAP term
-usage_sparsity_weight: 0.0    # entropy-like penalty on empirical usage
+component_diversity_weight: 0.0    # entropy-like penalty on empirical usage (negative = diversity reward)
 kl_c_anneal_epochs: 0         # 0 = off; else linear warm-up
 ```
 

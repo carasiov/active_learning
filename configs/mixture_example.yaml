@@ -1,7 +1,15 @@
 # ============================================================================
-# Mixture Prior Example Configuration
+# Mixture Prior Example Configuration with Component-Aware Decoder
 # ============================================================================
-# Demonstrates mixture prior with all tracking features enabled
+# Demonstrates mixture prior with component-aware decoder for functional
+# specialization. Components can now develop distinct decoding strategies
+# rather than just serving as soft labels.
+#
+# Key Features:
+# - Component-aware decoder with separate z and e_c processing
+# - Usage sparsity regularization (entropy-based diversity)
+# - Full mixture diagnostics tracking (π, usage, entropies)
+#
 # Usage:
 #   python scripts/run_experiment.py --config configs/mixture_example.yaml
 # ============================================================================
@@ -33,13 +41,19 @@ model:
   # Mixture prior
   prior_type: "mixture"
   num_components: 10
-  kl_c_weight: 0.0005
+  kl_c_weight: 0.001  
   kl_c_anneal_epochs: 0
 
-  # Regularization for mixture
-  dirichlet_alpha: 1.0
+  # Component-aware decoder (NEW - enables functional specialization)
+  use_component_aware_decoder: true  # Separate processing for z and component embeddings
+  component_embedding_dim: 8  # Small dim (4-16 recommended) to avoid overwhelming latent info
+  top_m_gating: 0  # 0 = use all components; set to 5 for top-5 approximation
+  soft_embedding_warmup_epochs: 0  # 0 = no warmup; set to 5-10 for gradual hard sampling
+
+  # Regularization for mixture (CRITICAL: negative weight = diversity reward!)
+  dirichlet_alpha: 5.0  # Stronger than default 1.0
   dirichlet_weight: 1.0
-  usage_sparsity_weight: 0.1
+  component_diversity_weight: -0.05  # NEGATIVE = entropy reward (prevents collapse!)
 
   # Mixture tracking
   mixture_history_log_every: 1  # Track every epoch (set to 5 for less overhead)
@@ -47,7 +61,7 @@ model:
   # Training
   learning_rate: 0.001
   batch_size: 128
-  max_epochs: 100
+  max_epochs: 50  # Reduced for faster validation
   patience: 30
   val_split: 0.1
   random_seed: 42
