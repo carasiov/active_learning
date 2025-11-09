@@ -132,10 +132,10 @@ Train a model and generate a comprehensive analysis:
 
 ```bash
 # Quick test (7 seconds)
-JAX_PLATFORMS=cpu poetry run python scripts/run_experiment.py --config configs/quick.yaml
+JAX_PLATFORMS=cpu poetry run python experiments/run_experiment.py --config experiments/configs/quick.yaml
 
 # View results
-cat artifacts/experiments/baseline_quick_*/REPORT.md
+cat experiments/runs/baseline_quick_*/REPORT.md
 ```
 
 **What this does:**
@@ -143,7 +143,7 @@ cat artifacts/experiments/baseline_quick_*/REPORT.md
 2. Trains a standard VAE model
 3. Generates visualizations, metrics, and a human-readable report
 
-**Expected output:** `artifacts/experiments/baseline_quick_<timestamp>/`
+**Expected output:** `experiments/runs/baseline_quick_<timestamp>/`
 ```
 ├── REPORT.md                  # Human-readable summary with embedded visualizations
 ├── config.yaml                # Configuration snapshot
@@ -162,7 +162,7 @@ cat artifacts/experiments/baseline_quick_*/REPORT.md
 - Loss decreases smoothly
 - Runtime: ~7 seconds on CPU, ~3 seconds on GPU
 
-**Next:** Try a full experiment with `configs/default.yaml` or `configs/mixture_example.yaml`
+**Next:** Try a full experiment with `experiments/configs/mixture_example.yaml`
 
 ---
 
@@ -217,7 +217,7 @@ When you ran `run_experiment.py`:
 
 **Master the primary workflow:**
 - 📖 [Experiment Guide](../../EXPERIMENT_GUIDE.md) - Complete workflow: configuration → execution → interpretation
-- 🔬 Try different configs in `configs/` directory
+- 🔬 Try different configs in `experiments/configs/` directory
 
 **Explore other tools:**
 - 📖 [Usage Guide](usage.md) - Dashboard, Python API, and legacy comparison tool
@@ -228,7 +228,7 @@ When you ran `run_experiment.py`:
 - 📚 [Implementation Guide](../development/implementation.md) - Architecture, API reference, internals
 
 **Start experimenting:**
-- Try mixture prior: `poetry run python scripts/run_experiment.py --config configs/mixture_example.yaml`
+- Try mixture prior: `poetry run python experiments/run_experiment.py --config experiments/configs/mixture_example.yaml`
 - Adjust hyperparameters: Copy and edit configs (e.g., `kl_weight`, `num_components`)
 - Test architectures: Modify YAML configs to use convolutional encoders
 - Check status: Review [Implementation Roadmap](../theory/implementation_roadmap.md) for available features
@@ -236,16 +236,13 @@ When you ran `run_experiment.py`:
 **Common first experiments:**
 
 ```bash
-# Full baseline with standard prior
-poetry run python scripts/run_experiment.py --config configs/default.yaml
-
 # Mixture model with evolution tracking
-poetry run python scripts/run_experiment.py --config configs/mixture_example.yaml
+poetry run python experiments/run_experiment.py --config experiments/configs/mixture_example.yaml
 
 # Create custom experiment
-cp configs/default.yaml configs/my_experiment.yaml
+cp experiments/configs/mixture_example.yaml experiments/configs/my_experiment.yaml
 # Edit my_experiment.yaml, then:
-poetry run python scripts/run_experiment.py --config configs/my_experiment.yaml
+poetry run python experiments/run_experiment.py --config experiments/configs/my_experiment.yaml
 ```
 
 ---

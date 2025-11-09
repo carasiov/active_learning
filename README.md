@@ -20,32 +20,18 @@ active_learning_showcase/
 │   ├── logging.py               #    Console & CSV logging
 │   └── plotting.py              #    Loss curve visualization
 │
-├── scripts/                     # 🔬 Experimentation Tools (Current Focus)
+├── experiments/                 # 🔬 Experimentation Workflow
 │   ├── run_experiment.py        #    Primary experimentation script
-│   ├── compare_models.py        #    Legacy multi-model comparison tool
-│   └── comparison_utils.py      #    Visualization & reporting utilities
+│   ├── experiment_utils.py      #    Visualization & reporting utilities
+│   ├── configs/                 #    Experiment configurations
+│   ├── data/                    #    Dataset loaders (MNIST)
+│   └── runs/                    #    Experiment outputs (timestamped)
 │
 ├── use_cases/dashboard/         # 🎛️ Interactive Interface (Future Focus)
 │   ├── app.py                   #    Web-based active learning interface
 │   ├── core/                    #    State management & commands
 │   ├── pages/                   #    Dashboard UI pages
 │   └── docs/                    #    Dashboard-specific documentation
-│
-├── configs/                     # ⚙️ Experiment Configurations
-│   ├── default.yaml             #    Standard baseline config
-│   ├── quick.yaml               #    Fast sanity checks
-│   ├── mixture_example.yaml     #    Full mixture features
-│   └── comparisons/             #    Legacy multi-model configs
-│       └── *.yaml
-│
-├── data/mnist/                  # 📦 Dataset
-│   └── labels.csv               #    Shared label format (Serial, label)
-│
-├── artifacts/                   # 💾 Outputs
-│   ├── experiments/             #    Experiment results (timestamped)
-│   ├── comparisons/             #    Legacy multi-model comparisons
-│   ├── checkpoints/             #    Standalone model weights
-│   └── models/                  #    Dashboard model state
 │
 └── docs/                        # 📖 Documentation
     └──...
@@ -67,7 +53,7 @@ active_learning_showcase/
                │                              │
      ┌─────────▼────────┐          ┌─────────▼──────────┐
      │ Experiment Tool  │          │     Dashboard      │
-     │  (scripts/)      │          │  (use_cases/)      │
+     │ (experiments/)   │          │  (use_cases/)      │
      │                  │          │                    │
      │  Current primary │          │  Future primary    │
      │  workflow for    │          │  interface once    │
@@ -75,7 +61,7 @@ active_learning_showcase/
      └──────────────────┘          └────────────────────┘
 ```
 
-**Current Reality:** Experimentation happens via `scripts/run_experiment.py` for rapid iteration and validation.
+**Current Reality:** Experimentation happens via `experiments/run_experiment.py` for rapid iteration and validation.
 
 **Target State:** Dashboard becomes the primary interface for interactive active learning once model features stabilize.
 
@@ -94,7 +80,7 @@ active_learning_showcase/
 - How-to → [Extending the System](docs/development/extending.md) - Step-by-step tutorials for adding features
 
 **🔬 I'm running experiments:**
-- Start → [Experiment Guide](EXPERIMENT_GUIDE.md) - Primary workflow (configuration → execution → interpretation)
+- Start → [Experiment Guide](experiments/README.md) - Primary workflow (configuration → execution → interpretation)
 - Or → [Usage Guide](docs/guides/usage.md) - All available tools (comparison, dashboard, Python API)
 
 **🎓 I'm new to the project:**

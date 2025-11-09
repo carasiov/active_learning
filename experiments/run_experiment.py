@@ -15,10 +15,10 @@ matplotlib.use('Agg')  # Non-interactive backend
 import numpy as np
 
 # Add paths
-SCRIPT_DIR = Path(__file__).resolve().parent
-ROOT_DIR = SCRIPT_DIR.parent
+EXPERIMENTS_DIR = Path(__file__).resolve().parent
+ROOT_DIR = EXPERIMENTS_DIR.parent
 SRC_DIR = ROOT_DIR / "src"
-DATA_DIR = ROOT_DIR / "data"
+DATA_DIR = EXPERIMENTS_DIR / "data"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 if str(DATA_DIR) not in sys.path:
@@ -27,7 +27,7 @@ if str(DATA_DIR) not in sys.path:
 from mnist.mnist import load_mnist_scaled
 from ssvae import SSVAE, SSVAEConfig
 from ssvae.diagnostics import DiagnosticsCollector
-from comparison_utils import (
+from experiment_utils import (
     plot_loss_comparison,
     plot_latent_spaces,
     plot_latent_by_component,
@@ -41,8 +41,8 @@ from comparison_utils import (
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Run SSVAE experiment from config file")
-    parser.add_argument("--config", type=str, default="configs/default.yaml",
-                       help="Path to experiment YAML config (default: configs/default.yaml)")
+    parser.add_argument("--config", type=str, default="experiments/configs/default.yaml",
+                       help="Path to experiment YAML config (default: experiments/configs/default.yaml)")
     return parser.parse_args()
 
 
@@ -367,9 +367,9 @@ def main():
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     if exp_meta.get('name'):
         exp_name = exp_meta['name'].replace(' ', '_').lower()
-        output_dir = ROOT_DIR / 'artifacts' / 'experiments' / f"{exp_name}_{timestamp}"
+        output_dir = EXPERIMENTS_DIR / 'runs' / f"{exp_name}_{timestamp}"
     else:
-        output_dir = ROOT_DIR / 'artifacts' / 'experiments' / timestamp
+        output_dir = EXPERIMENTS_DIR / 'runs' / timestamp
 
     output_dir.mkdir(parents=True, exist_ok=True)
     print(f"Output: {output_dir}")

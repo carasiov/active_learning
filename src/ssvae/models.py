@@ -282,7 +282,7 @@ class SSVAE:
         if not export_history:
             return callbacks
 
-        base_path = Path(weights_path) if weights_path else Path("artifacts/checkpoints/ssvae.ckpt")
+        base_path = Path(weights_path) if weights_path else Path("experiments/runs/checkpoints/ssvae.ckpt")
         history_path = base_path.with_name(f"{base_path.stem}_history.csv")
         plot_path = base_path.with_name(f"{base_path.stem}_loss.png")
 
@@ -346,4 +346,4 @@ class SSVAE:
 
 # Repo root and default paths
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_CHECKPOINT_PATH = REPO_ROOT / "artifacts" / "checkpoints" / "ssvae.ckpt"
+DEFAULT_CHECKPOINT_PATH = REPO_ROOT / "experiments" / "runs" / "checkpoints" / "ssvae.ckpt"

@@ -15,15 +15,15 @@ Run your first experiment in 3 commands:
 poetry install
 
 # 2. Run a quick test (7 seconds)
-JAX_PLATFORMS=cpu poetry run python scripts/run_experiment.py --config configs/quick.yaml
+JAX_PLATFORMS=cpu poetry run python experiments/run_experiment.py --config experiments/configs/quick.yaml
 
 # 3. View results
-cat artifacts/experiments/baseline_quick_*/REPORT.md
+cat experiments/runs/baseline_quick_*/REPORT.md
 ```
 
-**Output location:** `artifacts/experiments/baseline_quick_<timestamp>/`
+**Output location:** `experiments/runs/baseline_quick_<timestamp>/`
 
-**Next:** Try a full experiment with `configs/default.yaml` or `configs/mixture_example.yaml`
+**Next:** Try a full experiment with `experiments/configs/mixture_example.yaml`
 
 ---
 
@@ -33,10 +33,8 @@ cat artifacts/experiments/baseline_quick_*/REPORT.md
 
 | Config | Purpose | Runtime | Notes |
 |--------|---------|---------|-------|
-| `configs/quick.yaml` | Sanity checks | ~7s | 1K samples, 10 epochs |
-| `configs/default.yaml` | Baseline runs | ~2min | Standard prior, 10K samples |
-| `configs/mixture_example.yaml` | Mixture features | ~5min | K=10, history tracking enabled |
-| `configs/mixture_quick.yaml` | Debug mixture | ~11s | Fast mixture test |
+| `experiments/configs/quick.yaml` | Sanity checks | ~7s | 1K samples, 10 epochs |
+| `experiments/configs/mixture_example.yaml` | Mixture features | ~5min | K=10, history tracking enabled |
 
 ### Config Structure
 
@@ -86,7 +84,7 @@ model:
 ### Directory Structure
 
 ```
-artifacts/experiments/<name>_<timestamp>/
+experiments/runs/<name>_<timestamp>/
 ├── config.yaml                              # Snapshot of config used
 ├── checkpoint.ckpt                          # Trained model weights
 ├── summary.json                             # All metrics (structured)
@@ -146,7 +144,7 @@ artifacts/experiments/<name>_<timestamp>/
 ### 1. Quick Sanity Check
 
 ```bash
-JAX_PLATFORMS=cpu poetry run python scripts/run_experiment.py --config configs/quick.yaml
+JAX_PLATFORMS=cpu poetry run python experiments/run_experiment.py --config experiments/configs/quick.yaml
 ```
 
 **Expect:**
@@ -161,7 +159,7 @@ JAX_PLATFORMS=cpu poetry run python scripts/run_experiment.py --config configs/q
 ### 2. Train a Baseline Model
 
 ```bash
-poetry run python scripts/run_experiment.py --config configs/default.yaml
+poetry run python experiments/run_experiment.py --config experiments/configs/mixture_example.yaml
 ```
 
 **Expect:**
@@ -176,7 +174,7 @@ poetry run python scripts/run_experiment.py --config configs/default.yaml
 ### 3. Train a Mixture Model
 
 ```bash
-poetry run python scripts/run_experiment.py --config configs/mixture_example.yaml
+poetry run python experiments/run_experiment.py --config experiments/configs/mixture_example.yaml
 ```
 
 **Expect:**
@@ -193,17 +191,17 @@ poetry run python scripts/run_experiment.py --config configs/mixture_example.yam
 
 ```bash
 # 1. Copy a base config
-cp configs/default.yaml configs/my_experiment.yaml
+cp experiments/configs/mixture_example.yaml experiments/configs/my_experiment.yaml
 
 # 2. Edit config
 # - Update experiment.name and experiment.description
 # - Adjust hyperparameters (e.g., kl_weight, num_components)
 
 # 3. Run
-poetry run python scripts/run_experiment.py --config configs/my_experiment.yaml
+poetry run python experiments/run_experiment.py --config experiments/configs/my_experiment.yaml
 
 # 4. Compare results
-# Check artifacts/experiments/ for timestamped outputs
+# Check experiments/runs/ for timestamped outputs
 ```
 
 ---
@@ -349,7 +347,7 @@ experiment:
 
 Organize results by grepping tags:
 ```bash
-grep -r '"ablation"' artifacts/experiments/*/config.yaml
+grep -r '"ablation"' experiments/runs/*/config.yaml
 ```
 
 ---

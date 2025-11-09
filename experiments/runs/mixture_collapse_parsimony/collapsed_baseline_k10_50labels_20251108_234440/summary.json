@@ -1,0 +1,54 @@
+{
+  "training": {
+    "final_loss": 139.34793090820312,
+    "final_recon_loss": 135.19924926757812,
+    "final_kl_z": 3.871225357055664,
+    "final_kl_c": 0.00014526714221574366,
+    "training_time_sec": 136.74640369415283,
+    "epochs_completed": 72
+  },
+  "classification": {
+    "final_accuracy": 0.511,
+    "final_classification_loss": 0.2772711217403412
+  },
+  "diagnostics_path": "/workspaces/active_learning_showcase/artifacts/experiments/mixture_k10_50labels_20251108_234440/diagnostics/checkpoint",
+  "mixture": {
+    "K": 10,
+    "final_component_entropy": 3.3136457204818726e-05,
+    "final_pi_entropy": 1.114425778388977,
+    "K_eff": 1.000066876411438,
+    "active_components": 1,
+    "responsibility_confidence_mean": 0.9999953508377075,
+    "pi_max": 0.7478443384170532,
+    "pi_min": 0.02471797540783882,
+    "pi_argmax": 0,
+    "pi_values": [
+      0.7478443384170532,
+      0.02517489343881607,
+      0.025196166709065437,
+      0.025162111967802048,
+      0.025395771488547325,
+      0.032612577080726624,
+      0.025705397129058838,
+      0.026203371584415436,
+      0.04198744520545006,
+      0.02471797540783882
+    ],
+    "component_usage": [
+      0.9999956488609314,
+      7.339114915794198e-08,
+      9.57550341240676e-08,
+      1.231555017966457e-07,
+      4.5960884875739794e-08,
+      4.639562405372999e-07,
+      7.553948222494e-08,
+      1.3968620748983085e-07,
+      3.5863620269083185e-06,
+      9.233509246087124e-08
+    ]
+  },
+  "clustering": {
+    "nmi": 0.0,
+    "ari": 0.0
+  }
+}

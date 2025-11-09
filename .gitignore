@@ -37,7 +37,10 @@ AGENTS.md
 *.ckpt
 
 ROOT
-artifacts
+
+# Experiment outputs
+experiments/runs/*
+!experiments/runs/.gitkeep
 
 # Devcontainer
 .devcontainer/.env

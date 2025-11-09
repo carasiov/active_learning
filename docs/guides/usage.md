@@ -25,10 +25,10 @@ There are multiple ways to use the SSVAE:
 
 ```bash
 # Quick test (7 seconds)
-JAX_PLATFORMS=cpu poetry run python scripts/run_experiment.py --config configs/quick.yaml
+JAX_PLATFORMS=cpu poetry run python experiments/run_experiment.py --config experiments/configs/quick.yaml
 
 # Full baseline
-poetry run python scripts/run_experiment.py --config configs/default.yaml
+poetry run python experiments/run_experiment.py --config experiments/configs/mixture_example.yaml
 
 # Mixture model with evolution tracking
 poetry run python scripts/run_experiment.py --config configs/mixture_example.yaml
