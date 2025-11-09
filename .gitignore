@@ -41,6 +41,13 @@ ROOT
 # Experiment outputs
 experiments/runs/*
 !experiments/runs/.gitkeep
+experiments/results/*
+!experiments/results/.gitkeep
+
+# Model checkpoints and outputs
+*.pkl
+*.npy
+*.png
 
 # Devcontainer
 .devcontainer/.env
