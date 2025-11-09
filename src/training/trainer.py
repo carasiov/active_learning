@@ -462,11 +462,12 @@ class Trainer:
             state: Current training state
 
         Returns:
-            Updated training state with new τ matrix
+            Updated training state with new τ matrix and reinitialized optimizer state
 
         Note:
-            The optimizer is configured with optax.masked() to zero gradients for τ,
-            so we can safely update τ parameters without worrying about optimizer state.
+            Since τ parameters are updated outside gradient descent, we must reinitialize
+            the optimizer state to match the new parameter tree structure. This happens
+            once per epoch, so the impact on training is minimal.
         """
         if not self.config.use_tau_classifier or self._soft_counts is None:
             return state
@@ -478,9 +479,11 @@ class Trainer:
             alpha_0=self.config.tau_alpha_0,
         )
 
-        # Since τ gradients are masked to zero, we can just replace params
-        # The optimizer state is compatible because τ doesn't participate in optimization
-        return state.replace(params=new_params)
+        # Reinitialize optimizer state to match new parameter tree
+        # This is necessary because τ was updated outside gradient descent
+        new_opt_state = state.tx.init(new_params)
+
+        return state.replace(params=new_params, opt_state=new_opt_state)
 
     def _evaluate_both_splits(
         self,

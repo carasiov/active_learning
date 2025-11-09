@@ -88,22 +88,28 @@ class SSVAEFactory:
         )
 
         # Create optimizer
-        # TEMPORARY: Disable weight decay for τ-classifier to avoid tree structure issues
-        if config.use_tau_classifier or config.weight_decay == 0.0:
-            opt_core = optax.adam(config.learning_rate)
+        # TEMPORARY: Disable weight decay and gradient clipping for τ-classifier
+        # to avoid tree structure issues with FrozenDict/dict mismatch in optax
+        if config.use_tau_classifier:
+            # Force plain Adam without any wrappers for τ-classifier
+            tx = optax.adam(config.learning_rate)
         else:
-            decay_mask = _make_weight_decay_mask(variables["params"])
-            opt_core = optax.adamw(
-                learning_rate=config.learning_rate,
-                weight_decay=config.weight_decay,
-                mask=decay_mask,
-            )
+            # Standard optimizer with optional weight decay and gradient clipping
+            if config.weight_decay == 0.0:
+                opt_core = optax.adam(config.learning_rate)
+            else:
+                decay_mask = _make_weight_decay_mask(variables["params"])
+                opt_core = optax.adamw(
+                    learning_rate=config.learning_rate,
+                    weight_decay=config.weight_decay,
+                    mask=decay_mask,
+                )
 
-        tx_steps = []
-        if config.grad_clip_norm is not None:
-            tx_steps.append(optax.clip_by_global_norm(config.grad_clip_norm))
-        tx_steps.append(opt_core)
-        tx = optax.chain(*tx_steps) if len(tx_steps) > 1 else tx_steps[0]
+            tx_steps = []
+            if config.grad_clip_norm is not None:
+                tx_steps.append(optax.clip_by_global_norm(config.grad_clip_norm))
+            tx_steps.append(opt_core)
+            tx = optax.chain(*tx_steps) if len(tx_steps) > 1 else tx_steps[0]
 
         # Create initial training state
         state = SSVAETrainState.create(

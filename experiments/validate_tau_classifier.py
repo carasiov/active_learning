@@ -180,12 +180,11 @@ def main():
     )
 
     # Configuration 2: τ-based classifier
+    # Note: factory.py automatically disables weight_decay and grad_clip_norm for τ-classifier
     config_tau = SSVAEConfig(
         **base_config,
         use_tau_classifier=True,
         tau_alpha_0=1.0,
-        grad_clip_norm=None,  # Disable grad clipping to avoid tree structure issues
-        weight_decay=0.0,  # Disable weight decay to avoid tree structure issues
     )
 
     # Train both models
