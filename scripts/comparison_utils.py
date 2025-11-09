@@ -463,12 +463,15 @@ def plot_component_embedding_divergence(
                 continue
 
             # Navigate parameter dict to find component embeddings
-            # Structure: params['prior']['embeddings'] for MixturePriorParameters
-            if 'prior' not in model.params or 'embeddings' not in model.params['prior']:
+            # Structure: params['prior']['component_embeddings'] for MixturePriorParameters
+            if 'prior' not in model.params or 'component_embeddings' not in model.params['prior']:
                 print(f"  Skipping {model_name}: component embeddings not found in params")
+                print(f"    Available keys in params: {list(model.params.keys())}")
+                if 'prior' in model.params:
+                    print(f"    Available keys in params['prior']: {list(model.params['prior'].keys())}")
                 continue
 
-            embeddings = np.array(model.params['prior']['embeddings'])  # Shape: (K, embed_dim)
+            embeddings = np.array(model.params['prior']['component_embeddings'])  # Shape: (K, embed_dim)
             K, embed_dim = embeddings.shape
 
             # Compute pairwise distances
@@ -588,18 +591,25 @@ def plot_reconstruction_by_component(
                     training=False,
                 )
 
-                # Extract reconstructions
-                if len(output) >= 6:
-                    _, _, _, _, _, recon_per_component_flat, extras = output
-                else:
-                    print(f"  Skipping {model_name}: unexpected output format")
+                # Extract from ForwardOutput namedtuple
+                # ForwardOutput(component_logits, z_mean, z_log_var, z, recon, logits, extras)
+                extras = output.extras if hasattr(output, 'extras') else output[6]
+
+                # Get per-component reconstructions from extras
+                if not hasattr(extras, 'get'):
+                    print(f"  Skipping {model_name}: extras is not a dict")
                     continue
 
-                # Reshape reconstructions
-                recon_per_component = np.array(recon_per_component_flat).reshape(K, *x_input.shape[1:])
+                recon_per_component = extras.get("recon_per_component")
+                if recon_per_component is None:
+                    print(f"  Skipping {model_name}: recon_per_component not found in extras")
+                    continue
+
+                # Convert to numpy: Shape (1, K, H, W)
+                recon_per_component = np.array(recon_per_component)[0]  # Shape: (K, H, W)
 
                 # Get responsibilities for weighted reconstruction
-                responsibilities = extras.get("responsibilities") if hasattr(extras, "get") else None
+                responsibilities = extras.get("responsibilities")
                 if responsibilities is None:
                     print(f"  Skipping {model_name}: no responsibilities found")
                     continue
@@ -607,7 +617,7 @@ def plot_reconstruction_by_component(
                 resp_np = np.array(responsibilities)[0]  # Shape: (K,)
 
                 # Compute weighted reconstruction
-                weighted_recon = np.sum(recon_per_component * resp_np[:, None, None, None], axis=0)
+                weighted_recon = np.sum(recon_per_component * resp_np[:, None, None], axis=0)
 
                 # Apply sigmoid if needed
                 if use_sigmoid:
