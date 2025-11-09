@@ -61,9 +61,6 @@ component_diversity_weight: -0.05  # Negative = rewards entropy = encourages div
 
 ### Why This Matters
 
-From `docs/theory/implementation_roadmap.md`:
-> The parameter `component_diversity_weight` (formerly `usage_sparsity_weight`) implements **diversity encouragement** when negative.
-
 The loss term is: `λ_u × (-H[p̂_c])`
 - Positive λ: minimize `-H` = minimize entropy = collapse
 - **Negative λ: minimize `-H` = maximize entropy = diversity**
@@ -173,10 +170,9 @@ From `docs/theory/implementation_roadmap.md`:
 
 ### 1. **Hyperparameter Sign Matters Critically**
 
-The sign of `component_diversity_weight` (formerly `usage_sparsity_weight`) is **critical**:
+The sign of `component_diversity_weight` is **critical**:
 - Negative value encourages **diversity** (more components) - RECOMMENDED
 - Positive value penalizes diversity and causes mode collapse
-- The parameter was renamed from `usage_sparsity_weight` to clarify this behavior
 
 ### 2. **Dirichlet Prior Strength**
 

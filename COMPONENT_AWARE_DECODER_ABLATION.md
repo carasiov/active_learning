@@ -243,11 +243,7 @@ From `docs/theory/implementation_roadmap.md`:
    - τ-based classifier: p(y|x) = Σ_c q(c|x) * τ_{c,y}
    - Should leverage component specialization better
 
-**2. Parameter Renaming** ✅ **COMPLETED**
-   - Renamed `usage_sparsity_weight` → `component_diversity_weight`
-   - Previous name was misleading (negative = diversity, not sparsity)
-
-**3. Accept Component-Aware Decoder as Marginal Improvement**
+**2. Accept Component-Aware Decoder as Marginal Improvement**
    - Keep in codebase (provides 1.7% reconstruction gain)
    - Don't over-claim benefits in documentation
    - Wait for τ classifier to unlock full potential

@@ -207,7 +207,7 @@ dirichlet_alpha: 5.0               # Stronger than default 1.0
 kl_c_weight: 0.001                 # 2× baseline to prevent concentration
 ```
 
-**Naming clarification:** The parameter was renamed from `usage_sparsity_weight` to `component_diversity_weight` for clarity. When negative, it implements **diversity encouragement**. The spec's "minimize entropy" phrasing assumes positive weight (minimize $-H$ = maximize $H$); our negative weight achieves same effect but inverts the algebra.
+When negative, `component_diversity_weight` implements **diversity encouragement** by rewarding entropy.
 
 ### Component-Label Alignment
 
