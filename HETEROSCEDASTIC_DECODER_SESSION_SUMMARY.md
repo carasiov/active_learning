@@ -130,13 +130,39 @@ All success criteria from HETEROSCEDASTIC_DECODER_PLAN.md met:
 
 ---
 
+## Test Results ✅
+
+**Unit Tests**: All 25 tests PASSED! (13.08s runtime)
+
+**Test Command**:
+```bash
+JAX_PLATFORMS=cpu poetry run pytest tests/test_heteroscedastic_decoder.py -v
+```
+
+**Test Coverage** (25 tests):
+- ✅ HeteroscedasticDenseDecoder (4 tests): output shape, variance bounds, gradient flow, deterministic
+- ✅ HeteroscedasticConvDecoder (3 tests): output shape, variance bounds, validation
+- ✅ ComponentAwareHeteroscedasticDenseDecoder (3 tests): output shape, variance bounds, component influence
+- ✅ ComponentAwareHeteroscedasticConvDecoder (2 tests): output shape, variance bounds
+- ✅ Loss functions (5 tests): shape, error sensitivity, sigma sensitivity, weighted, responsibilities
+- ✅ Factory integration (6 tests): all 8 decoder variants correctly selected
+- ✅ Configuration validation (3 tests): sigma_min, sigma_max, defaults
+
+**Key Validations**:
+- Variance parameterization: σ = σ_min + softplus(s_θ(x)) ✅
+- Variance bounds: σ ∈ [0.05, 0.5] enforced ✅
+- Loss formula: ||x - x̂||²/(2σ²) + log σ ✅
+- Gradient flow: Mean and sigma heads both differentiable ✅
+- Factory selection: Correct decoder for all config combinations ✅
+
 ## How to Continue in Next Session
 
 ### Immediate Next Steps
 
-**1. Run Unit Tests** (requires poetry environment setup):
+**1. Run Unit Tests** ✅ **COMPLETED**
 ```bash
-poetry run pytest tests/test_heteroscedastic_decoder.py -v
+JAX_PLATFORMS=cpu poetry run pytest tests/test_heteroscedastic_decoder.py -v
+Result: 25 passed, 6 warnings in 13.08s
 ```
 
 **2. Run Validation Experiment**:
