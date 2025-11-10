@@ -1,0 +1,14 @@
+{
+  "training": {
+    "final_loss": 194.71771240234375,
+    "final_recon_loss": 191.156005859375,
+    "final_kl_z": 3.5617165565490723,
+    "final_kl_c": 0.0,
+    "training_time_sec": 10.161596775054932,
+    "epochs_completed": 10
+  },
+  "classification": {
+    "final_accuracy": 0.053,
+    "final_classification_loss": 2.9924750328063965
+  }
+}

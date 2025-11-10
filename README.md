@@ -22,18 +22,19 @@ active_learning_showcase/
 │   ├── logging.py               #    Console & CSV logging
 │   └── plotting.py              #    Loss curve visualization
 │
-├── experiments/                 # 🔬 Experimentation Workflow
-│   ├── run_experiment.py        #    Primary experimentation script
-│   ├── experiment_utils.py      #    Visualization & reporting utilities
-│   ├── configs/                 #    Experiment configurations
-│   ├── data/                    #    Dataset loaders (MNIST)
-│   └── runs/                    #    Experiment outputs (timestamped)
-│
-├── use_cases/dashboard/         # 🎛️ Interactive Interface (Future Focus)
-│   ├── app.py                   #    Web-based active learning interface
-│   ├── core/                    #    State management & commands
-│   ├── pages/                   #    Dashboard UI pages
-│   └── docs/                    #    Dashboard-specific documentation
+├── use_cases/
+│   ├── experiments/             # 🔬 Experimentation Workflow
+│   │   ├── run_experiment.py    #    Primary experimentation script
+│   │   ├── experiment_utils.py  #    Visualization & reporting utilities
+│   │   ├── configs/             #    Experiment configurations
+│   │   ├── data/                #    Dataset loaders (MNIST)
+│   │   └── runs/                #    Experiment outputs (timestamped)
+│   │
+│   └── dashboard/               # 🎛️ Interactive Interface (Future Focus)
+│       ├── app.py               #    Web-based active learning interface
+│       ├── core/                #    State management & commands
+│       ├── pages/               #    Dashboard UI pages
+│       └── docs/                #    Dashboard-specific documentation
 │
 └── docs/                        # 📖 Documentation
     ├── theory/                  #    Conceptual foundations & math
@@ -55,7 +56,8 @@ active_learning_showcase/
                │                              │
      ┌─────────▼────────┐          ┌─────────▼──────────┐
      │ Experiment Tool  │          │     Dashboard      │
-     │ (experiments/)   │          │  (use_cases/)      │
+     │ (use_cases/      │          │  (use_cases/       │
+     │  experiments/)   │          │   dashboard/)      │
      │                  │          │                    │
      │  Current primary │          │  Future primary    │
      │  workflow for    │          │  interface once    │
@@ -63,7 +65,7 @@ active_learning_showcase/
      └────────────────────┘          └────────────────────┘
 ```
 
-**Current Reality:** Experimentation happens via [`experiments/run_experiment.py`](experiments/run_experiment.py) for rapid iteration and validation.
+**Current Reality:** Experimentation happens via [`use_cases/experiments/run_experiment.py`](use_cases/experiments/run_experiment.py) for rapid iteration and validation.
 
 **Target State:** Dashboard becomes the primary interface for interactive active learning once model features stabilize.
 
@@ -84,7 +86,7 @@ This project has a layered documentation structure (see [AGENTS.md](AGENTS.md) f
 - [Extending the System](docs/development/extending.md) - Step-by-step tutorials for adding features
 
 **Usage Layer** (Workflows):
-- [Experiment Guide](experiments/README.md) - Primary workflow (configuration → execution → interpretation)
+- [Experiment Guide](use_cases/experiments/README.md) - Primary workflow (configuration → execution → interpretation)
 - [Dashboard Guide](use_cases/dashboard/README.md) - Interactive interface (future primary)
 
 ---

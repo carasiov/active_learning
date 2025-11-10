@@ -58,13 +58,13 @@ README.md (entry point)
 - **Design patterns & abstractions**: `docs/development/architecture.md`
 - **Module-by-module reference**: `docs/development/implementation.md`  
 - **Extension tutorials**: `docs/development/extending.md`
-- **Experiment workflow**: `experiments/README.md`
+- **Experiment workflow**: `use_cases/experiments/README.md`
 
 **These explain mechanics** - How to extend, where files live, how to run experiments.
 
 ### Grounded Details (Source of Truth)
 - **Configuration parameters**: `src/ssvae/config.py::SSVAEConfig` (inline docstrings)
-- **Example experiments**: `experiments/configs/*.yaml` (real configurations)
+- **Example experiments**: `use_cases/experiments/configs/*.yaml` (real configurations)
 - **Test patterns**: `tests/` (usage examples and edge cases)
 
 **Code is authoritative** - When docs and code conflict, code is correct.
@@ -130,7 +130,7 @@ README.md (entry point)
 Where to learn about them:
 - Inline docs: `config.py::SSVAEConfig` has detailed docstrings
 - Validation: `__post_init__()` catches some violations
-- Context: `experiments/README.md` §Configuration discusses patterns
+- Context: `use_cases/experiments/README.md` §Configuration discusses patterns
 
 **Historical naming gotchas:**
 - `component_diversity_weight` negative = entropy *reward* (misnomer)
@@ -138,7 +138,7 @@ Where to learn about them:
 
 **When in doubt about parameter interactions:**
 1. Check `config.py` docstrings
-2. Look at example configs in `experiments/configs/`
+2. Look at example configs in `use_cases/experiments/configs/`
 3. Check roadmap.md for known interaction patterns
 
 ---
@@ -186,7 +186,7 @@ Where to learn about them:
 
 **Goal: Verify changes work as intended**
 
-1. **Check experiment workflow**: `experiments/README.md`
+1. **Check experiment workflow**: `use_cases/experiments/README.md`
    - How to run tests?
    - How to interpret results?
 
@@ -231,7 +231,7 @@ Where to learn about them:
 - Docs point to relevant files
 
 **Specific experiment results:**
-- Results in `experiments/runs/*/REPORT.md` after running
+- Results in `use_cases/experiments/runs/*/REPORT.md` after running
 - Not committed to repo (too large, too variable)
 
 **Future features not started:**
@@ -259,7 +259,7 @@ Where to learn about them:
 - [ ] Run relevant tests
 
 **After implementation:**
-- [ ] Follow `experiments/README.md` workflow for validation
+- [ ] Follow `use_cases/experiments/README.md` workflow for validation
 - [ ] Compare results to expectations in `mathematical_specification.md`
 - [ ] Check for regressions in `tests/`
 
@@ -272,16 +272,16 @@ Where to learn about them:
 - Understand current state → `roadmap.md` §Status-at-a-Glance
 - Understand architecture → `architecture.md`
 - Add new feature → `extending.md` + relevant architecture section
-- Run experiments → `experiments/README.md` §Quick-Start
+- Run experiments → `use_cases/experiments/README.md` §Quick-Start
 - Understand module → `implementation.md` §Module-Organization
 
 ### Common Commands
 ```bash
 # Quick sanity check
-JAX_PLATFORMS=cpu poetry run python experiments/run_experiment.py --config experiments/configs/quick.yaml
+JAX_PLATFORMS=cpu poetry run python use_cases/experiments/run_experiment.py --config use_cases/experiments/configs/quick.yaml
 
 # Full experiment
-poetry run python experiments/run_experiment.py --config experiments/configs/mixture_example.yaml
+poetry run python use_cases/experiments/run_experiment.py --config use_cases/experiments/configs/mixture_example.yaml
 
 # Run tests  
 pytest tests/
@@ -291,7 +291,7 @@ pytest tests/
 - Configuration: `src/ssvae/config.py::SSVAEConfig`
 - Loss computation: `src/training/losses.py::compute_loss_and_metrics_v2()`
 - Training loop: `src/training/trainer.py::Trainer`
-- Example configs: `experiments/configs/*.yaml`
+- Example configs: `use_cases/experiments/configs/*.yaml`
 
 ---
 

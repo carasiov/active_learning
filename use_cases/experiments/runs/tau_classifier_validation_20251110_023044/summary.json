@@ -1,0 +1,130 @@
+{
+  "training": {
+    "final_loss": 230.36685180664062,
+    "final_recon_loss": 134.02255249023438,
+    "final_kl_z": 3.5129363536834717,
+    "final_kl_c": 0.002105332212522626,
+    "training_time_sec": 221.71799969673157,
+    "epochs_completed": 41
+  },
+  "classification": {
+    "final_accuracy": 0.266,
+    "final_classification_loss": 0.9040971398353577
+  },
+  "diagnostics_path": "/workspaces/active_learning_showcase/use_cases/experiments/runs/tau_classifier_validation_20251110_023044/diagnostics/checkpoint",
+  "mixture": {
+    "K": 10,
+    "final_component_entropy": 0.19723081588745117,
+    "final_pi_entropy": 2.302584648132324,
+    "K_eff": 5.873589515686035,
+    "active_components": 8,
+    "responsibility_confidence_mean": 0.9141755104064941,
+    "component_majority_labels": [
+      6,
+      1,
+      0,
+      1,
+      8,
+      8,
+      1,
+      1,
+      9,
+      1
+    ],
+    "component_majority_confidence": [
+      0.33365410566329956,
+      0.9999678730964661,
+      0.7277593612670898,
+      0.6717520356178284,
+      0.7293590903282166,
+      0.9906355142593384,
+      0.8299670219421387,
+      0.9380892515182495,
+      0.47961845993995667,
+      0.9603657722473145
+    ],
+    "pi_max": 0.10000592470169067,
+    "pi_min": 0.09999414533376694,
+    "pi_argmax": 5,
+    "pi_values": [
+      0.10000254213809967,
+      0.10000211000442505,
+      0.09999782592058182,
+      0.09999686479568481,
+      0.09999414533376694,
+      0.10000592470169067,
+      0.10000111162662506,
+      0.10000111162662506,
+      0.1000015065073967,
+      0.0999968945980072
+    ],
+    "component_usage": [
+      0.2179860919713974,
+      0.042001623660326004,
+      0.017068112269043922,
+      0.0001194217475131154,
+      0.05866752937436104,
+      0.24291591346263885,
+      0.021291568875312805,
+      0.1822451949119568,
+      0.21765555441379547,
+      4.8924404836725444e-05
+    ]
+  },
+  "tau_classifier": {
+    "tau_matrix_shape": [
+      10,
+      10
+    ],
+    "tau_sparsity": 0.3499999940395355,
+    "components_per_label": [
+      1,
+      1,
+      6,
+      1,
+      2,
+      1,
+      1,
+      0,
+      1,
+      1
+    ],
+    "avg_components_per_label": 1.5,
+    "label_coverage": 9,
+    "component_dominant_labels": [
+      6,
+      1,
+      2,
+      2,
+      0,
+      9,
+      5,
+      8,
+      4,
+      2
+    ],
+    "certainty_mean": 0.33985865116119385,
+    "certainty_std": 0.12867866456508636,
+    "certainty_min": 0.1044967845082283,
+    "certainty_max": 0.8294171094894409,
+    "ood_score_mean": 0.6601412892341614,
+    "ood_score_std": 0.12867866456508636,
+    "num_free_channels": 10,
+    "free_channels": [
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1
+    ]
+  },
+  "clustering": {
+    "nmi": 0.7216162598446757,
+    "ari": 0.0
+  }
+}

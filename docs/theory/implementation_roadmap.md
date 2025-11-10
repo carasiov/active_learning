@@ -340,4 +340,4 @@ model:
 
 ### Experiment Reports
 - **`COMPONENT_AWARE_DECODER_ABLATION.md`** — Controlled ablation study (Nov 9, 2025)
-- **`experiments/runs/PROGRESS_REPORT_20251109.md`** — Overall progress assessment
+- **`use_cases/experiments/runs/PROGRESS_REPORT_20251109.md`** — Overall progress assessment

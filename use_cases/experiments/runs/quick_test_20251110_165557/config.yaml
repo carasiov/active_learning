@@ -1,0 +1,27 @@
+experiment:
+  name: quick_test
+  description: Quick sanity check with minimal training
+  tags:
+  - test
+  - quick
+data:
+  num_samples: 1000
+  num_labeled: 20
+  seed: 42
+model:
+  encoder_type: dense
+  decoder_type: dense
+  classifier_type: dense
+  latent_dim: 2
+  hidden_dims:
+  - 128
+  - 64
+  reconstruction_loss: bce
+  recon_weight: 1.0
+  kl_weight: 0.5
+  prior_type: standard
+  learning_rate: 0.001
+  batch_size: 128
+  max_epochs: 10
+  patience: 10
+  monitor_metric: loss
