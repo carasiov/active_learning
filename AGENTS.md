@@ -1,143 +1,310 @@
 # AGENTS.md - Working with This Codebase
 
-> **Companion to README.md**: README provides the narrative overview and entry points. This document explains how to traverse the documentation network effectively, what to trust, and implicit knowledge not obvious from linear reading.
+## Purpose
+This repo has a **comprehensive documentation network** designed for deep understanding, not just task execution. This guide explains how that network is structured and how to navigate it effectively during collaborative planning and implementation.
+
+**Key principle**: Documentation forms a **knowledge graph**. Navigate by following conceptual links, not by reading linearly.
 
 ---
 
-## 1. Documentation Network Structure
+## 1. Documentation Architecture
 
-This repo's documentation forms a **layered knowledge graph**:
-
+### The Web Structure
 ```
-Theory Layer (docs/theory/)
-  └─ Stable foundations: design vision, mathematical formulation
-     Changes rarely, anchors all decisions
-
-Implementation Layer (docs/development/)
-  └─ Current patterns: architecture, module organization, tutorials
-     Evolves with code
-
-Usage Layer (experiments/)
-  └─ Workflow: configuration, execution, interpretation
-     Changes frequently with practices
-
-Code Layer (src/, tests/)
-  └─ Ground truth: when docs conflict with code, code wins
+README.md (entry point)
+    ↓
+    ├─→ Theory Layer (WHY + WHAT)
+    │   • Stable foundations - conceptual model, math spec
+    │   • Change slowly, anchor the project
+    │
+    ├─→ Implementation Layer (HOW + WHERE)  
+    │   • Current state - architecture, implementation guide
+    │   • Evolve with code, track patterns
+    │
+    └─→ Usage Layer (WORKFLOW)
+        • Experiments - config → run → interpret
+        • Changes frequently, documents current practices
 ```
 
-### Navigation Principles
+### Navigation Principle
+**Start broad, narrow down:**
+1. Theory docs → Understand vision and invariants
+2. Architecture docs → Understand patterns and structure  
+3. Implementation docs → Understand current code organization
+4. Usage docs → Understand workflow and practices
 
-**Start broad, then narrow**: Theory → Implementation → Usage → Code
-
-**Trust hierarchy**: Theory > Implementation docs > Code > Experiments
-
-**Cross-reference conventions**:
-- Theory docs use §Section-Names (stable anchors)
-- Implementation docs use `file/paths.py` (may move)
-- Links are bidirectional for complete understanding
+**Don't skip theory** - Making changes without understanding design rationale leads to violations of core invariants.
 
 ---
 
-## 2. Trust and Precedence
+## 2. Where to Find What Type of Information
 
-### Stability Hierarchy
+### Stable Knowledge (Read First, Changes Rarely)
+- **Design vision & mental model**: `docs/theory/conceptual_model.md`
+- **Mathematical foundations**: `docs/theory/mathematical_specification.md`
+- **Architecture patterns**: `docs/development/architecture.md`
 
-| Source | Trust Level | Use For |
-|--------|-------------|---------|
-| [`docs/theory/conceptual_model.md`](docs/theory/conceptual_model.md) | Invariants | Understanding "why" |
-| [`docs/theory/mathematical_specification.md`](docs/theory/mathematical_specification.md) | Constraints | Formal requirements |
-| [`docs/development/architecture.md`](docs/development/architecture.md) | Patterns | Design decisions |
-| [`docs/theory/implementation_roadmap.md`](docs/theory/implementation_roadmap.md) §Status ✅ | Current state | What's validated |
-| [`docs/theory/implementation_roadmap.md`](docs/theory/implementation_roadmap.md) §Recent | Provisional | What's under validation |
-| Code | Authority | When docs unclear |
+**These are "north star" documents** - Changes here indicate fundamental redesigns, not incremental work.
 
-### Resolving Conflicts
+### Current State (Check Before Planning)
+- **Implementation status**: `docs/theory/implementation_roadmap.md`
+  - §Status-at-a-Glance table shows what's done vs planned
+  - §Recent completions shows what just landed (under validation)
+  - §Key-Findings documents known behaviors and solutions
 
-- **Theory says X, code does Y**: Code may be incorrect or transitional
-- **Roadmap says "under validation"**: Feature complete but not battle-tested
-- **Config exists but roadmap silent**: May be exploratory, not established
+**This is your "what's happening now" reference** - Always check before proposing changes.
+
+### How-To Knowledge (Reference During Work)
+- **Design patterns & abstractions**: `docs/development/architecture.md`
+- **Module-by-module reference**: `docs/development/implementation.md`  
+- **Extension tutorials**: `docs/development/extending.md`
+- **Experiment workflow**: `experiments/README.md`
+
+**These explain mechanics** - How to extend, where files live, how to run experiments.
+
+### Grounded Details (Source of Truth)
+- **Configuration parameters**: `src/ssvae/config.py::SSVAEConfig` (inline docstrings)
+- **Example experiments**: `experiments/configs/*.yaml` (real configurations)
+- **Test patterns**: `tests/` (usage examples and edge cases)
+
+**Code is authoritative** - When docs and code conflict, code is correct.
 
 ---
 
-## 3. Architectural Patterns
+## 3. Implicit Knowledge (Not Obvious from Linear Reading)
 
-### Key Differences from Typical ML Repos
+### 3A. Documentation Conventions
+
+**Linking patterns:**
+- Theory docs use **conceptual references**: "See §How-We-Classify"
+- Implementation docs use **file paths**: "`src/ssvae/priors/mixture.py`"
+- Both link bidirectionally: theory ↔ implementation
+
+**Cross-references indicate relationships:**
+- "For intuition see X, for math see Y, for code see Z"
+- Follow these to build complete understanding
+
+**Section references are stable:**
+- Docs use §Section-Names not page numbers
+- Safe to bookmark specific sections
+
+### 3B. Stability Indicators
+
+**How to tell if something is established vs experimental:**
+
+| Indicator | Meaning |
+|-----------|---------|
+| In conceptual_model.md | Core design principle (stable) |
+| In math_specification.md | Precise formulation (stable) |
+| In architecture.md | Established pattern (stable) |
+| In roadmap.md §Status table | Implementation status (check marks = done, empty = planned) |
+| In roadmap.md §Recent completions | Just landed, under validation |
+
+**Example**: τ-classifier shows in roadmap §Status with ✅ but also in §Recent-Completions → Implemented but still validating.
+
+### 3C. Unique Codebase Patterns
+
+**This repo differs from typical ML codebases in key ways:**
 
 **Protocol-based extension** (not inheritance):
-- Location: [`docs/development/architecture.md`](docs/development/architecture.md) §Core-Abstractions §PriorMode-Protocol
-- Pattern: Implement interface, register in PRIOR_REGISTRY
-- Example: `priors/mixture.py`
+- Explained: `architecture.md` §Core-Abstractions §PriorMode-Protocol
+- Why different: Enables pluggability without modifying core classes
+- Example: `priors/mixture.py` implements protocol, registered in `priors/__init__.py`
 
 **Functional JAX style** (explicit state):
-- State in SSVAETrainState, RNG threaded explicitly
-- Gotcha: No Python control flow inside JIT boundaries
-- Reference: [`docs/development/architecture.md`](docs/development/architecture.md) §Design-Principles
+- Explained: `architecture.md` §Design-Principles
+- Key difference: State is explicit (`SSVAETrainState`), not hidden in objects
+- Gotcha: RNG must be threaded explicitly (`rng, subkey = jax.random.split(rng)`)
 
 **Hook-based training extensions**:
-- Use case: Update Python-side state during training (outside JIT)
-- Pattern: TrainerLoopHooks with `batch_context_fn`, `post_batch_fn`, `eval_context_fn`
-- Example: [`docs/theory/implementation_roadmap.md`](docs/theory/implementation_roadmap.md) §τ-Classifier
-- Tutorial: [`docs/development/extending.md`](docs/development/extending.md) §Tutorial-3
+- Explained: `extending.md` §Tutorial-3, real example in `roadmap.md` §τ-Classifier
+- Pattern: `TrainerLoopHooks` provide touch points outside JIT boundaries
+- Use case: τ-classifier updates Python-side state after each batch
 
-### Configuration System
+**Understanding these patterns is critical** - They're architectural choices that influence all extensions.
 
-Parameters interact subtly. Documentation locations:
-- Primary: [`src/ssvae/config.py`](src/ssvae/config.py) `::SSVAEConfig` (inline docstrings)
-- Patterns: [`experiments/README.md`](experiments/README.md) §Configuration
-- Examples: `experiments/configs/*.yaml`
+### 3D. Configuration Interdependencies
 
-### Concept Cross-Reference Pattern
+**Some parameters interact in non-obvious ways:**
 
-Example using τ-classifier (applies to most concepts):
+Where to learn about them:
+- Inline docs: `config.py::SSVAEConfig` has detailed docstrings
+- Validation: `__post_init__()` catches some violations
+- Context: `experiments/README.md` §Configuration discusses patterns
 
-```
-Theory       → docs/theory/conceptual_model.md §How-We-Classify
-Math         → docs/theory/mathematical_specification.md §5
-Status       → docs/theory/implementation_roadmap.md §τ-Classifier-Completed
-Architecture → docs/development/implementation.md §tau_classifier.py
-Tutorial     → docs/development/extending.md §Tutorial-3
-Code         → src/ssvae/components/tau_classifier.py
-```
+**Historical naming gotchas:**
+- `component_diversity_weight` negative = entropy *reward* (misnomer)
+- Explained in: `roadmap.md` §Entropy-Reward-Configuration
 
----
-
-## 4. Quick Reference: Finding Things
-
-| Task | Location |
-|------|----------|
-| **Current status** | [`docs/theory/implementation_roadmap.md`](docs/theory/implementation_roadmap.md) §Status-at-a-Glance |
-| **Commands** | [`experiments/README.md`](experiments/README.md) §Quick-Start, §Common-Workflows |
-| **Math symbol → code** | [`docs/development/implementation.md`](docs/development/implementation.md) §Module-Organization |
-| **Config parameters** | [`src/ssvae/config.py`](src/ssvae/config.py) `::SSVAEConfig` docstrings |
-| **Module purpose** | [`docs/development/implementation.md`](docs/development/implementation.md) §Module-Organization |
-| **Design patterns** | [`docs/development/architecture.md`](docs/development/architecture.md) (design)<br>[`docs/development/extending.md`](docs/development/extending.md) (tutorials) |
-| **Known issues** | [`docs/theory/implementation_roadmap.md`](docs/theory/implementation_roadmap.md) §Key-Findings |
-
-### When Stuck
-
-1. Known issues/solutions: [`docs/theory/implementation_roadmap.md`](docs/theory/implementation_roadmap.md) §Key-Findings
-2. Similar examples: [`docs/development/extending.md`](docs/development/extending.md) tutorials
-3. Trace cross-references: Follow theory → implementation → code chain
+**When in doubt about parameter interactions:**
+1. Check `config.py` docstrings
+2. Look at example configs in `experiments/configs/`
+3. Check roadmap.md for known interaction patterns
 
 ---
 
-## 6. Intentional Boundaries
+## 4. Navigating During Different Work Modes
 
-This documentation network does **not** provide:
+### Planning / Brainstorming Phase
 
-- Step-by-step instructions for every task (patterns exist, specifics are context-dependent)
-- Frequently-changing implementation details (code is the source of truth)
-- Experiment results (generated at runtime in `experiments/runs/`)
-- Unstarted features (roadmap shows intent, details come with implementation)
+**Goal: Understand design space and constraints**
+
+1. **Check current state**: `roadmap.md` §Status-at-a-Glance
+   - What's done? What's validated? What's planned?
+
+2. **Understand design rationale**: `conceptual_model.md`
+   - Why is it designed this way?
+   - What are the invariants?
+
+3. **Check mathematical constraints**: `mathematical_specification.md`
+   - What are the formal requirements?
+   - What are the trade-offs?
+
+4. **Look for related work**: `extending.md`
+   - Has someone done something similar?
+   - What patterns exist?
+
+### Implementation Phase
+
+**Goal: Understand current code structure and patterns**
+
+1. **Understand architecture**: `architecture.md`
+   - What patterns should I follow?
+   - Where do different concerns live?
+
+2. **Locate relevant modules**: `implementation.md`
+   - Which files do I need to touch?
+   - How are they structured?
+
+3. **Follow extension tutorials**: `extending.md`
+   - Step-by-step for similar changes
+
+4. **Reference grounded examples**: Code files + tests
+   - How is it actually done?
+
+### Validation Phase
+
+**Goal: Verify changes work as intended**
+
+1. **Check experiment workflow**: `experiments/README.md`
+   - How to run tests?
+   - How to interpret results?
+
+2. **Verify against spec**: `mathematical_specification.md`
+   - Does it satisfy formal requirements?
+
+3. **Check for regressions**: Test suite patterns
+   - What should I test?
+   - What are edge cases?
+
+---
+
+## 5. Key Documentation Cross-References
+
+### Concept → Multiple Perspectives
+
+**τ-classifier** (example of complete cross-referencing):
+- Theory: `conceptual_model.md` §How-We-Classify
+- Math: `mathematical_specification.md` §5
+- Status: `roadmap.md` §τ-Classifier-Completed
+- Implementation: `implementation.md` §tau_classifier.py
+- Tutorial: `extending.md` §Tutorial-3
+- Code: `src/ssvae/components/tau_classifier.py`
+
+**Protocol-based priors**:
+- Design: `architecture.md` §Core-Abstractions §PriorMode-Protocol
+- Math: `mathematical_specification.md` §3.1
+- Tutorial: `extending.md` §Tutorial-1 (VampPrior)
+- Example: `src/ssvae/priors/mixture.py`
+
+
+
+---
+
+## 6. What This Documentation Network Doesn't Do
+
+**Intentionally NOT documented:**
+
+**Implementation details that change frequently:**
+- Don't duplicate code in docs
+- Code is source of truth
+- Docs point to relevant files
+
+**Specific experiment results:**
+- Results in `experiments/runs/*/REPORT.md` after running
+- Not committed to repo (too large, too variable)
+
+**Future features not started:**
+- Roadmap shows what's planned
+- No detailed docs until implementation begins
+
+**Step-by-step for every task:**
+- Docs provide patterns and examples
+- Not exhaustive recipes (you collaborate with human to plan)
+
+---
+
+## 7. Orientation Checklist for New Work
+
+**Before proposing changes:**
+- [ ] Read `conceptual_model.md` to understand design vision
+- [ ] Check `roadmap.md` §Status to see current state
+- [ ] Verify in `architecture.md` that pattern exists or understand why new pattern needed
+- [ ] Look in `extending.md` for similar tutorials
+
+**During implementation:**
+- [ ] Reference `implementation.md` for module organization
+- [ ] Check `config.py` for parameter definitions
+- [ ] Look at existing code for patterns
+- [ ] Run relevant tests
+
+**After implementation:**
+- [ ] Follow `experiments/README.md` workflow for validation
+- [ ] Compare results to expectations in `mathematical_specification.md`
+- [ ] Check for regressions in `tests/`
+
+---
+
+## 8. Quick Reference (Minimal Pointers)
+
+### Entry Points by Intent
+- Understand design vision → `conceptual_model.md`
+- Understand current state → `roadmap.md` §Status-at-a-Glance
+- Understand architecture → `architecture.md`
+- Add new feature → `extending.md` + relevant architecture section
+- Run experiments → `experiments/README.md` §Quick-Start
+- Understand module → `implementation.md` §Module-Organization
+
+### Common Commands
+```bash
+# Quick sanity check
+JAX_PLATFORMS=cpu poetry run python experiments/run_experiment.py --config experiments/configs/quick.yaml
+
+# Full experiment
+poetry run python experiments/run_experiment.py --config experiments/configs/mixture_example.yaml
+
+# Run tests  
+pytest tests/
+```
+
+### Critical Files for Reference
+- Configuration: `src/ssvae/config.py::SSVAEConfig`
+- Loss computation: `src/training/losses.py::compute_loss_and_metrics_v2()`
+- Training loop: `src/training/trainer.py::Trainer`
+- Example configs: `experiments/configs/*.yaml`
 
 ---
 
 ## Summary
 
-**Navigate by**: Theory → Implementation → Usage → Code
+**This repo prioritizes deep understanding over quick execution.**
 
-**Trust by**: Stability hierarchy (theory > architecture > current implementation)
+The documentation network is designed to support collaborative planning by providing:
+- **Stable foundations** (theory) to anchor discussions
+- **Current state** (roadmap) to inform decisions
+- **Patterns and examples** (architecture, extending) to guide implementation
+- **Cross-references** to build complete understanding
 
-**Resolve conflicts**: Code wins when docs unclear; theory guides when code seems wrong
+Navigate by following conceptual links based on what you need to understand, not by reading linearly.
 
-**Start here**: [`docs/theory/conceptual_model.md`](docs/theory/conceptual_model.md) for "why" before "how"
+When in doubt, start with `conceptual_model.md` to understand the "why" before diving into the "how" or "what".
