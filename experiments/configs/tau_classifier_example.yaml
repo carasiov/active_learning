@@ -1,0 +1,81 @@
+# ============================================================================
+# τ-Classifier Example Configuration
+# ============================================================================
+# Demonstrates the τ-classifier (tau classifier) for component specialization
+# analysis. The τ-classifier learns a component-to-label association matrix
+# from soft counts rather than gradients, enabling analysis of how mixture
+# components naturally specialize in different semantic categories.
+#
+# Key Features:
+# - τ-classifier enabled (learns P(y|c) from soft counts)
+# - Mixture prior with component-aware decoder
+# - Full diagnostics: τ matrix, specialization metrics, label coverage
+# - Rich visualizations: τ heatmap, specialization bars, coverage analysis
+#
+# Usage:
+#   poetry run python experiments/run_experiment.py --config experiments/configs/tau_classifier_example.yaml
+# ============================================================================
+
+experiment:
+  name: "tau_classifier_k10"
+  description: "τ-classifier with K=10 components for specialization analysis"
+  tags: ["tau-classifier", "mixture", "k10"]
+
+data:
+  num_samples: 5000
+  num_labeled: 50  # Small labeled set for semi-supervised setting
+  seed: 42
+
+model:
+  # Architecture
+  encoder_type: "dense"
+  decoder_type: "dense"
+  classifier_type: "dense"
+  latent_dim: 2  # 2D for visualization
+  hidden_dims: [256, 128, 64]
+
+  # Loss weights
+  reconstruction_loss: "bce"
+  recon_weight: 1.0
+  kl_weight: 0.50
+  label_weight: 1.0
+
+  # Mixture prior (REQUIRED for τ-classifier)
+  prior_type: "mixture"
+  num_components: 10
+  kl_c_weight: 0.001
+  kl_c_anneal_epochs: 0
+
+  # Component-aware decoder (recommended for functional specialization)
+  use_component_aware_decoder: true
+  component_embedding_dim: 8
+  top_m_gating: 0  # Use all components
+  soft_embedding_warmup_epochs: 0
+
+  # τ-Classifier Configuration (NEW!)
+  use_tau_classifier: true  # Enable τ-classifier
+  tau_alpha_0: 1.0  # Dirichlet smoothing (1.0 = uniform prior)
+
+  # Regularization for mixture diversity
+  dirichlet_alpha: 5.0
+  dirichlet_weight: 1.0
+  component_diversity_weight: -0.05  # Negative = entropy reward (prevents collapse)
+
+  # Mixture tracking
+  mixture_history_log_every: 1  # Track every epoch
+
+  # Training
+  learning_rate: 0.001
+  batch_size: 128
+  max_epochs: 50
+  patience: 30
+  val_split: 0.1
+  random_seed: 42
+
+  # Regularization
+  grad_clip_norm: 1.0
+  weight_decay: 0.0001
+  dropout_rate: 0.2
+
+  # Monitoring
+  monitor_metric: "loss"

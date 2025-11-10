@@ -840,3 +840,151 @@ def generate_report(
         f.write("All models trained successfully and results are documented above.\n")
     
     print(f"  Saved: {report_path}")
+
+
+def plot_tau_analysis(
+    models: Dict[str, object],
+    output_dir: Path
+):
+    """Generate τ-classifier analysis visualization.
+
+    Creates a comprehensive 4-subplot figure analyzing the τ matrix:
+    - Main heatmap: τ[c,y] values (K components × num_classes)
+    - Right bars: Specialization scores (entropy per component)
+    - Bottom bars: Label coverage (components per label)
+    - Corner textbox: Key statistics
+
+    Args:
+        models: Dict mapping model names to trained model objects
+        output_dir: Directory to save visualization
+    """
+    from scipy.stats import entropy
+
+    # Filter to models with τ-classifier
+    tau_models = {
+        name: model for name, model in models.items()
+        if hasattr(model, 'config') and getattr(model.config, 'use_tau_classifier', False)
+    }
+
+    if not tau_models:
+        return  # No τ-classifier models to visualize
+
+    for model_name, model in tau_models.items():
+        # Load τ matrix from diagnostics
+        diag_dir = model.last_diagnostics_dir
+        if not diag_dir:
+            continue
+
+        counts_path = Path(diag_dir) / "component_label_counts.npy"
+        if not counts_path.exists():
+            continue
+
+        counts = np.load(counts_path)  # Shape: (K, num_classes)
+        # Normalize with Dirichlet smoothing to get τ
+        alpha_0 = getattr(model.config, 'tau_alpha_0', 1.0)
+        tau = (counts + alpha_0) / (counts.sum(axis=1, keepdims=True) + alpha_0 * counts.shape[1])
+        K, num_classes = tau.shape
+
+        # Create figure with custom gridspec for 4-subplot layout
+        fig = plt.figure(figsize=(14, 10))
+        gs = fig.add_gridspec(3, 3, height_ratios=[3, 1, 0.3], width_ratios=[3, 1, 0.3],
+                              hspace=0.3, wspace=0.3)
+
+        # Main subplot: τ heatmap
+        ax_main = fig.add_subplot(gs[0:2, 0:2])
+        im = ax_main.imshow(tau, aspect='auto', cmap='YlOrRd', vmin=0, vmax=1)
+        ax_main.set_xlabel('Label', fontsize=12, fontweight='bold')
+        ax_main.set_ylabel('Component', fontsize=12, fontweight='bold')
+        ax_main.set_title(f'τ Matrix: Component-Label Associations ({model_name})',
+                          fontsize=14, fontweight='bold', pad=20)
+        ax_main.set_xticks(range(num_classes))
+        ax_main.set_yticks(range(K))
+
+        # Add colorbar
+        cbar = plt.colorbar(im, ax=ax_main, fraction=0.046, pad=0.04)
+        cbar.set_label('P(y|c)', rotation=270, labelpad=20, fontsize=11)
+
+        # Add text annotations on heatmap for high-confidence values
+        for c in range(K):
+            for y in range(num_classes):
+                if tau[c, y] > 0.3:  # Only annotate significant values
+                    text_color = 'white' if tau[c, y] > 0.6 else 'black'
+                    ax_main.text(y, c, f'{tau[c, y]:.2f}',
+                               ha='center', va='center',
+                               color=text_color, fontsize=8)
+
+        # Right subplot: Specialization scores (entropy per component)
+        ax_right = fig.add_subplot(gs[0:2, 2])
+        specialization_scores = [entropy(tau[c, :]) for c in range(K)]
+        colors_spec = ['green' if s < 1.0 else 'orange' if s < 1.5 else 'red'
+                       for s in specialization_scores]
+        ax_right.barh(range(K), specialization_scores, color=colors_spec, alpha=0.7)
+        ax_right.set_ylabel('Component', fontsize=10, fontweight='bold')
+        ax_right.set_xlabel('Entropy', fontsize=9)
+        ax_right.set_title('Specialization\n(lower = better)', fontsize=10, fontweight='bold')
+        ax_right.set_ylim(-0.5, K - 0.5)
+        ax_right.invert_yaxis()
+        ax_right.grid(axis='x', alpha=0.3)
+        ax_right.set_yticks(range(K))
+
+        # Add reference line at entropy threshold
+        max_entropy = np.log(num_classes)
+        ax_right.axvline(max_entropy / 2, color='gray', linestyle='--',
+                        linewidth=1, alpha=0.5, label='50% max')
+        ax_right.legend(fontsize=8, loc='lower right')
+
+        # Bottom subplot: Label coverage
+        ax_bottom = fig.add_subplot(gs[2, 0:2])
+        threshold = 0.3
+        label_coverage = [np.sum(tau[:, y] > threshold) for y in range(num_classes)]
+        colors_cov = ['green' if c > 0 else 'red' for c in label_coverage]
+        ax_bottom.bar(range(num_classes), label_coverage, color=colors_cov, alpha=0.7)
+        ax_bottom.set_xlabel('Label', fontsize=10, fontweight='bold')
+        ax_bottom.set_ylabel('# Components', fontsize=9)
+        ax_bottom.set_title(f'Label Coverage (threshold={threshold})',
+                           fontsize=10, fontweight='bold')
+        ax_bottom.set_xticks(range(num_classes))
+        ax_bottom.grid(axis='y', alpha=0.3)
+        ax_bottom.axhline(1, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+
+        # Corner: Statistics textbox
+        ax_stats = fig.add_subplot(gs[2, 2])
+        ax_stats.axis('off')
+
+        mean_spec = np.mean(specialization_scores)
+        labels_with_zero_coverage = sum(1 for c in label_coverage if c == 0)
+        max_tau = np.max(tau)
+        mean_tau = np.mean(tau)
+
+        stats_text = (
+            f"Statistics:\n"
+            f"─────────\n"
+            f"K = {K}\n"
+            f"Labels = {num_classes}\n"
+            f"\n"
+            f"Specialization:\n"
+            f"  Mean H = {mean_spec:.2f}\n"
+            f"  Max H = {max_entropy:.2f}\n"
+            f"\n"
+            f"Coverage:\n"
+            f"  Zero = {labels_with_zero_coverage}\n"
+            f"\n"
+            f"τ Values:\n"
+            f"  Max = {max_tau:.3f}\n"
+            f"  Mean = {mean_tau:.3f}"
+        )
+
+        ax_stats.text(0.1, 0.5, stats_text,
+                     transform=ax_stats.transAxes,
+                     fontsize=8, verticalalignment='center',
+                     family='monospace',
+                     bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.3))
+
+        # Save figure
+        save_dir = output_dir / "visualizations" / "tau"
+        save_dir.mkdir(parents=True, exist_ok=True)
+        save_path = save_dir / f"{model_name}_tau_analysis.png"
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        plt.close()
+
+        print(f"  Saved: {save_path}")

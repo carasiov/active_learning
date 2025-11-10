@@ -35,6 +35,7 @@ cat experiments/runs/baseline_quick_*/REPORT.md
 |--------|---------|---------|-------|
 | `experiments/configs/quick.yaml` | Sanity checks | ~7s | 1K samples, 10 epochs |
 | `experiments/configs/mixture_example.yaml` | Mixture features | ~5min | K=10, history tracking enabled |
+| `experiments/configs/tau_classifier_example.yaml` | τ-classifier analysis | ~5min | Component specialization metrics |
 
 ### Config Structure
 
@@ -187,7 +188,29 @@ poetry run python experiments/run_experiment.py --config experiments/configs/mix
 
 ---
 
-### 4. Create Custom Experiment
+### 4. Analyze Component Specialization with τ-Classifier
+
+```bash
+poetry run python experiments/run_experiment.py --config experiments/configs/tau_classifier_example.yaml
+```
+
+**Expect:**
+- Runtime: ~5 minutes
+- τ matrix heatmap showing P(y|c) for each component-label pair
+- Specialization scores (entropy per component - lower = more specialized)
+- Label coverage analysis (how many components specialize in each label)
+- Component specialization metrics in summary.json
+
+**Key Metrics to Check:**
+- `mean_specialization_entropy`: Lower indicates stronger specialization
+- `labels_with_zero_coverage`: Should be 0 (all labels covered)
+- `label_coverage`: Distribution shows how components allocate across labels
+
+**Use for:** Understanding how mixture components naturally organize around semantic categories without gradient-based supervision.
+
+---
+
+### 5. Create Custom Experiment
 
 ```bash
 # 1. Copy a base config
@@ -235,6 +258,16 @@ poetry run python experiments/run_experiment.py --config experiments/configs/my_
 | **ari** | Adjusted Rand Index | 0.2-0.6 (higher = better cluster-class alignment) |
 
 **Note:** Clustering metrics compare latent clusters to true class labels. Only computed when `latent_dim=2` for visualization purposes.
+
+### τ-Classifier Metrics
+
+| Metric | Meaning | Good Range | Bad Signs |
+|--------|---------|------------|-----------|
+| **mean_specialization_entropy** | Average entropy of τ[c,:] | < 1.5 | > 2.0 (no specialization) |
+| **labels_with_zero_coverage** | Labels with no specialized components | 0 | > 0 (some labels ignored) |
+| **max_tau_value** | Highest P(y\|c) value | 0.5-0.9 | < 0.3 (weak associations) |
+
+**Note:** τ-classifier metrics measure how well mixture components specialize in different semantic categories. Lower specialization entropy indicates stronger component-label associations. Requires `use_tau_classifier: true` in config.
 
 ---
 

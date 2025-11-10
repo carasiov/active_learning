@@ -36,6 +36,7 @@ from experiment_utils import (
     plot_mixture_evolution,
     plot_component_embedding_divergence,
     plot_reconstruction_by_component,
+    plot_tau_analysis,
 )
 
 
@@ -174,6 +175,60 @@ def train_model(model_config: dict, X_train, y_train, y_true, output_dir: Path):
 
         summary['mixture'] = mixture_summary
 
+    # Add τ-classifier specific metrics
+    if config.use_tau_classifier:
+        from scipy.stats import entropy
+
+        tau_summary = {
+            'tau_alpha_0': float(config.tau_alpha_0),
+        }
+
+        diag_dir = model.last_diagnostics_dir
+        if diag_dir:
+            diag_path = Path(diag_dir)
+
+            # Load τ matrix from component_label_counts
+            counts_path = diag_path / "component_label_counts.npy"
+            if counts_path.exists():
+                counts = np.load(counts_path)  # Shape: (K, num_classes)
+                # Normalize with Dirichlet smoothing to get τ
+                alpha_0 = config.tau_alpha_0
+                tau = (counts + alpha_0) / (counts.sum(axis=1, keepdims=True) + alpha_0 * counts.shape[1])
+                K, num_classes = tau.shape
+
+                # Specialization scores (entropy per component - lower = more specialized)
+                tau_summary['specialization_scores'] = [
+                    float(entropy(tau[c, :])) for c in range(K)
+                ]
+                tau_summary['mean_specialization_entropy'] = float(np.mean(tau_summary['specialization_scores']))
+
+                # Dominant label per component
+                dominant_labels = tau.argmax(axis=1)
+                dominant_confidences = tau.max(axis=1)
+                tau_summary['dominant_labels'] = dominant_labels.tolist()
+                tau_summary['dominant_confidences'] = dominant_confidences.tolist()
+
+                # Label coverage: how many components specialize in each label?
+                threshold = 0.3  # Component "specializes" if τ[c,y] > threshold
+                label_coverage = {}
+                for label in range(num_classes):
+                    count = int(np.sum(tau[:, label] > threshold))
+                    label_coverage[str(label)] = count
+                tau_summary['label_coverage'] = label_coverage
+                tau_summary['labels_with_zero_coverage'] = sum(1 for c in label_coverage.values() if c == 0)
+
+                # Overall statistics
+                tau_summary['max_tau_value'] = float(np.max(tau))
+                tau_summary['min_tau_value'] = float(np.min(tau))
+                tau_summary['mean_tau_value'] = float(np.mean(tau))
+
+            # Load soft count total if available
+            soft_count_path = diag_path / "soft_count_total.npy"
+            if soft_count_path.exists():
+                tau_summary['soft_count_total'] = float(np.load(soft_count_path))
+
+        summary['tau'] = tau_summary
+
     # Add clustering metrics for 2D latents
     if config.latent_dim == 2 and config.prior_type == 'mixture':
         diag_dir = model.last_diagnostics_dir
@@ -211,6 +266,9 @@ def generate_visualizations(model, history, X_train, y_true, output_dir: Path):
     # Component-aware decoder validation
     plot_component_embedding_divergence(models, output_dir)
     plot_reconstruction_by_component(models, X_train, output_dir)
+
+    # τ-classifier analysis
+    plot_tau_analysis(models, output_dir)
 
     return recon_paths
 
@@ -301,6 +359,18 @@ def generate_report(summary: dict, history: dict, experiment_config: dict, outpu
                 metric = key.upper()
                 f.write(f"| Clustering | {metric} | {value:.4f} |\n")
 
+        # τ-Classifier metrics
+        if 'tau' in summary:
+            tau = summary['tau']
+            for key, value in tau.items():
+                if key in ['specialization_scores', 'dominant_labels', 'dominant_confidences', 'label_coverage']:
+                    continue  # Skip detailed arrays
+                metric = key.replace('_', ' ').replace('tau ', 'τ ').title()
+                if isinstance(value, float):
+                    f.write(f"| τ-Classifier | {metric} | {value:.4f} |\n")
+                else:
+                    f.write(f"| τ-Classifier | {metric} | {value} |\n")
+
         # Visualizations
         f.write("\n## Visualizations\n\n")
 
@@ -348,6 +418,28 @@ def generate_report(summary: dict, history: dict, experiment_config: dict, outpu
             for plot_path in sorted(recon_by_component_plots):
                 filename = plot_path.name
                 f.write(f"![Reconstruction by Component]({filename})\n\n")
+
+        # τ-classifier analysis
+        tau_dir = output_dir / 'visualizations' / 'tau'
+        if tau_dir.exists():
+            tau_plots = list(tau_dir.glob('*_tau_analysis.png'))
+            if tau_plots:
+                f.write("### τ-Classifier Analysis\n\n")
+                f.write("Component-to-label association matrix with specialization and coverage analysis:\n\n")
+                for plot_path in sorted(tau_plots):
+                    rel_path = plot_path.relative_to(output_dir)
+                    f.write(f"![τ Analysis]({rel_path})\n\n")
+
+                # Add detailed τ metrics if available
+                if 'tau' in summary:
+                    tau = summary['tau']
+                    if 'label_coverage' in tau:
+                        f.write("**Label Coverage (threshold=0.3):**\n\n")
+                        f.write("| Label | # Components |\n")
+                        f.write("|-------|-------------|\n")
+                        for label, count in sorted(tau['label_coverage'].items(), key=lambda x: int(x[0])):
+                            f.write(f"| {label} | {count} |\n")
+                        f.write("\n")
 
     print(f"  Saved: {report_path}")
 
