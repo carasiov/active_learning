@@ -1,20 +1,32 @@
 # Heteroscedastic Decoder Implementation Plan
 
-> **Status**: Ready for Implementation (Nov 10, 2025)
-> **Priority**: NEXT PRIORITY after τ-classifier completion
-> **Session ID**: claude/heteroscedastic-decoder-review-011CUzhjm2QDuKwX8fgtMVsQ
+> **Status**: ✅ **IMPLEMENTED** (Nov 10, 2025) | ⚠️ **Requires loss scaling tuning**
+> **Implementation Session**: claude/heteroscedastic-decoder-review-011CUzhjm2QDuKwX8fgtMVsQ
+> **See**: [HETEROSCEDASTIC_DECODER_SESSION_SUMMARY.md](HETEROSCEDASTIC_DECODER_SESSION_SUMMARY.md) for full results
+> **Updated**: [Implementation Roadmap](docs/theory/implementation_roadmap.md) §Heteroscedastic-Decoder-Implemented
 
 ---
 
 ## Executive Summary
 
-This document defines the implementation plan for adding heteroscedastic decoder support to the RCM-VAE codebase. The heteroscedastic decoder learns per-input variance σ(x) to capture aleatoric (observation) uncertainty, complementing the epistemic uncertainty already captured in the latent space.
+✅ **Implementation complete** - The heteroscedastic decoder has been fully implemented with all 4 decoder variants, 2 loss functions, and complete integration across network, models, and visualization. All 25 unit tests passing. Backward compatible.
 
-**Key Benefits:**
-- **Aleatoric uncertainty quantification**: Model noise inherent in observations
-- **Improved reconstruction quality**: Adaptive noise modeling for clean vs noisy inputs
-- **Better OOD detection**: Combine reconstruction confidence with latent-based scores
-- **Calibrated uncertainty**: Separate "what" (epistemic via z) from "how noisy" (aleatoric via σ)
+⚠️ **Tuning required** - Validation experiments revealed a loss scale mismatch: heteroscedastic NLL is 600× larger than standard MSE, causing mixture component collapse (K_eff = 1.0 vs 9.9 baseline). Requires `recon_weight` adjustment or loss normalization before production use.
+
+**Implemented Features:**
+- ✅ **Aleatoric uncertainty quantification**: Per-image σ(x) captures observation noise
+- ✅ **Dual-head decoder architecture**: Separate mean and variance heads with shared trunk
+- ✅ **Variance parameterization**: σ(x) = σ_min + softplus(s_θ(x)), clamped to [0.05, 0.5]
+- ✅ **Heteroscedastic loss**: NLL formulation ||x - x̂||²/(2σ²) + log σ
+- ✅ **All 8 decoder combinations**: dense/conv × component-aware/standard × heteroscedastic/standard
+- ✅ **Auto-detection in priors**: Both standard and mixture priors handle tuple outputs
+- ✅ **Complete integration**: Network, models, visualization, factory, configuration
+
+**Pending Work:**
+- ⚠️ **Loss scaling fix**: Implement one of three recommended solutions (see below)
+- 📋 **Re-validation**: Verify healthy mixture after tuning (K_eff > 8, accuracy > 30%)
+- 📋 **Variance analysis**: Check σ distributions, correlation with reconstruction error
+- 📋 **Uncertainty calibration**: Validate aleatoric uncertainty estimates
 
 ---
 
@@ -603,6 +615,160 @@ Before starting implementation:
 - [x] Planned testing strategy
 - [x] Identified risks and mitigations
 
-**Status**: ✅ Ready to proceed with implementation
+**Planning Status**: ✅ Complete
 
-**Next Action**: Begin Phase 1 - Core Decoder Implementation
+**Implementation Status**: ✅ Complete
+
+**Validation Status**: ⚠️ Requires loss scaling tuning
+
+---
+
+## Implementation Results (Nov 10, 2025)
+
+### Completed Phases
+
+**All 6 phases completed successfully:**
+
+✅ **Phase 1 - Core Decoder Implementation** (Commit f7ae021)
+- 4 heteroscedastic decoder variants implemented (+375 lines)
+- Dual-head architecture with shared trunk
+- Variance parameterization: σ = σ_min + softplus(s_θ(x)), clamped [0.05, 0.5]
+
+✅ **Phase 2 - Loss Functions** (Commit f7ae021)
+- `heteroscedastic_reconstruction_loss()` (+45 lines)
+- `weighted_heteroscedastic_reconstruction_loss()` (+50 lines)
+- NLL formulation: ||x - x̂||²/(2σ²) + log σ
+
+✅ **Phase 3 - Prior Integration** (Commit f7ae021)
+- Both `StandardPrior` and `MixturePrior` updated (+35 lines)
+- Auto-detection via `isinstance(x_recon, tuple)`
+- Backward compatible with standard decoders
+
+✅ **Phase 4 - Configuration & Factory** (Commit f7ae021)
+- Added 3 config parameters (+15 lines)
+- Factory supports all 8 decoder combinations (+70 lines)
+- Auto-selection based on `use_heteroscedastic_decoder` flag
+
+✅ **Phase 5 - Testing** (d9688b3)
+- Comprehensive test suite: 25 tests, all passing
+- Coverage: decoder outputs, loss functions, factory, gradients
+- Fixed gradient flow test expectations (sigma gradients may be zero at clamp bounds)
+
+✅ **Phase 6 - Network Integration** (6e52df8)
+- `SSVAENetwork.forward()` handles tuple outputs
+- Separate expectation over (mean, sigma) for mixture prior
+- Models and visualization updated for tuple handling
+
+### Validation Experiments (Nov 10, 2025)
+
+**Two experiments run** (heteroscedastic vs baseline):
+
+| Metric | Heteroscedastic | Baseline | Status |
+|--------|----------------|----------|--------|
+| Training epochs | 51 | 118 | ✅ Faster |
+| Reconstruction loss | 15,370 | 25.6 | ⚠️ **600× higher** |
+| K_eff | 1.00 | 9.90 | ⚠️ **Collapsed** |
+| Active components | 1/10 | 10/10 | ⚠️ **Collapsed** |
+| Accuracy | 9.5% | 37.0% | ⚠️ Poor |
+
+### Critical Finding: Loss Scale Mismatch
+
+**Problem**: Heteroscedastic NLL has fundamentally different magnitude than MSE.
+
+**Math**:
+- Standard MSE: `L = 500 × 0.05 ≈ 25`
+- Heteroscedastic NLL: `L = 500 × (0.05/0.005 + (-3.0)) ≈ 3,500`
+
+When σ ≈ 0.05 (σ_min), division by σ² = 0.0025 amplifies errors by **400×**.
+
+**Impact**:
+- Unstable gradients → mixture collapse to single component
+- K_eff = 1.00 (defeats mixture prior purpose)
+- Poor classification (9.5% vs 37.0%)
+
+### Recommended Solutions
+
+**Option 1 (Quick Fix):** Reduce `recon_weight`
+```yaml
+# heteroscedastic_validation.yaml
+recon_weight: 50.0  # 10× reduction from 500.0
+```
+
+**Option 2 (Better Fix):** Normalize NLL loss
+```python
+# In heteroscedastic_reconstruction_loss()
+normalized_nll = nll_per_image / jnp.log(1.0 / sigma_min)
+return weight * jnp.mean(normalized_nll)
+```
+
+**Option 3 (Most Flexible):** Separate weight parameter
+```python
+# In SSVAEConfig
+heteroscedastic_recon_weight: float = 50.0
+```
+
+### Next Actions
+
+1. ⚠️ **Immediate**: Implement loss scaling fix (choose one option above)
+2. 📋 **Validation**: Re-run experiment with adjusted loss scale
+3. 📋 **Analysis**: Verify K_eff > 8, accuracy > 30%, σ distributions reasonable
+4. 📋 **Documentation**: Update with successful validation results
+5. ✅ **Production**: Mark as complete once validation passes
+
+### Files Modified
+
+**Core Implementation** (Commit f7ae021):
+- `src/ssvae/components/decoders.py` (+375 lines)
+- `src/training/losses.py` (+95 lines)
+- `src/ssvae/priors/standard.py` (+15 lines)
+- `src/ssvae/priors/mixture.py` (+20 lines)
+- `src/ssvae/config.py` (+15 lines)
+- `src/ssvae/components/factory.py` (+70 lines)
+
+**Integration** (Commit 6e52df8):
+- `src/ssvae/network.py` (+51 lines, tuple handling)
+- `src/ssvae/models.py` (+28 lines, predict methods)
+- `use_cases/experiments/src/visualization/plotters.py` (+4 lines)
+
+**Configuration** (Commit 6768076):
+- `use_cases/experiments/configs/heteroscedastic_validation.yaml`
+- `use_cases/experiments/configs/heteroscedastic_baseline.yaml`
+
+**Documentation** (Commits d9688b3, 9353dc1):
+- `HETEROSCEDASTIC_DECODER_SESSION_SUMMARY.md` (comprehensive report)
+- Tests documented (not committed, directory gitignored)
+
+**Total**: ~600 lines of implementation code, 550+ lines of tests, full documentation
+
+### Success Criteria Status
+
+| Criterion | Status | Notes |
+|-----------|--------|-------|
+| Output shape correctness | ✅ Pass | All unit tests pass |
+| Variance bounds | ✅ Pass | σ ∈ [0.05, 0.5] enforced |
+| Loss correctness | ✅ Pass | NLL formula implemented correctly |
+| Gradient flow | ✅ Pass | Gradients exist and are finite |
+| Factory integration | ✅ Pass | All 8 combinations work |
+| Backward compatibility | ✅ Pass | Standard decoders unaffected |
+| Training stability | ⚠️ **Fail** | Component collapse due to loss scale |
+| Reconstruction quality | ⚠️ **Unknown** | Validation blocked by collapse |
+| Variance distributions | ⚠️ **Unknown** | Validation blocked by collapse |
+
+**Overall Status**: Functionally complete, requires hyperparameter tuning.
+
+---
+
+## References
+
+**Full Implementation Report**: [HETEROSCEDASTIC_DECODER_SESSION_SUMMARY.md](HETEROSCEDASTIC_DECODER_SESSION_SUMMARY.md)
+
+**Updated Roadmap**: [Implementation Roadmap](docs/theory/implementation_roadmap.md) §Heteroscedastic-Decoder-Implemented
+
+**Branch**: `claude/heteroscedastic-decoder-review-011CUzhjm2QDuKwX8fgtMVsQ`
+
+**Key Commits**:
+- `f7ae021` - Core implementation (decoders, losses, priors, config, factory)
+- `6768076` - Validation experiment configs
+- `d9688b3` - Test results documentation
+- `6e52df8` - Network and visualization integration
+- `9353dc1` - Validation experiment analysis

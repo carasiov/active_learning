@@ -10,19 +10,19 @@
 
 ## Status at a Glance (Nov 2025)
 
-**Current State:** ✅ τ-Classifier integrated | 🎯 Validation experiments next | 📊 Full RCM-VAE architecture ready
+**Current State:** ✅ Heteroscedastic decoder implemented | ⚠️ Requires loss scaling tuning | 📊 Full RCM-VAE architecture ready
 
 | Feature | Status | Reference |
 |---------|--------|-----------|
 | **Mixture prior with diversity control** | ✅ Production | [Entropy reward](#entropy-reward-configuration) |
 | **Component-aware decoder** $p_\theta(x\|z,c)$ | ✅ Complete (Nov 9) | [Details](#-component-aware-decoder-completed) |
-| **Latent-only classifier** via $\tau$ | ✅ **Complete (Nov 10)** | [Details](#-tau-classifier-completed) |
-| **Heteroscedastic decoder** $\sigma(x)$ | 🎯 **Next priority** | [Math Spec §4](mathematical_specification.md) |
+| **Latent-only classifier** via $\tau$ | ✅ Complete (Nov 10) | [Details](#-tau-classifier-completed) |
+| **Heteroscedastic decoder** $\sigma(x)$ | ⚠️ **Implemented (Nov 10)** | [Details](#-heteroscedastic-decoder-implemented) |
 | **OOD detection** via $r \times \tau$ | 📋 Ready (τ-classifier available) | [Math Spec §6](mathematical_specification.md) |
 | **VampPrior** (optional) | 📋 Alternative prior mode | [Details](#vampprior-optional) |
 | **Dynamic label addition** | 📋 Ready (free channel detection available) | [Math Spec §7](mathematical_specification.md) |
 
-**Legend:** ✅ Complete | 🚧 In progress | 🎯 Next up | 📋 Planned | 🔬 Research | ⏸️ Deferred
+**Legend:** ✅ Complete | ⚠️ Needs tuning | 🚧 In progress | 🎯 Next up | 📋 Planned | 🔬 Research | ⏸️ Deferred
 
 ---
 
@@ -146,14 +146,75 @@ Maps components to labels via soft count statistics, replacing the separate clas
 
 ---
 
-### 📋 Near-Term Enhancements (After τ-Classifier)
+### ⚠️ Heteroscedastic Decoder (Implemented)
 
-**Heteroscedastic Decoder:**
-- Add variance head: $\sigma(x) = \sigma_{\min} + \text{softplus}(s_\theta(x))$
-- Clamp $\sigma(x) \in [0.05, 0.5]$ for stability
-- Reconstruction loss: $\frac{\|x - \hat{x}\|^2}{2\sigma^2} + \log \sigma$
-- **Enables:** Aleatoric uncertainty quantification per input
-- **Theory:** [Conceptual Model - "Why This Shape"](conceptual_model.md) | **Math:** [Math Spec §4](mathematical_specification.md)
+**Status:** Functionally complete as of Nov 10, 2025 | ⚠️ **Requires loss scaling tuning**
+
+**What it does:**
+Learns per-image aleatoric uncertainty by predicting variance $\sigma(x)$ alongside reconstruction mean $\hat{x}$. Enables quantification of observation noise and uncertainty that cannot be reduced by more training data (e.g., blurry digits, occluded features).
+
+**Implementation:**
+- **Decoder variants** (4 classes in `src/ssvae/components/decoders.py`):
+  - `HeteroscedasticDenseDecoder`, `HeteroscedasticConvDecoder`
+  - `ComponentAwareHeteroscedasticDenseDecoder`, `ComponentAwareHeteroscedasticConvDecoder`
+- **Dual-head architecture:** Shared trunk → separate mean and variance heads
+- **Variance parameterization:** $\sigma(x) = \sigma_{\min} + \text{softplus}(s_\theta(x))$, clamped to $[\sigma_{\min}, \sigma_{\max}] = [0.05, 0.5]$
+- **Loss functions** (2 functions in `src/training/losses.py`):
+  - `heteroscedastic_reconstruction_loss()`: $\frac{\|x - \hat{x}\|^2}{2\sigma^2} + \log \sigma$
+  - `weighted_heteroscedastic_reconstruction_loss()`: Weighted version for mixture priors
+- **Prior integration:** Both `StandardPrior` and `MixturePrior` auto-detect tuple outputs via `isinstance(x_recon, tuple)`
+- **Network integration:** `SSVAENetwork` handles tuple outputs in forward pass, takes expectation over $(mean, \sigma)$ separately for mixture prior
+- **Configuration:** `use_heteroscedastic_decoder: true`, `sigma_min: 0.05`, `sigma_max: 0.5`
+- **Factory auto-selection:** All 8 decoder combinations supported (2 architectures × 2 component-aware × 2 heteroscedastic)
+
+**Validation (see `HETEROSCEDASTIC_DECODER_SESSION_SUMMARY.md`):**
+- ✅ **Unit tests:** All 25 tests passing (decoder outputs, loss functions, factory integration, gradient flow)
+- ✅ **Integration:** Network, models, and visualization all handle tuple outputs correctly
+- ✅ **Training:** Runs without errors, converges in 51 epochs (vs 118 baseline)
+- ✅ **Backward compatibility:** Standard decoders unaffected, default is `use_heteroscedastic_decoder: false`
+- ⚠️ **Critical issue:** Loss scale mismatch causing component collapse
+
+**Critical Finding - Loss Scale Mismatch:**
+
+| Metric | Heteroscedastic | Baseline | Ratio |
+|--------|----------------|----------|-------|
+| Reconstruction Loss | 15,370 | 25.6 | **600×** |
+| Active Components (K_eff) | 1.00 | 9.90 | **0.10×** |
+| Component Usage | 99.98% single | ~10% each | Collapsed |
+| Accuracy | 9.5% | 37.0% | 0.26× |
+
+**Root Cause:** The heteroscedastic NLL formula has fundamentally different magnitude than MSE:
+- **Standard MSE:** $L = 500 \times \|\|x - \hat{x}\|\|^2 \approx 25$
+- **Heteroscedastic NLL:** $L = 500 \times \left(\frac{\|\|x - \hat{x}\|\|^2}{2\sigma^2} + \log \sigma\right) \approx 15,370$
+
+When $\sigma \approx \sigma_{\min} = 0.05$, division by $\sigma^2 = 0.0025$ amplifies errors by 400×, creating:
+- Massive gradient magnitudes → training instability
+- Mixture prior collapses to single component (defeats architecture purpose)
+- Poor classification performance
+
+**Recommended Fixes (choose one):**
+
+1. **Quick fix:** Reduce `recon_weight` from 500 to 50 for heteroscedastic configs
+2. **Better fix:** Normalize NLL loss by dividing by $\log(1/\sigma_{\min})$ to match MSE scale
+3. **Most flexible:** Add separate `heteroscedastic_recon_weight` config parameter
+
+**Next Steps:**
+1. Implement loss scaling fix (Option 1, 2, or 3 above)
+2. Re-run validation experiment (`heteroscedastic_validation.yaml`)
+3. Verify healthy mixture (K_eff > 8, all components active)
+4. Analyze learned variance distributions
+5. Validate uncertainty calibration quality
+
+**Unlocked Capabilities (after tuning):**
+- **Aleatoric uncertainty quantification:** Per-image $\sigma(x)$ estimates observation noise
+- **Uncertainty-aware active learning:** Query samples with high $\sigma(x)$ (ambiguous) or low $\sigma(x)$ (surprising if wrong)
+- **Improved OOD detection:** Combine responsibility entropy with reconstruction uncertainty
+
+**Theory:** [Conceptual Model - "Why This Shape"](conceptual_model.md) | **Math:** [Math Spec §4](mathematical_specification.md)
+
+---
+
+### 📋 Near-Term Enhancements (Next Up)
 
 **Top-M Gating (Efficiency):**
 - Currently: decode all K components (expensive for large K)
