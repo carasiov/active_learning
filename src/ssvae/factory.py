@@ -160,6 +160,7 @@ class SSVAEFactory:
             key: jax.Array | None,
             training: bool,
             kl_c_scale: float,
+            tau: jnp.ndarray | None = None,
         ):
             rng = key if training else None
             return compute_loss_and_metrics_v2(
@@ -172,10 +173,11 @@ class SSVAEFactory:
                 rng,
                 training=training,
                 kl_c_scale=kl_c_scale,
+                tau=tau,
             )
 
         train_loss_and_grad = jax.value_and_grad(
-            lambda p, x, y, k, scale: _loss_and_metrics(p, x, y, k, True, scale),
+            lambda p, x, y, k, scale, t: _loss_and_metrics(p, x, y, k, True, scale, t),
             argnums=0,
             has_aux=True,
         )
@@ -187,8 +189,9 @@ class SSVAEFactory:
             batch_y: jnp.ndarray,
             key: jax.Array,
             kl_c_scale: float,
+            tau: jnp.ndarray | None = None,
         ):
-            (loss, metrics), grads = train_loss_and_grad(state.params, batch_x, batch_y, key, kl_c_scale)
+            (loss, metrics), grads = train_loss_and_grad(state.params, batch_x, batch_y, key, kl_c_scale, tau)
             new_state = state.apply_gradients(grads=grads)
             return new_state, metrics
 
@@ -227,6 +230,7 @@ class SSVAEFactory:
             params: Dict[str, Dict[str, jnp.ndarray]],
             batch_x: jnp.ndarray,
             batch_y: jnp.ndarray,
+            tau: jnp.ndarray | None = None,
         ):
             _, metrics = compute_loss_and_metrics_v2(
                 params,
@@ -238,6 +242,7 @@ class SSVAEFactory:
                 None,
                 training=False,
                 kl_c_scale=1.0,
+                tau=tau,
             )
             return metrics
 
