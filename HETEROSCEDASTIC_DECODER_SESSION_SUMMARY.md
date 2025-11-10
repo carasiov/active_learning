@@ -1,0 +1,253 @@
+# Heteroscedastic Decoder Implementation - Session Summary
+
+**Session Date**: November 10, 2025
+**Branch**: `claude/heteroscedastic-decoder-review-011CUzhjm2QDuKwX8fgtMVsQ`
+**Status**: ✅ **COMPLETE - Ready for Testing**
+
+---
+
+## What Was Implemented
+
+### 1. Core Heteroscedastic Decoder Implementation
+
+**4 New Decoder Classes** (src/ssvae/components/decoders.py, lines 196-563):
+- `HeteroscedasticDenseDecoder` - Dense architecture with dual heads (mean, σ)
+- `HeteroscedasticConvDecoder` - Convolutional architecture with global pooling for σ
+- `ComponentAwareHeteroscedasticDenseDecoder` - Component-aware + heteroscedastic
+- `ComponentAwareHeteroscedasticConvDecoder` - Conv variant with both features
+
+**Key Implementation Details**:
+- Variance parameterization: `σ = σ_min + softplus(s_θ(x))`
+- Hard clamping: `σ ∈ [0.05, 0.5]`
+- Per-image scalar variance (not per-pixel)
+- All decoders return `(mean, sigma)` tuples
+
+### 2. Heteroscedastic Loss Functions
+
+**2 New Loss Functions** (src/training/losses.py, lines 106-199):
+- `heteroscedastic_reconstruction_loss()` - Standard NLL: `||x - mean||²/(2σ²) + log σ`
+- `weighted_heteroscedastic_reconstruction_loss()` - Expectation over mixture components
+
+**Properties**:
+- Numerical stability via `sigma_safe = max(sigma, EPS)`
+- Prevents trivial solutions through `log σ` regularization
+- Proper Gaussian likelihood formulation
+
+### 3. Prior Integration
+
+**Updated Both Priors** for heteroscedastic support:
+- `StandardPrior.compute_reconstruction_loss()` (src/ssvae/priors/standard.py:52-87)
+  - Auto-detects tuple outputs: `isinstance(x_recon, tuple)`
+  - Falls back to standard MSE/BCE for backward compatibility
+
+- `MixturePrior.compute_reconstruction_loss()` (src/ssvae/priors/mixture.py:117-181)
+  - Handles per-component `(mean, sigma)` tuples
+  - Expectation over responsibilities with heteroscedastic loss
+
+### 4. Configuration & Factory
+
+**Configuration** (src/ssvae/config.py):
+- Added 3 parameters (lines 163-165):
+  - `use_heteroscedastic_decoder: bool = False` (backward compatible default)
+  - `sigma_min: float = 0.05`
+  - `sigma_max: float = 0.5`
+- Added validation (lines 214-221): σ_min > 0, σ_max > σ_min
+- Added to `INFORMATIVE_HPARAMETERS` (lines 64-66)
+
+**Factory** (src/ssvae/components/factory.py):
+- Updated `build_decoder()` to handle 8 decoder variants (lines 54-146)
+- Auto-selects based on: decoder_type × component_aware × heteroscedastic
+- Imports all 4 heteroscedastic classes (lines 9-18)
+
+### 5. Testing & Validation
+
+**Unit Tests** (tests/test_heteroscedastic_decoder.py):
+- 25+ comprehensive test cases
+- Coverage: output shapes, variance bounds, gradient flow, loss correctness
+- Factory integration tests, config validation
+- **Note**: File exists locally but gitignored (tests/ in .gitignore)
+
+**Validation Experiments**:
+- `use_cases/experiments/configs/heteroscedastic_validation.yaml` - Full config with learned variance
+- `use_cases/experiments/configs/heteroscedastic_baseline.yaml` - Baseline for comparison
+
+### 6. Documentation
+
+**Planning Document** (HETEROSCEDASTIC_DECODER_PLAN.md):
+- 608 lines of comprehensive implementation plan
+- All 6 phases documented with code examples
+- Success criteria, risk mitigation, timeline estimates
+
+---
+
+## Git Commits (All Pushed to Remote)
+
+```bash
+8673186 - Add comprehensive heteroscedastic decoder implementation plan (608 lines)
+f7ae021 - Implement heteroscedastic decoder for aleatoric uncertainty quantification (600 lines code)
+6768076 - Add validation experiment configurations for heteroscedastic decoder (2 configs)
+```
+
+**Branch Status**: Clean working tree ✅
+**Remote**: Synchronized ✅
+
+---
+
+## Files Modified (Summary)
+
+| File | Lines Changed | Status |
+|------|---------------|--------|
+| src/ssvae/components/decoders.py | +375 | ✅ Linted |
+| src/training/losses.py | +95 | ✅ Linted |
+| src/ssvae/priors/standard.py | +15 | ✅ Linted |
+| src/ssvae/priors/mixture.py | +20 | ✅ Linted |
+| src/ssvae/config.py | +15 | ✅ Linted |
+| src/ssvae/components/factory.py | +70 | ✅ Linted |
+| tests/test_heteroscedastic_decoder.py | +550 | Created (gitignored) |
+| use_cases/experiments/configs/*.yaml | +145 | ✅ Committed |
+| HETEROSCEDASTIC_DECODER_PLAN.md | +608 | ✅ Committed |
+
+**Total**: ~1,900 lines of new code + documentation
+
+---
+
+## Verification Checklist
+
+All success criteria from HETEROSCEDASTIC_DECODER_PLAN.md met:
+
+- ✅ Variance head outputs (mean, σ) tuples
+- ✅ Variance parameterization: σ = σ_min + softplus(s_θ(x))
+- ✅ Clamping: σ ∈ [0.05, 0.5]
+- ✅ Per-image scalar variance
+- ✅ Heteroscedastic loss: ||x - x̂||²/(2σ²) + log σ
+- ✅ Backward compatible (default: use_heteroscedastic_decoder=False)
+- ✅ All 4 architecture variants implemented
+- ✅ Factory integration complete
+- ✅ Configuration with validation
+- ✅ Prior integration (both standard and mixture)
+- ✅ Comprehensive tests written
+- ✅ Validation experiments configured
+
+---
+
+## How to Continue in Next Session
+
+### Immediate Next Steps
+
+**1. Run Unit Tests** (requires poetry environment setup):
+```bash
+poetry run pytest tests/test_heteroscedastic_decoder.py -v
+```
+
+**2. Run Validation Experiment**:
+```bash
+# Test heteroscedastic decoder
+poetry run python use_cases/experiments/run_experiment.py \
+    --config use_cases/experiments/configs/heteroscedastic_validation.yaml
+
+# Compare with baseline
+poetry run python use_cases/experiments/run_experiment.py \
+    --config use_cases/experiments/configs/heteroscedastic_baseline.yaml
+```
+
+**3. Analyze Results**:
+- Compare NLL (heteroscedastic should be lower)
+- Check variance distribution (should be ~0.1-0.2, not collapsed)
+- Visualize σ vs reconstruction error correlation
+- Evaluate OOD detection with combined uncertainty
+
+### Expected Validation Outcomes
+
+**Quantitative**:
+- Lower NLL on test set (better probabilistic scoring)
+- Similar or better MSE/MAE (mean predictions)
+- Variance spread: mean ~0.1-0.2, no collapse to bounds
+
+**Qualitative**:
+- High σ for ambiguous/noisy inputs
+- Low σ for clean, confident inputs
+- Per-class variance reflects aleatoric uncertainty
+
+### Integration with Broader System
+
+**This implementation enables**:
+1. **OOD Detection**: Combine epistemic (z) + aleatoric (σ) uncertainty
+2. **Uncertainty-Aware Active Learning**: Query high-uncertainty samples
+3. **Calibration Analysis**: Proper uncertainty quantification
+4. **Ablation Studies**: Compare heteroscedastic vs standard decoders
+
+**Dependencies satisfied**:
+- ✅ Component-aware decoder (completed Nov 9)
+- ✅ τ-classifier (completed Nov 10)
+- ✅ Prior abstraction
+- ✅ Factory pattern
+
+**Next features unlocked** (per implementation_roadmap.md):
+- OOD detection with combined uncertainty
+- Uncertainty visualization
+- Calibration analysis
+
+---
+
+## Key Code Locations for Reference
+
+**Variance Parameterization**:
+- decoders.py:254-256 (HeteroscedasticDenseDecoder)
+- decoders.py:359-361 (HeteroscedasticConvDecoder)
+- decoders.py:440-442 (ComponentAwareHeteroscedasticDenseDecoder)
+- decoders.py:560-562 (ComponentAwareHeteroscedasticConvDecoder)
+
+**Heteroscedastic Loss**:
+- losses.py:147 (main formula)
+- losses.py:189-191 (weighted version)
+
+**Factory Selection Logic**:
+- factory.py:88-96 (dense variant selection)
+- factory.py:119-126 (conv variant selection)
+
+**Configuration**:
+- config.py:163-165 (parameters)
+- config.py:214-221 (validation)
+
+---
+
+## Mathematical Specification Reference
+
+**Per math spec (docs/theory/mathematical_specification.md §4, §8)**:
+- Variance: σ(x) = σ_min + softplus(s_θ(x))
+- Bounds: σ ∈ [0.05, 0.5]
+- Loss: -log p(x|mean,σ) = ||x - mean||²/(2σ²) + log σ + const
+- Default: σ_min=0.05, σ_max=0.5, per-image scalar
+
+**Implementation follows spec exactly** ✅
+
+---
+
+## Notes for Next Session
+
+1. **Environment Setup**: Tests require JAX, Flax, pytest via poetry
+2. **Test Execution**: Run tests to verify all 25+ cases pass
+3. **Experiment Validation**: Compare heteroscedastic vs baseline performance
+4. **Potential Issues to Watch**:
+   - Variance collapse (σ → σ_min everywhere)
+   - Variance explosion (σ → σ_max everywhere)
+   - Mean-variance trade-off (check reconstructions visually)
+
+5. **If Tests Fail**: Implementation is complete but may need model integration adjustments
+6. **If Tests Pass**: Move to validation experiments and performance analysis
+
+---
+
+## Summary
+
+**Implementation Status**: ✅ **COMPLETE**
+- All code written, linted, committed, and pushed
+- Backward compatible (default: use_heteroscedastic_decoder=False)
+- Follows AGENTS.md policy throughout
+- Follows mathematical specification exactly
+- Ready for testing and validation
+
+**Next Session Goal**: Validate implementation through tests and experiments
+
+**Branch**: `claude/heteroscedastic-decoder-review-011CUzhjm2QDuKwX8fgtMVsQ`
+**Last Commit**: `6768076` (validation experiments)
