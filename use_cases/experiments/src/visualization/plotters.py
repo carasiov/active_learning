@@ -79,8 +79,8 @@ def plot_latent_spaces(
     for idx, (model_name, model) in enumerate(models.items()):
         ax = axes[idx]
         
-        # Get latent representations
-        latent, _, _, _ = model.predict(X_data)
+        # Get latent representations (batched to avoid OOM with conv architectures)
+        latent, _, _, _ = model.predict_batched(X_data)
         
         # Plot each digit class
         for digit in range(10):
@@ -142,10 +142,10 @@ def plot_reconstructions(
 
     for model_name, model in models.items():
         try:
-            _, recon, _, _ = model.predict(samples)
+            _, recon, _, _ = model.predict_batched(samples)
         except TypeError:
             # Fall back if predict signature differs; try without unpacking extras.
-            prediction = model.predict(samples)
+            prediction = model.predict_batched(samples)
             if isinstance(prediction, tuple) and len(prediction) >= 2:
                 recon = prediction[1]
             else:
@@ -807,7 +807,7 @@ def plot_tau_per_class_accuracy(
 
         try:
             # Get predictions
-            _, _, predictions, _ = model.predict(X_data)
+            _, _, predictions, _ = model.predict_batched(X_data)
 
             # Compute per-class accuracy
             num_classes = model.config.num_classes
@@ -902,7 +902,7 @@ def plot_tau_certainty_analysis(
 
         try:
             # Get predictions and certainty
-            _, _, predictions, certainty = model.predict(X_data)
+            _, _, predictions, certainty = model.predict_batched(X_data)
             correct = (predictions == y_true).astype(float)
 
             # Scatter plot with binning
