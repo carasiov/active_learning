@@ -58,6 +58,7 @@ README.md (entry point)
 - **Design patterns & abstractions**: `docs/development/architecture.md`
 - **Module-by-module reference**: `docs/development/implementation.md`  
 - **Extension tutorials**: `docs/development/extending.md`
+- **Experiment extension points**: `use_cases/experiments/src/{pipeline,metrics,visualization,io}`
 - **Experiment workflow**: `use_cases/experiments/README.md`
 
 **These explain mechanics** - How to extend, where files live, how to run experiments.
@@ -120,6 +121,11 @@ README.md (entry point)
 - Explained: `extending.md` §Tutorial-3, real example in `roadmap.md` §τ-Classifier
 - Pattern: `TrainerLoopHooks` provide touch points outside JIT boundaries
 - Use case: τ-classifier updates Python-side state after each batch
+
+**Registry-driven experiment toolkit**:
+- Source: `use_cases/experiments/src/metrics/registry.py`, `use_cases/experiments/src/visualization/registry.py`
+- Why: Keeps CLI thin and lets agents add metrics/plots by registering new providers
+- Gotcha: Outputs are routed through `io/structure.py`, so follow that schema when emitting artifacts
 
 **Understanding these patterns is critical** - They're architectural choices that influence all extensions.
 
@@ -231,7 +237,7 @@ Where to learn about them:
 - Docs point to relevant files
 
 **Specific experiment results:**
-- Results in `use_cases/experiments/runs/*/REPORT.md` after running
+- Results in `use_cases/experiments/results/*/REPORT.md` after running
 - Not committed to repo (too large, too variable)
 
 **Future features not started:**
@@ -292,6 +298,9 @@ pytest tests/
 - Loss computation: `src/training/losses.py::compute_loss_and_metrics_v2()`
 - Training loop: `src/training/trainer.py::Trainer`
 - Example configs: `use_cases/experiments/configs/*.yaml`
+- Experiment pipeline: `use_cases/experiments/src/pipeline/train.py`
+- Metrics registry: `use_cases/experiments/src/metrics/registry.py`
+- Visualization registry: `use_cases/experiments/src/visualization/registry.py`
 
 ---
 

@@ -440,7 +440,7 @@ class SSVAE:
         if not export_history:
             return callbacks
 
-        default_ckpt = Path("use_cases/experiments/runs/checkpoints/ssvae.ckpt")
+        default_ckpt = Path("use_cases/experiments/results/checkpoints/ssvae.ckpt")
         base_path = Path(weights_path) if weights_path else default_ckpt
         history_path = base_path.with_name(f"{base_path.stem}_history.csv")
         plot_path = base_path.with_name(f"{base_path.stem}_loss.png")
@@ -506,5 +506,5 @@ class SSVAE:
 # Repo root and default paths
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CHECKPOINT_PATH = (
-    REPO_ROOT / "use_cases" / "experiments" / "runs" / "checkpoints" / "ssvae.ckpt"
+    REPO_ROOT / "use_cases" / "experiments" / "results" / "checkpoints" / "ssvae.ckpt"
 )

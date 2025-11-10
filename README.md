@@ -24,11 +24,11 @@ active_learning_showcase/
 │
 ├── use_cases/
 │   ├── experiments/             # 🔬 Experimentation Workflow
-│   │   ├── run_experiment.py    #    Primary experimentation script
-│   │   ├── experiment_utils.py  #    Visualization & reporting utilities
+│   │   ├── src/                 #    Implementation (CLI, pipeline, metrics, viz, IO)
 │   │   ├── configs/             #    Experiment configurations
 │   │   ├── data/                #    Dataset loaders (MNIST)
-│   │   └── runs/                #    Experiment outputs (timestamped)
+│   │   ├── results/             #    Experiment outputs (timestamped)
+│   │   └── run_experiment.py    #    Backward-compatible CLI entry
 │   │
 │   └── dashboard/               # 🎛️ Interactive Interface (Future Focus)
 │       ├── app.py               #    Web-based active learning interface
@@ -86,7 +86,7 @@ This project has a layered documentation structure (see [AGENTS.md](AGENTS.md) f
 - [Extending the System](docs/development/extending.md) - Step-by-step tutorials for adding features
 
 **Usage Layer** (Workflows):
-- [Experiment Guide](use_cases/experiments/README.md) - Primary workflow (configuration → execution → interpretation)
+- [Experiment Guide](use_cases/experiments/README.md) - Primary workflow (configuration → execution → interpretation) with modular CLI/pipeline/registry structure
 - [Dashboard Guide](use_cases/dashboard/README.md) - Interactive interface (future primary)
 
 ---

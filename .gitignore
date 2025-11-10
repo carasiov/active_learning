@@ -39,8 +39,8 @@ poetry.toml
 ROOT
 
 # Experiment outputs
-experiments/runs/*
-!experiments/runs/.gitkeep
+use_cases/experiments/results/*
+!use_cases/experiments/results/.gitkeep
 
 # Devcontainer
 .devcontainer/.env

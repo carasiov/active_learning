@@ -3,6 +3,8 @@
 **Primary tool for training and evaluating SSVAE models.**
 
 > **New location:** The experimentation toolkit now lives under `use_cases/experiments/` alongside the dashboard so all user-facing workflows share a common root.
+>
+> **Implementation vs. results:** All code resides in `src/` (CLI, pipeline, metrics, visualization, IO) while generated artifacts land in `results/` to keep the workspace tidy.
 
 This guide covers the practical workflow: edit config → run experiment → interpret results.
 
@@ -20,12 +22,31 @@ poetry install
 JAX_PLATFORMS=cpu poetry run python use_cases/experiments/run_experiment.py --config use_cases/experiments/configs/quick.yaml
 
 # 3. View results
-cat use_cases/experiments/runs/baseline_quick_*/REPORT.md
+cat use_cases/experiments/results/baseline_quick_*/REPORT.md
 ```
 
-**Output location:** `use_cases/experiments/runs/baseline_quick_<timestamp>/`
+**Output location:** `use_cases/experiments/results/baseline_quick_<timestamp>/`
 
 **Next:** Try a full experiment with `use_cases/experiments/configs/mixture_example.yaml`
+
+---
+
+## Run Directory Layout
+
+Each run now writes to a standardized structure so downstream tools know where to look:
+
+```
+use_cases/experiments/results/<name>_<timestamp>/
+├── config.yaml                # Snapshot of experiment config
+├── summary.json               # Structured metrics
+├── REPORT.md                  # Human-readable report (links into figures/)
+├── artifacts/                 # Checkpoints + diagnostics
+├── figures/                   # All plots (loss curves, latent spaces, τ heatmaps…)
+│   └── mixture/               # Mixture evolution panels
+└── logs/                      # CSV histories or future log streams
+```
+
+The layout lives in `src/io/structure.py`, so any new tooling can reuse the same helper.
 
 ---
 
@@ -89,28 +110,30 @@ model:
 ### Directory Structure
 
 ```
-use_cases/experiments/runs/<name>_<timestamp>/
+use_cases/experiments/results/<name>_<timestamp>/
 ├── config.yaml                              # Snapshot of config used
-├── checkpoint.ckpt                          # Trained model weights
 ├── summary.json                             # All metrics (structured)
 ├── REPORT.md                                # Human-readable report
-│
-├── diagnostics/checkpoint/                  # Model artifacts
-│   ├── latent.npz                           # Latent embeddings
-│   ├── pi.npy                               # Final π weights (mixture only)
-│   ├── component_usage.npy                  # Final usage (mixture only)
-│   ├── pi_history.npy                       # π evolution (mixture only)
-│   ├── usage_history.npy                    # Usage evolution (mixture only)
-│   └── tracked_epochs.npy                   # Epochs tracked (mixture only)
-│
-└── visualizations/
-    ├── loss_comparison.png                  # Training curves
-    ├── latent_spaces.png                    # Latent space by class
-    ├── latent_by_component.png              # Latent space by component (mixture)
-    ├── responsibility_histogram.png         # Responsibility confidence (mixture)
-    ├── model_reconstructions.png            # Input/output samples
-    └── mixture/
-        └── model_evolution.png              # π and usage over time (mixture)
+├── artifacts/
+│   ├── checkpoint.ckpt                      # Trained model weights
+│   └── diagnostics/checkpoint/              # Model artifacts
+│       ├── latent.npz
+│       ├── pi.npy
+│       ├── component_usage.npy
+│       ├── pi_history.npy
+│       ├── usage_history.npy
+│       └── tracked_epochs.npy
+├── figures/
+│   ├── loss_comparison.png                  # Training curves
+│   ├── latent_spaces.png                    # Latent space by class
+│   ├── latent_by_component.png              # Latent space by component (mixture)
+│   ├── responsibility_histogram.png         # Responsibility confidence (mixture)
+│   ├── model_reconstructions.png            # Input/output samples
+│   ├── component_embedding_divergence.png
+│   ├── tau_matrix_heatmap.png
+│   └── mixture/
+│        └── model_evolution.png             # π and usage over time (mixture)
+└── logs/                                    # CSV histories (future use)
 ```
 
 ### Key Files
@@ -141,6 +164,36 @@ use_cases/experiments/runs/<name>_<timestamp>/
 ```
 
 **`checkpoint.ckpt`** - Model weights for inference or resuming training.
+
+---
+
+## Module Layout & Extension Points
+
+The experimentation toolkit is now split into small packages to keep code paths obvious:
+
+| Module | Purpose | Typical changes |
+|--------|---------|-----------------|
+| `src/cli/` | Entry point + argument parsing | Add new CLI flags or composite workflows |
+| `src/pipeline/` | Config loading, data prep, training orchestration | Swap trainers, add pre/post hooks |
+| `src/metrics/` | Metric registry + default providers | Register new providers with `@register_metric` |
+| `src/visualization/` | Plot registry + helper functions | Register new plotters with `@register_plotter` |
+| `src/io/` | Results-directory schema + reporting helpers | Customize layout or report template |
+
+### Adding a Metric
+
+1. Implement a function that accepts `src.metrics.registry.MetricContext`.
+2. Decorate it with `@register_metric`.
+3. Return a nested dict fragment; it will be deep-merged into `summary.json`.
+
+`MetricContext` already exposes the trained model, histories, latent samples, π/responsibilities, and diagnostics directory so you can compute arbitrary aggregates.
+
+### Adding a Plot
+
+1. Implement a function that accepts `src.visualization.registry.VisualizationContext`.
+2. Decorate it with `@register_plotter`.
+3. Save artifacts under `context.figures_dir`; return any metadata (e.g., reconstruction filenames) that the report should mention.
+
+Plotters run sequentially after training, so new visualizations can be dropped in without touching the CLI or pipeline.
 
 ---
 
@@ -222,7 +275,7 @@ cp use_cases/experiments/configs/mixture_example.yaml use_cases/experiments/conf
 poetry run python use_cases/experiments/run_experiment.py --config use_cases/experiments/configs/my_experiment.yaml
 
 # 4. Compare results
-# Check use_cases/experiments/runs/ for timestamped outputs
+# Check use_cases/experiments/results/ for timestamped outputs
 ```
 
 ---
@@ -368,7 +421,7 @@ experiment:
 
 Organize results by grepping tags:
 ```bash
-grep -r '"ablation"' use_cases/experiments/runs/*/config.yaml
+grep -r '"ablation"' use_cases/experiments/results/*/config.yaml
 ```
 
 ---
