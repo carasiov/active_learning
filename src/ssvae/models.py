@@ -12,9 +12,10 @@ Once validated, this will replace the original models.py.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
+import warnings
 from jax import random
 from jax.nn import softmax
 from utils import configure_jax_device, print_device_banner
@@ -28,7 +29,8 @@ from ssvae.checkpoint import CheckpointManager
 from ssvae.config import SSVAEConfig
 from ssvae.diagnostics import DiagnosticsCollector
 from ssvae.factory import SSVAEFactory
-from training.trainer import Trainer
+from training.trainer import MetricsDict, Trainer, TrainerLoopHooks
+from training.train_state import SSVAETrainState
 
 
 class SSVAE:
@@ -134,7 +136,13 @@ class SSVAE:
         Returns:
             Dictionary with training history metrics
         """
+        data = np.asarray(data, dtype=np.float32)
+        labels = np.asarray(labels, dtype=np.float32).reshape((-1,))
+
         self.weights_path = str(weights_path)
+
+        if self._tau_classifier is not None:
+            self._log_tau_data_requirements(labels)
 
         # Build callbacks
         callbacks = self._build_callbacks(
@@ -142,30 +150,22 @@ class SSVAE:
             export_history=export_history,
         )
 
-        # Use custom training loop for τ-classifier
-        if self._tau_classifier is not None:
-            history = self._fit_with_tau_classifier(
-                data=data,
-                labels=labels,
-                weights_path=weights_path,
-                callbacks=callbacks,
-            )
-        else:
-            # Standard training path
-            self.state, self._shuffle_rng, history = self._trainer.train(
-                self.state,
-                data=data,
-                labels=labels,
-                weights_path=self.weights_path,
-                shuffle_rng=self._shuffle_rng,
-                train_step_fn=self._train_step,
-                eval_metrics_fn=self._eval_metrics,
-                save_fn=self._checkpoint_mgr.save,
-                callbacks=callbacks,
-            )
+        loop_hooks = self._build_tau_loop_hooks() if self._tau_classifier else None
+        self.state, self._shuffle_rng, history = self._trainer.train(
+            self.state,
+            data=data,
+            labels=labels,
+            weights_path=self.weights_path,
+            shuffle_rng=self._shuffle_rng,
+            train_step_fn=self._train_step,
+            eval_metrics_fn=self._eval_metrics,
+            save_fn=self._checkpoint_mgr.save,
+            callbacks=callbacks,
+            loop_hooks=loop_hooks,
+        )
 
-            # Update RNG from state
-            self._rng = self.state.rng
+        # Update RNG from state
+        self._rng = self.state.rng
 
         # Generate diagnostics if mixture prior
         if self.config.prior_type == "mixture" and self._trainer.latest_splits is not None:
@@ -173,236 +173,146 @@ class SSVAE:
 
         return history
 
-    def _fit_with_tau_classifier(
-        self,
-        data: np.ndarray,
-        labels: np.ndarray,
-        weights_path: str,
-        callbacks: List[TrainingCallback],
-    ) -> dict:
-        """Custom training loop with τ-classifier count updates.
 
-        This method wraps the standard Trainer but adds τ-classifier updates:
-        1. After each batch, update τ counts from responsibilities
-        2. Get current τ matrix
-        3. Pass τ to train/eval functions
+    @staticmethod
+    def _summarize_labeled_data(labels: np.ndarray) -> Tuple[int, int]:
+        """Return (num_labeled_samples, num_classes_observed)."""
+        if labels.size == 0:
+            return 0, 0
 
-        Args:
-            data: Input images [N, H, W]
-            labels: Labels [N] (NaN for unlabeled)
-            weights_path: Path to save checkpoint
-            callbacks: Training callbacks
+        labeled_mask = ~np.isnan(labels)
+        labeled_count = int(np.sum(labeled_mask))
+        if labeled_count == 0:
+            return 0, 0
 
-        Returns:
-            Training history dictionary
-        """
-        from training.trainer import DataSplits
+        observed_classes = int(np.unique(labels[labeled_mask]).size)
+        return labeled_count, observed_classes
 
-        # Prepare data splits (replicating Trainer logic)
-        state_rng = self.state.rng
-        x_np = np.asarray(data, dtype=np.float32)
-        y_np = np.asarray(labels, dtype=np.float32).reshape((-1,))
+    @staticmethod
+    def _describe_label_regime(labeled_count: int) -> str:
+        """Map label count to a qualitative training regime."""
+        if labeled_count <= 0:
+            return "zero-label regime"
+        if labeled_count < 25:
+            return "few-shot learning mode"
+        if labeled_count < 200:
+            return "low-data regime"
+        return "standard regime"
 
-        total_samples = x_np.shape[0]
-        if total_samples <= 1:
-            val_size = 0
-        else:
-            val_size = max(1, min(int(self.config.val_split * total_samples), total_samples - 1))
-        train_size = total_samples - val_size
+    def _log_tau_data_requirements(self, labels: np.ndarray) -> None:
+        """Log guidance and emit warnings based on labeled data availability."""
+        labeled_count, observed_classes = self._summarize_labeled_data(labels)
+        regime = self._describe_label_regime(labeled_count)
+        num_components = self.config.num_components
+        total_classes = self.config.num_classes
 
-        # Shuffle data
-        if total_samples > 0:
-            state_rng, dataset_key = random.split(state_rng)
-            perm = np.asarray(random.permutation(dataset_key, total_samples))
-            x_np = x_np[perm]
-            y_np = y_np[perm]
+        message_lines = [
+            f"INFO: τ-classifier training with {labeled_count} labeled samples "
+            f"across {observed_classes}/{total_classes} classes.",
+            "      Component specialization will develop gradually - more labels will "
+            f"improve separation. Current regime: {regime}.",
+            f"      Configured for {num_components} components; ensure labeled data remains proportional.",
+            "",
+            "Note: Baseline testing uses ~500 labeled samples. Performance improves "
+            "with more labels, but the model is designed for label-efficient learning.",
+        ]
+        print("\n".join(message_lines), flush=True)
 
-        x_train_np, y_train_np = x_np[:train_size], y_np[:train_size]
-        x_val_np, y_val_np = x_np[train_size:], y_np[train_size:]
+        if labeled_count == 0:
+            warnings.warn(
+                "No labeled samples detected. τ-classifier counts will remain at the prior; "
+                "provide labeled data or disable use_tau_classifier.",
+                UserWarning,
+            )
+            return
 
-        splits = DataSplits(
-            x_train=jnp.array(x_train_np),
-            y_train=jnp.array(y_train_np),
-            x_val=jnp.array(x_val_np),
-            y_val=jnp.array(y_val_np),
-            train_size=train_size,
-            val_size=val_size,
-            total_samples=total_samples,
-            labeled_count=int(np.sum(~np.isnan(y_np))),
-        )
-
-        # Store splits for diagnostics
-        self._trainer._latest_splits = splits
-
-        # Initialize history
-        history = self._trainer._init_history()
-
-        # Initialize early stopping
-        from training.trainer import EarlyStoppingTracker
-        monitor_metric = self.config.monitor_metric
-        if monitor_metric == "auto":
-            monitor_metric = "classification_loss" if splits.labeled_count > 0 else "loss"
-
-        tracker = EarlyStoppingTracker(
-            monitor_metric=monitor_metric,
-            patience=self.config.patience,
-        )
-
-        # Log hyperparameters (matching standard training loop)
-        self._trainer._log_session_hyperparameters(
-            max_epochs=self.config.max_epochs,
-            patience=self.config.patience
-        )
-
-        print(f"\nTraining with τ-classifier (τ-based latent-only classification)", flush=True)
-        print(f"Monitoring validation {monitor_metric} for early stopping.", flush=True)
-        if splits.labeled_count > 0:
-            print(f"Detected {splits.labeled_count} labeled samples.", flush=True)
-
-        # Run callbacks
-        self._trainer._run_callbacks(list(callbacks), "on_train_start", self._trainer)
-
-        # Training loop
-        batch_size = self.config.batch_size
-        eval_batch_size = min(batch_size, 1024)
-
-        for epoch in range(self.config.max_epochs):
-            # KL annealing
-            if self.config.kl_c_anneal_epochs > 0:
-                kl_c_scale = min(1.0, (epoch + 1) / float(self.config.kl_c_anneal_epochs))
-            else:
-                kl_c_scale = 1.0
-
-            # Shuffle training data
-            self._shuffle_rng, epoch_key = random.split(self._shuffle_rng)
-            perm = random.permutation(epoch_key, train_size)
-            x_train = jnp.take(splits.x_train, perm, axis=0)
-            y_train = jnp.take(splits.y_train, perm, axis=0)
-
-            # Train one epoch with τ updates
-            for start in range(0, train_size, batch_size):
-                end = min(start + batch_size, train_size)
-                batch_x = jnp.asarray(x_train[start:end])
-                batch_y = jnp.asarray(y_train[start:end])
-
-                # Get current τ matrix
-                current_tau = self._tau_classifier.get_tau() if self._tau_classifier else None
-
-                # Train step
-                state_rng, raw_key = random.split(state_rng)
-                batch_key = random.fold_in(raw_key, int(self.state.step))
-                self.state, batch_metrics = self._train_step(
-                    self.state, batch_x, batch_y, batch_key, kl_c_scale, current_tau
-                )
-
-                # Update τ counts from responsibilities
-                if self._tau_classifier is not None:
-                    # Forward pass to get responsibilities (deterministic)
-                    forward_output = self._apply_fn(
-                        self.state.params, batch_x, training=False
-                    )
-                    component_logits, z_mean, z_log, z, recon, class_logits, extras = forward_output
-
-                    if hasattr(extras, "get") and extras.get("responsibilities") is not None:
-                        responsibilities = extras.get("responsibilities")
-                        labeled_mask = jnp.logical_not(jnp.isnan(batch_y))
-                        self._tau_classifier.update_counts(
-                            responsibilities, batch_y, labeled_mask
-                        )
-
-            # Update splits with shuffled data
-            splits = splits.with_train(x_train=x_train, y_train=y_train)
-
-            # Evaluate on both splits with current τ
-            current_tau = self._tau_classifier.get_tau() if self._tau_classifier else None
-
-            # Evaluate training split
-            train_metrics = self._evaluate_with_tau(
-                self.state.params, splits.x_train, splits.y_train,
-                current_tau, eval_batch_size
+        if labeled_count < 10:
+            warnings.warn(
+                "τ-classifier received fewer than 10 labeled samples; expect limited component specialization.",
+                UserWarning,
+            )
+        elif observed_classes < total_classes:
+            warnings.warn(
+                "Some classes have no labeled samples. Expect delayed separation until each class is represented.",
+                UserWarning,
             )
 
-            # Evaluate validation split
-            if splits.val_size > 0:
-                val_metrics = self._evaluate_with_tau(
-                    self.state.params, splits.x_val, splits.y_val,
-                    current_tau, eval_batch_size
-                )
-            else:
-                val_metrics = train_metrics
-
-            # Update history
-            self._trainer._update_history(history, train_metrics, val_metrics)
-
-            # Store state for callback access
-            self._trainer._current_state = self.state
-
-            # Run callbacks
-            metrics_bundle = {"train": train_metrics, "val": val_metrics}
-            self._trainer._run_callbacks(
-                list(callbacks), "on_epoch_end", epoch, metrics_bundle, history, self._trainer
-            )
-
-            # Early stopping check
-            current_val = float(val_metrics[monitor_metric])
-            should_stop = tracker.update(
-                current_val,
-                state=self.state,
-                weights_path=weights_path,
-                save_fn=self._checkpoint_mgr.save,
-            )
-            if should_stop:
-                break
-
-        # Training complete
-        if tracker.checkpoint_saved:
-            status = "Early stopping" if tracker.halted_early else "Training complete"
+        if labeled_count < num_components:
             print(
-                f"{status}. Best {tracker.monitor_metric} = {tracker.best_val:.4f} "
-                f"(checkpoint saved to {weights_path})."
+                "      Tip: Labeled samples are fewer than configured components — "
+                "consider reducing num_components or collecting more labels.",
+                flush=True,
             )
 
-        # Update RNG
-        self.state = self.state.replace(rng=state_rng)
-        self._rng = self.state.rng
+    @staticmethod
+    def _extract_extras_from_forward(forward_output):
+        """Return the extras object from a network forward pass."""
+        if hasattr(forward_output, "extras"):
+            return forward_output.extras
+        if isinstance(forward_output, (tuple, list)) and forward_output:
+            return forward_output[-1]
+        return None
 
-        # Clear state reference
-        self._trainer._current_state = None
+    @staticmethod
+    def _get_responsibilities_from_extras(extras):
+        if extras is None or not hasattr(extras, "get"):
+            return None
+        return extras.get("responsibilities")
 
-        # Run end callbacks
-        self._trainer._run_callbacks(list(callbacks), "on_train_end", history, self._trainer)
-
-        return history
-
-    def _evaluate_with_tau(
+    def _resolve_predictions(
         self,
-        params,
-        inputs: jnp.ndarray,
-        targets: jnp.ndarray,
-        tau: jnp.ndarray | None,
-        batch_size: int,
-    ):
-        """Evaluate in chunks with τ matrix."""
-        total = inputs.shape[0]
-        if total == 0:
-            return self._eval_metrics(params, inputs, targets, tau)
+        logits: jnp.ndarray,
+        responsibilities: jnp.ndarray | None,
+    ) -> Tuple[jnp.ndarray, jnp.ndarray]:
+        """Return (predicted_class, certainty) for deterministic or sampled logits."""
+        if self._tau_classifier is not None and responsibilities is not None:
+            pred_class, _ = self._tau_classifier.predict(responsibilities)
+            certainty = self._tau_classifier.get_certainty(responsibilities)
+            return pred_class, certainty
 
-        metrics_sum = None
-        processed = 0
-        for start in range(0, total, batch_size):
-            end = min(start + batch_size, total)
-            batch_inputs = jnp.asarray(inputs[start:end])
-            batch_targets = jnp.asarray(targets[start:end])
-            batch_metrics = self._eval_metrics(params, batch_inputs, batch_targets, tau)
-            weight = end - start
-            if metrics_sum is None:
-                metrics_sum = {k: batch_metrics[k] * weight for k in batch_metrics}
-            else:
-                for key in metrics_sum:
-                    metrics_sum[key] = metrics_sum[key] + batch_metrics[key] * weight
-            processed += weight
+        probs = softmax(logits, axis=-1)
+        pred_class = jnp.argmax(probs, axis=-1)
+        certainty = jnp.max(probs, axis=-1)
+        return pred_class, certainty
 
-        return {k: metrics_sum[k] / processed for k in metrics_sum}
+    def _build_tau_loop_hooks(self) -> TrainerLoopHooks | None:
+        """Construct Trainer hooks that keep τ-classifier updates in sync with the loop."""
+        if self._tau_classifier is None:
+            return None
+
+        def batch_context_fn(
+            state: SSVAETrainState,
+            batch_x: jnp.ndarray,
+            batch_y: jnp.ndarray,
+        ) -> Dict[str, jnp.ndarray]:
+            del state, batch_x, batch_y  # Unused in context construction
+            return {"tau": self._tau_classifier.get_tau()}
+
+        def post_batch_fn(
+            state: SSVAETrainState,
+            batch_x: jnp.ndarray,
+            batch_y: jnp.ndarray,
+            batch_metrics: MetricsDict,
+        ) -> None:
+            del batch_metrics  # Not needed for τ updates
+            forward_output = self._apply_fn(state.params, batch_x, training=False)
+            extras = self._extract_extras_from_forward(forward_output)
+            responsibilities = self._get_responsibilities_from_extras(extras)
+
+            if responsibilities is None:
+                return
+
+            labeled_mask = jnp.logical_not(jnp.isnan(batch_y))
+            self._tau_classifier.update_counts(responsibilities, batch_y, labeled_mask)
+
+        def eval_context_fn() -> Dict[str, jnp.ndarray]:
+            return {"tau": self._tau_classifier.get_tau()}
+
+        return TrainerLoopHooks(
+            batch_context_fn=batch_context_fn,
+            post_batch_fn=post_batch_fn,
+            eval_context_fn=eval_context_fn,
+        )
 
     def predict(
         self,
@@ -438,25 +348,11 @@ class SSVAE:
     def _predict_deterministic(self, x: jnp.ndarray, return_mixture: bool) -> Tuple:
         """Deterministic prediction (use mean of latent distribution)."""
         forward = self._apply_fn(self.state.params, x, training=False)
-        component_logits, z_mean, _, _, recon, logits, extras = forward
+        extras = self._extract_extras_from_forward(forward)
+        _, z_mean, _, _, recon, logits, _ = forward
 
-        # Use τ-classifier predictions if available
-        if self._tau_classifier is not None and hasattr(extras, "get"):
-            responsibilities = extras.get("responsibilities")
-            if responsibilities is not None:
-                # τ-based latent-only classification
-                pred_class, probs = self._tau_classifier.predict(responsibilities)
-                pred_certainty = self._tau_classifier.get_certainty(responsibilities)
-            else:
-                # Fallback to standard classifier
-                probs = softmax(logits, axis=1)
-                pred_class = jnp.argmax(probs, axis=1)
-                pred_certainty = jnp.max(probs, axis=1)
-        else:
-            # Standard classifier head
-            probs = softmax(logits, axis=1)
-            pred_class = jnp.argmax(probs, axis=1)
-            pred_certainty = jnp.max(probs, axis=1)
+        responsibilities = self._get_responsibilities_from_extras(extras)
+        pred_class, pred_certainty = self._resolve_predictions(logits, responsibilities)
 
         result = (
             np.array(z_mean),
@@ -466,8 +362,8 @@ class SSVAE:
         )
 
         if return_mixture:
-            responsibilities = extras.get("responsibilities") if hasattr(extras, "get") else None
-            pi_val = extras.get("pi") if hasattr(extras, "get") else None
+            responsibilities = self._get_responsibilities_from_extras(extras)
+            pi_val = extras.get("pi") if extras is not None and hasattr(extras, "get") else None
             if responsibilities is None or pi_val is None:
                 raise ValueError("Mixture responsibilities unavailable.")
             result += (np.array(responsibilities), np.array(pi_val))
@@ -485,6 +381,7 @@ class SSVAE:
         logits_samples = []
         resp_samples = []
         pi_value = None
+        last_responsibilities = None
 
         for _ in range(num_samples):
             self._rng, subkey = random.split(self._rng)
@@ -494,52 +391,31 @@ class SSVAE:
                 training=False,
                 rngs={"reparam": subkey},
             )
-            component_logits, z_mean, _, z, recon, logits, extras = forward
+            extras = self._extract_extras_from_forward(forward)
+            _, z_mean, _, z, recon, logits, _ = forward
 
             latent_samples.append(z)
             recon_samples.append(recon)
             logits_samples.append(logits)
 
+            responsibilities = self._get_responsibilities_from_extras(extras)
             if return_mixture:
-                responsibilities = extras.get("responsibilities") if hasattr(extras, "get") else None
                 if responsibilities is None:
                     raise ValueError("Mixture responsibilities unavailable.")
                 resp_samples.append(responsibilities)
                 if pi_value is None:
-                    pi_val = extras.get("pi") if hasattr(extras, "get") else None
+                    pi_val = extras.get("pi") if extras is not None and hasattr(extras, "get") else None
                     if pi_val is not None:
                         pi_value = pi_val
+            if responsibilities is not None:
+                last_responsibilities = responsibilities
 
         # Stack samples
         latent_stack = jnp.stack(latent_samples) if num_samples > 1 else latent_samples[0]
         recon_stack = jnp.stack(recon_samples) if num_samples > 1 else recon_samples[0]
         logits_stack = jnp.stack(logits_samples) if num_samples > 1 else logits_samples[0]
 
-        # Use τ-classifier if available (using last sample's responsibilities)
-        if self._tau_classifier is not None and resp_samples:
-            # For sampling, use the last sample's responsibilities for prediction
-            last_resp = resp_samples[-1] if resp_samples else None
-            if last_resp is not None:
-                pred_class, probs = self._tau_classifier.predict(last_resp)
-                pred_certainty = self._tau_classifier.get_certainty(last_resp)
-            else:
-                # Fallback to standard classifier
-                probs = softmax(logits_stack, axis=-1)
-                if num_samples > 1:
-                    pred_class = jnp.argmax(probs, axis=-1)
-                    pred_certainty = jnp.max(probs, axis=-1)
-                else:
-                    pred_class = jnp.argmax(probs, axis=1)
-                    pred_certainty = jnp.max(probs, axis=1)
-        else:
-            # Standard classifier head
-            probs = softmax(logits_stack, axis=-1)
-            if num_samples > 1:
-                pred_class = jnp.argmax(probs, axis=-1)
-                pred_certainty = jnp.max(probs, axis=-1)
-            else:
-                pred_class = jnp.argmax(probs, axis=1)
-                pred_certainty = jnp.max(probs, axis=1)
+        pred_class, pred_certainty = self._resolve_predictions(logits_stack, last_responsibilities)
 
         result = (
             np.array(latent_stack),

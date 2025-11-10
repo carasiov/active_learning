@@ -19,6 +19,15 @@ EvalMetricsFn = Callable[[Dict[str, Dict[str, jnp.ndarray]], jnp.ndarray, jnp.nd
 SaveFn = Callable[[SSVAETrainState, str], None]
 
 
+@dataclass
+class TrainerLoopHooks:
+    """Optional extension points for the training loop."""
+
+    batch_context_fn: Callable[[SSVAETrainState, jnp.ndarray, jnp.ndarray], Dict[str, jnp.ndarray] | None] | None = None
+    post_batch_fn: Callable[[SSVAETrainState, jnp.ndarray, jnp.ndarray, MetricsDict], None] | None = None
+    eval_context_fn: Callable[[], Dict[str, jnp.ndarray] | None] | None = None
+
+
 @dataclass(frozen=True)
 class DataSplits:
     x_train: jnp.ndarray
@@ -159,6 +168,7 @@ class Trainer:
         callbacks: Sequence[TrainingCallback] | None = None,
         num_epochs: int | None = None,
         patience: int | None = None,
+        loop_hooks: TrainerLoopHooks | None = None,
     ) -> Tuple[SSVAETrainState, jax.Array, HistoryDict]:
         state_rng = state.rng
         splits, state_rng = self._prepare_data(state_rng=state_rng, data=data, labels=labels)
@@ -191,11 +201,17 @@ class Trainer:
                 train_step_fn=train_step_fn,
                 batch_size=setup.batch_size,
                 kl_c_scale=kl_c_scale,
+                loop_hooks=loop_hooks,
             )
             self._latest_splits = splits
 
+            eval_context = loop_hooks.eval_context_fn() if loop_hooks and loop_hooks.eval_context_fn else None
             train_metrics, val_metrics = self._evaluate_both_splits(
-                state.params, splits, eval_metrics_fn=eval_metrics_fn, eval_batch_size=setup.eval_batch_size
+                state.params,
+                splits,
+                eval_metrics_fn=eval_metrics_fn,
+                eval_batch_size=setup.eval_batch_size,
+                eval_context=eval_context,
             )
             self._update_history(history, train_metrics, val_metrics)
 
@@ -311,6 +327,7 @@ class Trainer:
         train_step_fn: TrainStepFn,
         batch_size: int,
         kl_c_scale: float,
+        loop_hooks: TrainerLoopHooks | None = None,
     ) -> Tuple[SSVAETrainState, jax.Array, jax.Array, DataSplits]:
         if splits.train_size == 0:
             return state, state_rng, shuffle_rng, splits
@@ -321,13 +338,14 @@ class Trainer:
         y_train = jnp.take(splits.y_train, perm, axis=0)
 
         for batch_x, batch_y in self._batch_iterator(x_train, y_train, batch_size):
-            state, state_rng = self._train_one_batch(
+            state, state_rng, _ = self._train_one_batch(
                 state,
                 batch_x,
                 batch_y,
                 state_rng,
                 train_step_fn,
                 kl_c_scale,
+                loop_hooks=loop_hooks,
             )
 
         updated_splits = splits.with_train(x_train=x_train, y_train=y_train)
@@ -363,11 +381,21 @@ class Trainer:
         state_rng: jax.Array,
         train_step_fn: TrainStepFn,
         kl_c_scale: float,
-    ) -> Tuple[SSVAETrainState, jax.Array]:
+        loop_hooks: TrainerLoopHooks | None = None,
+    ) -> Tuple[SSVAETrainState, jax.Array, MetricsDict]:
+        batch_kwargs: Dict[str, jnp.ndarray] = {}
+        if loop_hooks and loop_hooks.batch_context_fn is not None:
+            context = loop_hooks.batch_context_fn(state, batch_x, batch_y) or {}
+            batch_kwargs.update(context)
+
         state_rng, raw_key = jax.random.split(state_rng)
         batch_key = jax.random.fold_in(raw_key, int(state.step))
-        state, _ = train_step_fn(state, batch_x, batch_y, batch_key, kl_c_scale)
-        return state, state_rng
+        state, batch_metrics = train_step_fn(state, batch_x, batch_y, batch_key, kl_c_scale, **batch_kwargs)
+
+        if loop_hooks and loop_hooks.post_batch_fn is not None:
+            loop_hooks.post_batch_fn(state, batch_x, batch_y, batch_metrics)
+
+        return state, state_rng, batch_metrics
 
     def _evaluate_both_splits(
         self,
@@ -376,6 +404,7 @@ class Trainer:
         *,
         eval_metrics_fn: EvalMetricsFn,
         eval_batch_size: int,
+        eval_context: Dict[str, jnp.ndarray] | None = None,
     ) -> Tuple[MetricsDict, MetricsDict]:
         if splits.train_size > 0:
             train_metrics = self._evaluate_in_chunks(
@@ -384,6 +413,7 @@ class Trainer:
                 splits.y_train,
                 eval_metrics_fn=eval_metrics_fn,
                 eval_batch_size=eval_batch_size,
+                eval_context=eval_context,
             )
         else:
             train_metrics = self._evaluate_in_chunks(
@@ -392,6 +422,7 @@ class Trainer:
                 splits.y_val,
                 eval_metrics_fn=eval_metrics_fn,
                 eval_batch_size=eval_batch_size,
+                eval_context=eval_context,
             )
 
         if splits.val_size > 0:
@@ -401,6 +432,7 @@ class Trainer:
                 splits.y_val,
                 eval_metrics_fn=eval_metrics_fn,
                 eval_batch_size=eval_batch_size,
+                eval_context=eval_context,
             )
         else:
             val_metrics = train_metrics
@@ -415,6 +447,7 @@ class Trainer:
         *,
         eval_metrics_fn: EvalMetricsFn,
         eval_batch_size: int,
+        eval_context: Dict[str, jnp.ndarray] | None = None,
     ) -> MetricsDict:
         total = inputs.shape[0]
         if total == 0:
@@ -426,7 +459,8 @@ class Trainer:
             end = min(start + eval_batch_size, total)
             batch_inputs = jnp.asarray(inputs[start:end])
             batch_targets = jnp.asarray(targets[start:end])
-            batch_metrics = eval_metrics_fn(params, batch_inputs, batch_targets)
+            extra_kwargs = eval_context or {}
+            batch_metrics = eval_metrics_fn(params, batch_inputs, batch_targets, **extra_kwargs)
             weight = end - start
             if metrics_sum is None:
                 metrics_sum = {k: batch_metrics[k] * weight for k in batch_metrics}

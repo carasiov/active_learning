@@ -39,7 +39,7 @@ class TestTauClassifierIntegration:
         config = SSVAEConfig(
             latent_dim=2,
             prior_type="mixture",
-            num_components=5,
+            num_components=10,
             use_tau_classifier=True,
             tau_smoothing_alpha=1.0,
             max_epochs=2,  # Minimal for testing
@@ -49,7 +49,7 @@ class TestTauClassifierIntegration:
 
         # Verify τ-classifier was initialized
         assert model._tau_classifier is not None
-        assert model._tau_classifier.num_components == 5
+        assert model._tau_classifier.num_components == 10
         assert model._tau_classifier.num_classes == 10
         assert model._tau_classifier.alpha_0 == 1.0
 
@@ -82,7 +82,7 @@ class TestTauClassifierIntegration:
         config = SSVAEConfig(
             latent_dim=2,
             prior_type="mixture",
-            num_components=5,
+            num_components=10,
             use_component_aware_decoder=True,
             use_tau_classifier=True,
             max_epochs=3,  # Quick training for testing
@@ -107,7 +107,7 @@ class TestTauClassifierIntegration:
 
         # Verify τ-classifier was used (counts should be updated)
         tau = model._tau_classifier.get_tau()
-        assert tau.shape == (5, 10)  # K=5, num_classes=10
+        assert tau.shape == (10, 10)  # K=10, num_classes=10
         assert np.allclose(tau.sum(axis=1), 1.0)  # Normalized
 
         # τ should no longer be uniform (it was trained)
@@ -126,7 +126,7 @@ class TestTauClassifierIntegration:
         config = SSVAEConfig(
             latent_dim=2,
             prior_type="mixture",
-            num_components=3,
+            num_components=10,
             use_tau_classifier=True,
             max_epochs=2,
             batch_size=32,
@@ -159,7 +159,7 @@ class TestTauClassifierIntegration:
         config = SSVAEConfig(
             latent_dim=2,
             prior_type="mixture",
-            num_components=4,
+            num_components=10,
             use_tau_classifier=True,
             max_epochs=3,
             batch_size=32,
@@ -197,7 +197,7 @@ class TestTauClassifierIntegration:
         config = SSVAEConfig(
             latent_dim=2,
             prior_type="mixture",
-            num_components=4,
+            num_components=10,
             use_tau_classifier=True,
             max_epochs=2,
         )
@@ -212,12 +212,109 @@ class TestTauClassifierIntegration:
         )
 
         # Verify responsibilities shape and properties
-        assert responsibilities.shape == (10, 4)  # [batch, K]
+        assert responsibilities.shape == (10, 10)  # [batch, K]
         assert np.allclose(responsibilities.sum(axis=1), 1.0)  # Normalized
 
         # Verify π shape
-        assert pi.shape == (4,)  # [K,]
+        assert pi.shape == (10,)  # [K,]
         assert np.allclose(pi.sum(), 1.0)  # Normalized
+
+    def test_tau_training_passes_tau_to_train_step(self, mock_mnist_data, tmp_path):
+        """Trainer should supply τ to the train_step function when enabled."""
+        from ssvae import SSVAE
+        from ssvae.config import SSVAEConfig
+
+        X, y = mock_mnist_data
+        checkpoint_path = str(tmp_path / "tau_train_step.ckpt")
+
+        config = SSVAEConfig(
+            latent_dim=2,
+            prior_type="mixture",
+            num_components=10,
+            use_tau_classifier=True,
+            max_epochs=1,
+            batch_size=64,
+        )
+
+        model = SSVAE(input_dim=(28, 28), config=config)
+        captured_taus = []
+        original_train_step = model._train_step
+
+        def wrapped_train_step(state, batch_x, batch_y, key, kl_c_scale, tau=None):
+            captured_taus.append(tau)
+            return original_train_step(state, batch_x, batch_y, key, kl_c_scale, tau)
+
+        model._train_step = wrapped_train_step
+        try:
+            model.fit(X, y, checkpoint_path, export_history=False)
+        finally:
+            model._train_step = original_train_step
+
+        assert captured_taus, "Expected train_step to be called"
+        assert all(tau is not None for tau in captured_taus), "τ should be provided for every batch"
+
+    def test_non_tau_training_does_not_request_tau(self, mock_mnist_data, tmp_path):
+        """Standard prior should never receive τ context."""
+        from ssvae import SSVAE
+        from ssvae.config import SSVAEConfig
+
+        X, y = mock_mnist_data
+        checkpoint_path = str(tmp_path / "standard_train.ckpt")
+
+        config = SSVAEConfig(
+            latent_dim=2,
+            prior_type="standard",
+            use_tau_classifier=False,
+            max_epochs=1,
+            batch_size=64,
+        )
+
+        model = SSVAE(input_dim=(28, 28), config=config)
+        original_train_step = model._train_step
+
+        def wrapped_train_step(state, batch_x, batch_y, key, kl_c_scale, tau=None):
+            assert tau is None
+            return original_train_step(state, batch_x, batch_y, key, kl_c_scale, tau)
+
+        model._train_step = wrapped_train_step
+        try:
+            model.fit(X, y, checkpoint_path, export_history=False)
+        finally:
+            model._train_step = original_train_step
+
+    def test_tau_eval_receives_tau_context(self, mock_mnist_data, tmp_path):
+        """Evaluation metrics should also see τ context when enabled."""
+        from ssvae import SSVAE
+        from ssvae.config import SSVAEConfig
+
+        X, y = mock_mnist_data
+        checkpoint_path = str(tmp_path / "tau_eval.ckpt")
+
+        config = SSVAEConfig(
+            latent_dim=2,
+            prior_type="mixture",
+            num_components=10,
+            use_tau_classifier=True,
+            max_epochs=1,
+            batch_size=64,
+        )
+
+        model = SSVAE(input_dim=(28, 28), config=config)
+        captured_eval_taus = []
+        original_eval_metrics = model._eval_metrics
+
+        def wrapped_eval(params, batch_inputs, batch_targets, tau=None):
+            captured_eval_taus.append(tau)
+            return original_eval_metrics(params, batch_inputs, batch_targets, tau)
+
+        model._eval_metrics = wrapped_eval
+        try:
+            model.fit(X, y, checkpoint_path, export_history=False)
+        finally:
+            model._eval_metrics = original_eval_metrics
+
+        assert captured_eval_taus, "Expected eval_metrics to be called"
+        assert any(tau is not None for tau in captured_eval_taus), "τ context should be forwarded to eval metrics"
 
     def test_backward_compatibility_standard_classifier(self, mock_mnist_data, tmp_path):
         """Test that standard classifier still works when τ disabled."""
@@ -231,7 +328,7 @@ class TestTauClassifierIntegration:
         config = SSVAEConfig(
             latent_dim=2,
             prior_type="mixture",
-            num_components=3,
+            num_components=10,
             use_tau_classifier=False,  # Use standard classifier
             max_epochs=2,
             batch_size=32,
@@ -250,6 +347,7 @@ class TestTauClassifierIntegration:
         test_X = X[:10]
         latent, recon, predictions, certainty = model.predict(test_X)
         assert predictions.shape == (10,)
+        assert model._build_tau_loop_hooks() is None
 
     def test_tau_diagnostics(self, mock_mnist_data, tmp_path):
         """Test τ-classifier diagnostic outputs."""
@@ -262,7 +360,7 @@ class TestTauClassifierIntegration:
         config = SSVAEConfig(
             latent_dim=2,
             prior_type="mixture",
-            num_components=5,
+            num_components=10,
             use_tau_classifier=True,
             max_epochs=3,
             batch_size=32,
@@ -283,9 +381,9 @@ class TestTauClassifierIntegration:
         assert "tau_entropy" in diag
 
         # Verify shapes
-        assert diag["tau"].shape == (5, 10)
-        assert diag["component_label_confidence"].shape == (5,)
-        assert diag["component_dominant_label"].shape == (5,)
+        assert diag["tau"].shape == (10, 10)
+        assert diag["component_label_confidence"].shape == (10,)
+        assert diag["component_dominant_label"].shape == (10,)
         assert diag["components_per_label"].shape == (10,)
 
     def test_ood_detection(self, mock_mnist_data, tmp_path):
@@ -299,7 +397,7 @@ class TestTauClassifierIntegration:
         config = SSVAEConfig(
             latent_dim=2,
             prior_type="mixture",
-            num_components=4,
+            num_components=10,
             use_tau_classifier=True,
             max_epochs=3,
         )
@@ -341,7 +439,7 @@ def run_basic_validation():
     config = SSVAEConfig(
         latent_dim=2,
         prior_type="mixture",
-        num_components=5,
+        num_components=10,
         use_component_aware_decoder=True,
         use_tau_classifier=True,
         max_epochs=3,

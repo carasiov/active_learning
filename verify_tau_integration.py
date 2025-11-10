@@ -113,12 +113,13 @@ def check_ssvae_integration():
     print("\n5. Checking SSVAE model integration...")
     try:
         from ssvae.models import SSVAE
+        from training.trainer import TrainerLoopHooks
         import inspect
 
-        # Check methods exist
-        assert hasattr(SSVAE, '_fit_with_tau_classifier'), "Missing _fit_with_tau_classifier"
-        assert hasattr(SSVAE, '_evaluate_with_tau'), "Missing _evaluate_with_tau"
-        print("   ✅ Custom training methods present")
+        # Check hook builder exists
+        assert hasattr(SSVAE, '_build_tau_loop_hooks'), "Missing τ loop hook builder"
+        assert TrainerLoopHooks is not None, "TrainerLoopHooks missing"
+        print("   ✅ Trainer loop hooks available")
 
         # Check fit method signature
         sig = inspect.signature(SSVAE.fit)

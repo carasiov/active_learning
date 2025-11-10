@@ -1,4 +1,6 @@
 """Unit tests for TauClassifier."""
+import time
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -106,6 +108,76 @@ class TestCountUpdate:
 
         # Counts should be unchanged
         assert jnp.allclose(tau_clf.s_cy, initial_counts)
+
+    def test_update_counts_vectorized_equivalence(self):
+        """Vectorized update should match naive implementation and be faster."""
+        num_components = 64
+        num_classes = 10
+        batch_size = 256
+        key = jax.random.PRNGKey(0)
+        resp_key, labels_key, mask_key = jax.random.split(key, 3)
+
+        responsibilities = jax.random.dirichlet(
+            resp_key, jnp.ones(num_components), shape=(batch_size,)
+        )
+        labels = jax.random.randint(
+            labels_key, shape=(batch_size,), minval=0, maxval=num_classes
+        )
+        labeled_mask = jax.random.bernoulli(
+            mask_key, p=0.7, shape=(batch_size,)
+        )
+
+        tau_clf = TauClassifier(
+            num_components=num_components,
+            num_classes=num_classes,
+            alpha_0=1.0,
+        )
+
+        def naive_update_counts(
+            s_cy: jnp.ndarray,
+            resp: jnp.ndarray,
+            lbls: jnp.ndarray,
+            mask: jnp.ndarray,
+        ) -> jnp.ndarray:
+            labeled_resp = resp[mask]
+            labeled_y = lbls[mask]
+            counts = s_cy
+
+            if labeled_y.size == 0:
+                return counts
+
+            for c in range(counts.shape[0]):
+                for y in range(counts.shape[1]):
+                    label_mask = (labeled_y == y).astype(labeled_resp.dtype)
+                    contrib = jnp.sum(labeled_resp[:, c] * label_mask)
+                    counts = counts.at[c, y].add(contrib)
+            return counts
+
+        initial_counts = tau_clf.s_cy  # Capture prior (all alpha_0)
+
+        start = time.perf_counter()
+        tau_clf.update_counts(responsibilities, labels, labeled_mask)
+        vectorized_time = time.perf_counter() - start
+        vectorized_counts = tau_clf.s_cy
+
+        start = time.perf_counter()
+        baseline_counts = naive_update_counts(
+            initial_counts,
+            responsibilities,
+            labels,
+            labeled_mask,
+        )
+        naive_time = time.perf_counter() - start
+
+        # Log benchmark information for visibility (not part of assertion)
+        print(
+            f"Vectorized update: {vectorized_time * 1e3:.3f} ms | "
+            f"Naive update: {naive_time * 1e3:.3f} ms | "
+            f"batch={batch_size}, K={num_components}, C={num_classes}, "
+            f"labeled={int(labeled_mask.sum())}"
+        )
+
+        assert jnp.allclose(vectorized_counts, baseline_counts)
 
 
 class TestMultimodality:

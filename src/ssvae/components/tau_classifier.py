@@ -82,14 +82,19 @@ class TauClassifier:
             # No labeled samples in this batch
             return
 
-        # Vectorized count update: s_{c,y} += Σ_i q(c|x_i) * 1{y_i=y}
-        for c in range(self.num_components):
-            for y in range(self.num_classes):
-                # Sum responsibilities for samples with label y
-                count = jnp.sum(
-                    labeled_resp[:, c] * (labeled_y == y).astype(jnp.float32)
-                )
-                self.s_cy = self.s_cy.at[c, y].add(count)
+        # Vectorized count update:
+        #   s_{c,y} += Σ_i q(c|x_i) * 1{y_i=y}
+        # Use one-hot encoding followed by matrix multiply to aggregate all
+        # component-label pairs in a single operation.
+        label_one_hot = jax.nn.one_hot(
+            labeled_y, self.num_classes, dtype=labeled_resp.dtype
+        )  # [n_labeled, num_classes]
+
+        # responsibilities.T @ one_hot gives shape [K, num_classes]
+        count_updates = labeled_resp.T @ label_one_hot
+
+        # Update soft counts in one shot
+        self.s_cy = self.s_cy + count_updates
 
     def get_tau(self) -> Array:
         """Compute normalized τ_{c,y} from soft counts.

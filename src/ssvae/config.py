@@ -203,6 +203,11 @@ class SSVAEConfig:
                 "Falling back to standard classifier."
             )
             self.use_tau_classifier = False
+        if self.use_tau_classifier and self.num_components < self.num_classes:
+            raise ValueError(
+                "num_components must be >= num_classes when use_tau_classifier=True "
+                f"(got num_components={self.num_components}, num_classes={self.num_classes})"
+            )
         if self.tau_smoothing_alpha <= 0:
             raise ValueError("tau_smoothing_alpha must be positive")
 

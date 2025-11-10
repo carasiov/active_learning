@@ -58,6 +58,10 @@ class InteractiveTrainer:
                 export_history=self._export_history,
             )
 
+        loop_hooks = None
+        if hasattr(self.model, "_build_tau_loop_hooks"):
+            loop_hooks = self.model._build_tau_loop_hooks()
+
         self._state, self._shuffle_rng, history = self._trainer.train(
             self._state,
             data=data,
@@ -70,6 +74,7 @@ class InteractiveTrainer:
             callbacks=callbacks,
             num_epochs=num_epochs,
             patience=patience,
+            loop_hooks=loop_hooks,
         )
 
         self.model.state = self._state
