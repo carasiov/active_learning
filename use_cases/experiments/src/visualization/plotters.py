@@ -151,6 +151,10 @@ def plot_reconstructions(
             else:
                 raise
 
+        # Handle heteroscedastic decoder (recon is tuple of (mean, sigma))
+        if isinstance(recon, tuple):
+            recon = recon[0]  # Use mean for visualization
+
         # For BCE, decoder outputs logits; map to probabilities for visualization.
         try:
             use_sigmoid = getattr(getattr(model, "config", None), "reconstruction_loss", "mse") == "bce"

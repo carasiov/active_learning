@@ -38,7 +38,7 @@ class ForwardOutput(NamedTuple):
     z_mean: jnp.ndarray
     z_log: jnp.ndarray
     z: jnp.ndarray
-    recon: jnp.ndarray
+    recon: jnp.ndarray | Tuple[jnp.ndarray, jnp.ndarray]  # Array or (mean, sigma) tuple
     class_logits: jnp.ndarray
     extras: Dict[str, jnp.ndarray]
 
@@ -144,28 +144,53 @@ class SSVAENetwork(nn.Module):
                 # Component-aware decoder: pass z and component_embedding separately
                 z_flat = z_tiled.reshape((batch_size * num_components, -1))
                 embed_flat = embed_tiled.reshape((batch_size * num_components, -1))
-                recon_per_component_flat = self.decoder(z_flat, embed_flat)
+                decoder_output_flat = self.decoder(z_flat, embed_flat)
             else:
                 # Standard decoder: concatenate [z, e_c] as before
                 decoder_inputs = jnp.concatenate([z_tiled, embed_tiled], axis=-1)
                 decoder_inputs_flat = decoder_inputs.reshape((batch_size * num_components, -1))
-                recon_per_component_flat = self.decoder(decoder_inputs_flat)
+                decoder_output_flat = self.decoder(decoder_inputs_flat)
 
-            recon_per_component = recon_per_component_flat.reshape(
-                (batch_size, num_components, *self.output_hw)
-            )
-            expected_recon = jnp.sum(
-                responsibilities[..., None, None] * recon_per_component,
-                axis=1,
-            )
-            recon = expected_recon
-            extras = {
-                "recon_per_component": recon_per_component,
-                "responsibilities": responsibilities,
-                "pi_logits": pi_logits,
-                "pi": pi,
-                "component_embeddings": embeddings,
-            }
+            # Handle heteroscedastic decoder (returns tuple of (mean, sigma))
+            if isinstance(decoder_output_flat, tuple):
+                mean_flat, sigma_flat = decoder_output_flat
+                mean_per_component = mean_flat.reshape((batch_size, num_components, *self.output_hw))
+                sigma_per_component = sigma_flat.reshape((batch_size, num_components))
+
+                # Take expectation over components for both mean and sigma
+                expected_mean = jnp.sum(
+                    responsibilities[..., None, None] * mean_per_component,
+                    axis=1,
+                )
+                expected_sigma = jnp.sum(
+                    responsibilities * sigma_per_component,
+                    axis=1,
+                )
+                recon = (expected_mean, expected_sigma)
+                extras = {
+                    "recon_per_component": (mean_per_component, sigma_per_component),
+                    "responsibilities": responsibilities,
+                    "pi_logits": pi_logits,
+                    "pi": pi,
+                    "component_embeddings": embeddings,
+                }
+            else:
+                # Standard decoder (returns single array)
+                recon_per_component = decoder_output_flat.reshape(
+                    (batch_size, num_components, *self.output_hw)
+                )
+                expected_recon = jnp.sum(
+                    responsibilities[..., None, None] * recon_per_component,
+                    axis=1,
+                )
+                recon = expected_recon
+                extras = {
+                    "recon_per_component": recon_per_component,
+                    "responsibilities": responsibilities,
+                    "pi_logits": pi_logits,
+                    "pi": pi,
+                    "component_embeddings": embeddings,
+                }
         else:
             z_mean, z_log, z = encoder_output
             component_logits = None

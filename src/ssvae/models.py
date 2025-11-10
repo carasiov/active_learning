@@ -354,9 +354,15 @@ class SSVAE:
         responsibilities = self._get_responsibilities_from_extras(extras)
         pred_class, pred_certainty = self._resolve_predictions(logits, responsibilities)
 
+        # Handle heteroscedastic decoder (returns tuple)
+        if isinstance(recon, tuple):
+            recon_np = (np.array(recon[0]), np.array(recon[1]))
+        else:
+            recon_np = np.array(recon)
+
         result = (
             np.array(z_mean),
-            np.array(recon),
+            recon_np,
             np.array(pred_class, dtype=np.int32),
             np.array(pred_certainty),
         )
@@ -412,14 +418,30 @@ class SSVAE:
 
         # Stack samples
         latent_stack = jnp.stack(latent_samples) if num_samples > 1 else latent_samples[0]
-        recon_stack = jnp.stack(recon_samples) if num_samples > 1 else recon_samples[0]
         logits_stack = jnp.stack(logits_samples) if num_samples > 1 else logits_samples[0]
+
+        # Handle heteroscedastic decoder (recon_samples contains tuples)
+        if isinstance(recon_samples[0], tuple):
+            # Stack means and sigmas separately
+            means = [r[0] for r in recon_samples]
+            sigmas = [r[1] for r in recon_samples]
+            mean_stack = jnp.stack(means) if num_samples > 1 else means[0]
+            sigma_stack = jnp.stack(sigmas) if num_samples > 1 else sigmas[0]
+            recon_stack = (mean_stack, sigma_stack)
+        else:
+            recon_stack = jnp.stack(recon_samples) if num_samples > 1 else recon_samples[0]
 
         pred_class, pred_certainty = self._resolve_predictions(logits_stack, last_responsibilities)
 
+        # Convert recon_stack to numpy
+        if isinstance(recon_stack, tuple):
+            recon_np = (np.array(recon_stack[0]), np.array(recon_stack[1]))
+        else:
+            recon_np = np.array(recon_stack)
+
         result = (
             np.array(latent_stack),
-            np.array(recon_stack),
+            recon_np,
             np.array(pred_class, dtype=np.int32),
             np.array(pred_certainty),
         )
