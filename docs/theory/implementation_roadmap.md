@@ -28,7 +28,7 @@
 
 ## Core Architecture (What's in the Codebase)
 
-### Production Features
+### Features
 
 The current codebase implements a **foundational semi-supervised VAE** with the following features:
 
@@ -55,27 +55,7 @@ The current codebase implements a **foundational semi-supervised VAE** with the 
 - Interactive dashboard for active learning (scaffold in place)
 - Comprehensive test suite (49 tests: unit, integration, regression)
 
-### Design Patterns
 
-**Protocol-based extensibility:**
-```python
-class PriorMode(Protocol):
-    """Pluggable prior interface - add VampPrior without refactoring."""
-    def kl_divergence(...) -> Array: ...
-    def sample(...) -> Array: ...
-```
-
-**Factory pattern for components:**
-- `build_encoder()`, `build_decoder()`, `build_classifier()`
-- Automatically selects component-aware vs standard decoder based on config
-- Centralized validation and parameter resolution
-
-**Configuration-driven:**
-- All hyperparameters in `SSVAEConfig` dataclass (25+ parameters)
-- YAML-based experiment configs with inheritance support
-- Backward compatibility maintained for legacy parameters
-
----
 
 ## Implementation Status
 
@@ -198,7 +178,7 @@ When $\sigma \approx \sigma_{\min} = 0.05$, division by $\sigma^2 = 0.0025$ ampl
 2. **Better fix:** Normalize NLL loss by dividing by $\log(1/\sigma_{\min})$ to match MSE scale
 3. **Most flexible:** Add separate `heteroscedastic_recon_weight` config parameter
 
-**Next Steps:**
+**Future Steps:**
 1. Implement loss scaling fix (Option 1, 2, or 3 above)
 2. Re-run validation experiment (`heteroscedastic_validation.yaml`)
 3. Verify healthy mixture (K_eff > 8, all components active)
