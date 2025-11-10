@@ -165,6 +165,75 @@ def _contrastive_loss_stub(z: jnp.ndarray, weight: float) -> jnp.ndarray:
     return jnp.array(0.0, dtype=z.dtype) * weight
 
 
+def tau_classification_loss(
+    responsibilities: jnp.ndarray,
+    tau: jnp.ndarray,
+    labels: jnp.ndarray,
+    weight: float,
+) -> jnp.ndarray:
+    """Compute τ-based classification loss with stop-gradient on τ.
+
+    Loss: -log Σ_c q(c|x) τ_{c,y_true}
+
+    CRITICAL: Uses stop_gradient on τ so gradients flow through
+    responsibilities q(c|x) only, not through count statistics.
+
+    Args:
+        responsibilities: Component responsibilities q(c|x) [batch, K]
+        tau: Channel→label probability map [K, num_classes]
+        labels: True labels [batch] (NaN for unlabeled)
+        weight: Loss weight
+
+    Returns:
+        Weighted negative log-likelihood (scalar)
+    """
+    # Apply stop-gradient to τ
+    tau = jax.lax.stop_gradient(tau)
+
+    # Process labels
+    labels = labels.reshape((-1,))
+    mask = jnp.logical_not(jnp.isnan(labels))
+    mask_float = mask.astype(jnp.float32)
+    labels_int = jnp.where(mask, labels, 0.0).astype(jnp.int32)
+
+    # Gather τ_{c,y} for true labels: tau[:, labels] gives [K, batch]
+    # We need to handle batch indexing carefully
+    batch_size = labels_int.shape[0]
+    num_components = tau.shape[0]
+
+    # Use advanced indexing to get τ_{c,y_true} for each sample
+    # Create indices for gathering
+    component_indices = jnp.arange(num_components)[:, None]  # [K, 1]
+    component_indices = jnp.broadcast_to(component_indices, (num_components, batch_size))  # [K, batch]
+    label_indices = jnp.broadcast_to(labels_int[None, :], (num_components, batch_size))  # [K, batch]
+
+    # Gather τ values: for each component c and sample i, get τ[c, labels[i]]
+    tau_for_labels = tau[component_indices, label_indices]  # [K, batch]
+    tau_for_labels = tau_for_labels.T  # [batch, K]
+
+    # Compute p(y_true|x) = Σ_c q(c|x) τ_{c,y_true}
+    prob_true = jnp.sum(
+        responsibilities * tau_for_labels,  # Element-wise multiply [batch, K]
+        axis=-1,
+    )  # [batch,]
+
+    # Negative log-likelihood (add epsilon for numerical stability)
+    nll = -jnp.log(prob_true + EPS)
+
+    # Average over labeled samples only
+    masked_nll_sum = jnp.sum(nll * mask_float)
+    labeled_count = jnp.sum(mask_float)
+    zero = jnp.array(0.0, dtype=nll.dtype)
+
+    mean_nll = jax.lax.cond(
+        labeled_count > 0,
+        lambda: masked_nll_sum / labeled_count,
+        lambda: zero,
+    )
+
+    return weight * mean_nll
+
+
 def compute_loss_and_metrics_v2(
     params: Dict[str, Dict[str, jnp.ndarray]],
     batch_x: jnp.ndarray,
@@ -176,6 +245,7 @@ def compute_loss_and_metrics_v2(
     *,
     training: bool,
     kl_c_scale: float = 1.0,
+    tau: jnp.ndarray | None = None,  # Optional τ matrix for latent-only classification
 ) -> Tuple[jnp.ndarray, Dict[str, jnp.ndarray]]:
     """Compute loss and metrics using PriorMode abstraction.
 
@@ -192,6 +262,9 @@ def compute_loss_and_metrics_v2(
         rng: Random key for sampling (None for deterministic)
         training: Whether in training mode
         kl_c_scale: Annealing factor for KL_c term
+        tau: Optional τ matrix [K, num_classes] for latent-only classification.
+             If provided and config.use_tau_classifier=True, uses τ-based loss.
+             Otherwise falls back to standard classifier.
 
     Returns:
         Tuple of (total_loss, metrics_dict)
@@ -245,9 +318,27 @@ def compute_loss_and_metrics_v2(
     if "kl_c" in kl_terms:
         kl_terms["kl_c"] = kl_terms["kl_c"] * kl_c_scale
 
-    # Classification loss (prior-agnostic)
-    cls_loss_unweighted = _classification_loss_internal(class_logits, batch_y, weight=1.0)
-    cls_loss_weighted = _classification_loss_internal(class_logits, batch_y, weight=config.label_weight)
+    # Classification loss: use τ-based if enabled and available
+    use_tau_classifier = (
+        config.use_tau_classifier
+        and tau is not None
+        and encoder_output.extras is not None
+        and encoder_output.extras.get("responsibilities") is not None
+    )
+
+    if use_tau_classifier:
+        # τ-based latent-only classification
+        responsibilities = encoder_output.extras.get("responsibilities")
+        cls_loss_unweighted = tau_classification_loss(
+            responsibilities, tau, batch_y, weight=1.0
+        )
+        cls_loss_weighted = tau_classification_loss(
+            responsibilities, tau, batch_y, weight=config.label_weight
+        )
+    else:
+        # Standard classifier head
+        cls_loss_unweighted = _classification_loss_internal(class_logits, batch_y, weight=1.0)
+        cls_loss_weighted = _classification_loss_internal(class_logits, batch_y, weight=config.label_weight)
 
     # Assemble total loss
     total_kl = sum(

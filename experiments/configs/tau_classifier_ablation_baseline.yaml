@@ -1,0 +1,72 @@
+# ============================================================================
+# τ-Classifier Ablation Baseline
+# ============================================================================
+# Purpose: Baseline comparison with standard classifier head
+# This is the control group for tau_classifier_validation experiment
+#
+# Usage:
+#   JAX_PLATFORMS=cpu python experiments/run_experiment.py --config experiments/configs/tau_classifier_ablation_baseline.yaml
+# ============================================================================
+
+experiment:
+  name: "tau_classifier_ablation_baseline"
+  description: "Baseline: component-aware decoder WITHOUT τ-classifier (standard head)"
+  tags: ["ablation", "baseline", "component-aware"]
+
+data:
+  num_samples: 5000
+  num_labeled: 500  # Same as validation for fair comparison
+  seed: 42
+
+model:
+  # Architecture
+  encoder_type: "dense"
+  decoder_type: "dense"
+  classifier_type: "dense"
+  latent_dim: 2
+  hidden_dims: [256, 128, 64]
+
+  # Loss
+  reconstruction_loss: "bce"
+  recon_weight: 1.0
+  kl_weight: 0.50
+  label_weight: 1.0
+
+  # Mixture prior
+  prior_type: "mixture"
+  num_components: 10
+  kl_c_weight: 0.001
+  kl_c_anneal_epochs: 0
+
+  # Component-aware decoder (same as validation)
+  use_component_aware_decoder: true
+  component_embedding_dim: 8
+  top_m_gating: 0
+  soft_embedding_warmup_epochs: 0
+
+  # *** KEY DIFFERENCE: Standard classifier instead of τ-classifier ***
+  use_tau_classifier: false  # This is the baseline control
+
+  # Regularization (same as validation)
+  dirichlet_alpha: 5.0
+  dirichlet_weight: 1.0
+  component_diversity_weight: -0.10
+
+  # Mixture tracking
+  mixture_history_log_every: 1
+
+  # Training
+  learning_rate: 0.001
+  batch_size: 128
+  max_epochs: 50
+  patience: 30
+  val_split: 0.1
+  random_seed: 42
+
+  # Regularization
+  grad_clip_norm: 1.0
+  weight_decay: 0.0001
+  dropout_rate: 0.2
+
+  # Monitoring
+  monitor_metric: "classification_loss"

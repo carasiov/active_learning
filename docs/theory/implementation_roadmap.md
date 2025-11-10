@@ -10,17 +10,17 @@
 
 ## Status at a Glance (Nov 2025)
 
-**Current State:** ✅ Component-aware decoder complete | 🎯 τ-classifier next | 📊 6-9/10 components active
+**Current State:** ✅ τ-Classifier integrated | 🎯 Validation experiments next | 📊 Full RCM-VAE architecture ready
 
 | Feature | Status | Reference |
 |---------|--------|-----------|
 | **Mixture prior with diversity control** | ✅ Production | [Entropy reward](#entropy-reward-configuration) |
 | **Component-aware decoder** $p_\theta(x\|z,c)$ | ✅ Complete (Nov 9) | [Details](#-component-aware-decoder-completed) |
-| **Latent-only classifier** via $\tau$ | 🎯 **Next priority** | [Details](#-responsibility-based-classifier-urgent) |
-| **Heteroscedastic decoder** $\sigma(x)$ | 📋 After τ-classifier | [Math Spec §4](mathematical_specification.md) |
-| **OOD detection** via $r \times \tau$ | 📋 Blocked by τ-classifier | [Math Spec §6](mathematical_specification.md) |
+| **Latent-only classifier** via $\tau$ | ✅ **Complete (Nov 10)** | [Details](#-tau-classifier-completed) |
+| **Heteroscedastic decoder** $\sigma(x)$ | 🎯 **Next priority** | [Math Spec §4](mathematical_specification.md) |
+| **OOD detection** via $r \times \tau$ | 📋 Ready (τ-classifier available) | [Math Spec §6](mathematical_specification.md) |
 | **VampPrior** (optional) | 📋 Alternative prior mode | [Details](#vampprior-optional) |
-| **Dynamic label addition** | 📋 Blocked by OOD | [Math Spec §7](mathematical_specification.md) |
+| **Dynamic label addition** | 📋 Ready (free channel detection available) | [Math Spec §7](mathematical_specification.md) |
 
 **Legend:** ✅ Complete | 🚧 In progress | 🎯 Next up | 📋 Planned | 🔬 Research | ⏸️ Deferred
 
@@ -105,37 +105,40 @@ Gives each component a learnable embedding $e_c$ that specializes the decoding p
 
 ---
 
-### 🎯 Responsibility-Based Classifier (Urgent)
+### ✅ τ-Classifier (Completed)
 
-**Status:** Next priority - unblocks full RCM-VAE architecture
+**Status:** Production-ready as of Nov 10, 2025
 
-**Why this is critical:**  
-Component-aware decoder revealed components cluster by features, not labels. Current z-based classifier can't leverage this specialization → -18% accuracy drop. The τ-based classifier bridges feature-components to labels.
+**What it does:**
+Maps components to labels via soft count statistics, replacing the separate classifier head. This enables the model to leverage component specialization for classification while supporting natural multimodality (multiple components per label).
 
-**What it replaces:**
-```python
-# Current: p(y|x) = softmax(classifier(z))  ← ignores components
-# Target:  p(y|x) = Σ_c q(c|x) * τ_{c,y}    ← leverages specialization
-```
+**Implementation:**
+- `TauClassifier` class in `src/ssvae/components/tau_classifier.py`
+- Soft count accumulation: $s_{c,y} \leftarrow s_{c,y} + q(c|x) \cdot \mathbf{1}\{y=y_i\}$
+- Normalized probability map: $\tau_{c,y} = (s_{c,y} + \alpha_0) / \sum_{y'} (s_{c,y'} + \alpha_0)$
+- Prediction: $p(y|x) = \sum_c q(c|x) \cdot \tau_{c,y}$
+- Stop-gradient on τ in supervised loss (gradients flow through $q(c|x)$ only)
+- Custom training loop in `SSVAE._fit_with_tau_classifier()` handles count updates
+- Configuration: `use_tau_classifier: true` (default for mixture prior), `tau_smoothing_alpha: 1.0`
 
-**Implementation checklist:**
-- [ ] Add soft count accumulation: $s_{c,y} \leftarrow s_{c,y} + q(c|x) \cdot \mathbf{1}\{y=y_i\}$
-- [ ] Normalize to τ map: $\tau_{c,y} = (s_{c,y} + \alpha_0) / \sum_{y'} (s_{c,y'} + \alpha_0)$
-- [ ] Replace classifier head with τ-based predictor
-- [ ] Modify supervised loss: $\mathcal{L}_{\text{sup}} = -\log \sum_c q(c|x) \tau_{c,y}$
-- [ ] Add stop-gradient on τ in loss (gradients flow through $q(c|x)$ only)
-- [ ] Configuration: `use_tau_classifier`, `tau_smoothing_alpha`, `tau_update_method`
+**Validation (see `TAU_CLASSIFIER_IMPLEMENTATION_REPORT.md`):**
+- ✅ 49 comprehensive unit tests (initialization, count updates, multimodality, stop-gradient)
+- ✅ Full training loop integration with count updates after each batch
+- ✅ Prediction methods updated to use τ-based classification
+- ✅ Backward compatible (standard classifier used when τ disabled)
+- 📋 Pending: Validation experiments to confirm accuracy recovery
 
-**Expected outcomes:**
-- ✅ Classification accuracy recovers (leverages component specialization)
-- ✅ Natural multimodality: multiple components per digit (e.g., 4 components for "0")
-- ✅ Components align better with labels (higher NMI)
-- ✅ Unlocks OOD detection and dynamic label addition
+**Unlocked Capabilities:**
+- **OOD Detection:** $1 - \max_c (r_c \times \max_y \tau_{c,y})$ via `get_ood_score()`
+- **Free Channel Detection:** Identify components available for new labels via `get_free_channels()`
+- **Active Learning:** Uncertainty-based acquisition via responsibility entropy + τ confidence
+- **Diagnostics:** Component→label associations via `get_diagnostics()`
 
-**Validation plan:**
-- Re-run component-aware decoder ablation with τ-classifier
-- Expect: component-aware decoder now wins on **both** reconstruction AND classification
-- Visualize τ matrix (heatmap of component→label associations)
+**Next Steps:**
+- Run ablation experiments (`tau_classifier_validation.yaml`)
+- Compare accuracy vs standard classifier head
+- Analyze τ matrix structure (sparse but multi-hot)
+- Validate component-label alignment improvement
 
 **Theory:** [Conceptual Model - "How We Classify"](conceptual_model.md) | **Math:** [Math Spec §5](mathematical_specification.md)
 
