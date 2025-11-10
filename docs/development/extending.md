@@ -609,61 +609,67 @@ class TauClassifier:
 
 #### Step 2: Integrate into SSVAE
 
-Modify `src/ssvae/models.py`:
+Modern integration relies on the shared `Trainer` loop plus τ-specific hooks—no forked training loop required. Key pieces:
 
 ```python
+from training.trainer import TrainerLoopHooks
+
 class SSVAE:
     def __init__(self, input_dim, config):
         # ... existing initialization ...
-
-        # Use tau classifier for mixture prior
-        if config.prior_type == "mixture":
-            self.tau_classifier = TauClassifier(
+        self._tau_classifier = None
+        if config.prior_type == "mixture" and config.use_tau_classifier:
+            self._tau_classifier = TauClassifier(
                 num_components=config.num_components,
                 num_classes=config.num_classes,
-                alpha_0=config.get("tau_alpha_0", 1.0)
-            )
-        else:
-            self.tau_classifier = None
-
-    def fit(self, data, labels, weights_path, callbacks=None):
-        """Training with tau updates."""
-        # ... training loop ...
-
-        # In each epoch, update tau from labeled data
-        if self.tau_classifier is not None:
-            _, _, component_logits = self.encoder.apply(...)
-            component_probs = jax.nn.softmax(component_logits)
-
-            labeled_mask = ~jnp.isnan(labels)
-            self.tau_classifier.update_counts(
-                component_probs, labels, labeled_mask
+                alpha_0=config.tau_smoothing_alpha,
             )
 
-    def predict(self, data, sample=False, num_samples=1):
-        """Prediction using tau classifier."""
-        z_mean, z_logvar, component_logits = self.encoder.apply(...)
-        component_probs = jax.nn.softmax(component_logits)
+    def fit(...):
+        loop_hooks = self._build_tau_loop_hooks()
+        self.state, self._shuffle_rng, history = self._trainer.train(
+            self.state,
+            data=data,
+            labels=labels,
+            weights_path=self.weights_path,
+            shuffle_rng=self._shuffle_rng,
+            train_step_fn=self._train_step,
+            eval_metrics_fn=self._eval_metrics,
+            save_fn=self._checkpoint_mgr.save,
+            callbacks=callbacks,
+            loop_hooks=loop_hooks,
+        )
 
-        if self.tau_classifier is not None:
-            predictions, class_probs = self.tau_classifier.predict(
-                component_probs
-            )
-            # Certainty from max(r_c * max_y tau_{c,y})
-            tau = self.tau_classifier.get_tau()
-            certainty = jnp.max(
-                component_probs[:, :, None] * tau[None, :, :],
-                axis=(1, 2)
-            )
-        else:
-            # Use standard classifier
-            logits = self.classifier.apply(...)
-            predictions = jnp.argmax(logits, axis=-1)
-            class_probs = jax.nn.softmax(logits)
-            certainty = jnp.max(class_probs, axis=-1)
+    def _build_tau_loop_hooks(self) -> TrainerLoopHooks | None:
+        if self._tau_classifier is None:
+            return None
 
-        return z_mean, reconstruction, predictions, certainty
+        def batch_context_fn(state, batch_x, batch_y):
+            return {"tau": self._tau_classifier.get_tau()}
+
+        def post_batch_fn(state, batch_x, batch_y, _batch_metrics):
+            forward = self._apply_fn(state.params, batch_x, training=False)
+            extras = self._extract_extras_from_forward(forward)
+            responsibilities = extras.get("responsibilities") if extras else None
+            if responsibilities is None:
+                return
+
+            labeled_mask = ~jnp.isnan(batch_y)
+            self._tau_classifier.update_counts(responsibilities, batch_y, labeled_mask)
+
+        def eval_context_fn():
+            return {"tau": self._tau_classifier.get_tau()}
+
+        return TrainerLoopHooks(
+            batch_context_fn=batch_context_fn,
+            post_batch_fn=post_batch_fn,
+            eval_context_fn=eval_context_fn,
+        )
 ```
+
+This hook-based design keeps τ updates outside JIT (Python object state) while feeding the current τ matrix into both training and evaluation steps. Count updates are vectorized inside `TauClassifier.update_counts()` (`responsibilities.T @ jax.nn.one_hot(labels, num_classes)`), so the integration scales cleanly to K≫50.
+
+Prediction paths (`_predict_deterministic` / `_predict_with_sampling`) share a helper like `_resolve_predictions(logits, responsibilities)` that prefers τ-based predictions when responsibilities are available and gracefully falls back to the standard classifier otherwise. This keeps deterministic and sampling modes in sync without duplicate conditionals.
 
 ---
 

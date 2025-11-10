@@ -379,6 +379,11 @@ Reconstruction  Predictions + Certainty
 - Pure functional training loop (JAX style)
 - Explicit state passing (no hidden state)
 - Callback hooks for observability
+- Optional `TrainerLoopHooks` structure extends the loop with three touch points:
+  - `batch_context_fn` supplies extra kwargs (e.g., τ matrix) to each `train_step`.
+  - `post_batch_fn` runs outside JIT to mutate Python-side state (τ count updates).
+  - `eval_context_fn` mirrors those kwargs during validation.
+  This keeps τ-classifier (and future stateful components) integrated without duplicating the core training logic.
 
 ### Losses
 

@@ -16,7 +16,7 @@ The **τ-based latent-only classifier** is fully implemented, tested, and integr
 |-----------|--------|---------|
 | Core TauClassifier | ✅ Complete | Soft count accumulation, τ normalization, stop-gradient |
 | Loss Integration | ✅ Complete | `tau_classification_loss()` with JIT compatibility |
-| Training Loop | ✅ Complete | Custom loop with batch-by-batch τ updates |
+| Training Loop Integration | ✅ Complete | Shared `Trainer` loop + τ hooks (post-batch updates & eval context) |
 | Prediction Pipeline | ✅ Complete | τ-based classification, certainty, OOD scoring |
 | Testing | ✅ Complete | 58 tests (29 unit + 9 integration + 20 τ-specific) |
 | Visualization | ✅ Complete | τ heatmap, per-class accuracy, certainty calibration |
@@ -71,18 +71,14 @@ free_channels = tau_clf.get_free_channels()
 
 ### Training Integration
 
-**Custom Training Loop** (`SSVAE._fit_with_tau_classifier()`)
+**Trainer Loop Hooks** (`TrainerLoopHooks` + `SSVAE._build_tau_loop_hooks()`)
 
-The implementation uses a custom training loop that:
-1. Replicates standard `Trainer.train()` logic
-2. Updates τ counts after each batch via forward pass
-3. Passes current τ matrix to JIT-compiled train step
-4. Maintains backward compatibility with standard classifier
+τ-specific behavior now rides on the canonical `Trainer.train()` pathway via three lightweight hooks:
+1. **Batch context** injects the current τ matrix into each JIT `train_step`.
+2. **Post-batch callback** runs outside JIT to grab responsibilities and update soft counts.
+3. **Eval context** feeds the latest τ into validation metrics so train/val parity is maintained.
 
-**Design rationale:**
-- τ-classifier is stateful (accumulates counts in Python)
-- JAX train functions are JIT-compiled (require functional purity)
-- Solution: Update counts outside JIT, pass frozen τ array to JIT functions
+This removes the bespoke `_fit_with_tau_classifier()` loop, ensuring every improvement to the trainer (early stopping, callbacks, logging) automatically benefits τ-mode training while keeping non-τ models unchanged.
 
 ### Configuration
 
@@ -262,70 +258,16 @@ Despite below-target accuracy, strong evidence validates correctness:
 
 ---
 
-## Refactoring Recommendations
+## Refactoring Status (Nov 12, 2025)
 
-Based on the technical review, the following improvements are needed:
+| Area | Status | Notes |
+|------|--------|-------|
+| Training Loop | ✅ **Complete** | `TrainerLoopHooks` feed τ matrices into `train_step`, update counts post-batch, and pass τ into evaluation. `_fit_with_tau_classifier()` has been removed; non-τ runs stay unchanged. |
+| Count Updates | ✅ **Complete** | `TauClassifier.update_counts()` now uses `responsibilities.T @ one_hot(labels)` plus a single `self.s_cy += counts` write. Benchmarks/logging added to the unit test. |
+| Prediction Logic | ✅ **Complete** | `_resolve_predictions()` centralizes τ vs standard decisions for both deterministic and sampling paths, reducing branching and ensuring consistency. |
+| Data Guardrails | ✅ **Complete** | `SSVAEConfig` enforces `num_components >= num_classes`, and `SSVAE.fit()` logs the current labeled-data regime with warnings for zero/few labels or missing classes. Tests live in `tests/test_tau_validations.py`. |
 
-### Critical: Training Loop Duplication
-
-**Problem:** `_fit_with_tau_classifier()` duplicates ~130 lines from `Trainer.train()`
-
-**Solution:** Extend `Trainer` with post-batch callback:
-
-```python
-# In Trainer
-def train(self, ..., post_batch_callback: Optional[Callable] = None):
-    """
-    Args:
-        post_batch_callback: Called after each batch.
-                            Returns context dict for next train_step.
-    """
-    for batch in batches:
-        context = getattr(self, '_batch_context', {})
-        state, metrics = train_step(state, batch_x, batch_y, **context)
-        
-        if post_batch_callback:
-            self._batch_context = post_batch_callback(state, batch_x, batch_y)
-```
-
-**Benefits:**
-- Eliminates duplication
-- Single training loop to maintain
-- τ-classifier becomes a plugin, not a fork
-
-### High Priority: Vectorize Count Updates
-
-**Problem:** Python loops in `update_counts()` don't scale beyond K=50-100
-
-**Current:**
-```python
-for c in range(K):
-    for y in range(num_classes):
-        count = jnp.sum(labeled_resp[:, c] * (labeled_y == y))
-        self.s_cy = self.s_cy.at[c, y].add(count)
-```
-
-**Solution:** Vectorized matmul:
-```python
-labels_one_hot = jax.nn.one_hot(labeled_y, num_classes)
-counts = labeled_resp.T @ labels_one_hot  # [K, batch] @ [batch, classes]
-self.s_cy = self.s_cy + counts
-```
-
-**Benefits:**
-- 10-50x faster for typical K
-- Single array operation instead of K×C scalar ops
-- Scales to K=100+ without issue
-
-### Medium Priority: Code Quality
-
-**Problem:** Complex nested conditionals in prediction methods
-
-**Solution:** Extract prediction strategy into helper method
-
-**Problem:** No validation for minimum labeled samples
-
-**Solution:** Add warnings in `fit()` when `labeled_count < num_classes * 50`
+These improvements remove the major architectural debt items without altering the validated τ algorithm.
 
 ---
 

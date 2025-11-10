@@ -614,6 +614,7 @@ kl_c = jnp.sum(q_c * (jnp.log(q_c) - jnp.log(pi)), axis=-1)
 - Main training orchestrator
 - Works with `SSVAETrainState` (not raw variables)
 - Integrates with callbacks for observability
+- Extensible via `TrainerLoopHooks` for per-batch context, post-batch side effects, and evaluation context (used by τ-classifier integration)
 
 **Key Methods:**
 
@@ -658,6 +659,7 @@ return state, shuffle_rng, history
 - Early stopping on configurable metric (default: `val_loss`)
 - Automatic checkpoint saving on improvement
 - Comprehensive metric tracking (20+ metrics in history)
+- Optional `TrainerLoopHooks` (dataclass with `batch_context_fn`, `post_batch_fn`, `eval_context_fn`) let features like the τ-classifier update Python-side state after each batch while still feeding data (e.g., the current τ matrix) into compiled `train_step`/`eval_metrics` calls. `SSVAE._build_tau_loop_hooks()` wires these hooks automatically when `use_tau_classifier=True`, and standard training runs simply omit them (no overhead).
 
 ---
 
@@ -685,6 +687,7 @@ return state, shuffle_rng, history
 - Train for N epochs while preserving optimizer state
 - Returns: Training history dict
 - Automatically resumes from current state
+- Delegates to `Trainer.train(..., loop_hooks=model._build_tau_loop_hooks())`, so τ-enabled models continue to update counts via the same hook pathway even during incremental sessions.
 
 **`get_latent_space(data)`**
 - Returns deterministic latent coordinates for visualization

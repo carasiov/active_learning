@@ -118,7 +118,9 @@ Maps components to labels via soft count statistics, replacing the separate clas
 - Normalized probability map: $\tau_{c,y} = (s_{c,y} + \alpha_0) / \sum_{y'} (s_{c,y'} + \alpha_0)$
 - Prediction: $p(y|x) = \sum_c q(c|x) \cdot \tau_{c,y}$
 - Stop-gradient on τ in supervised loss (gradients flow through $q(c|x)$ only)
-- Custom training loop in `SSVAE._fit_with_tau_classifier()` handles count updates
+- Trainer integration via `TrainerLoopHooks` (batch/eval context + post-batch updates)
+- Vectorized count updates (`responsibilities.T @ one_hot(labels)`) for scalability
+- Training-time guardrails: `num_components >= num_classes`, labeled-regime logging/warnings
 - Configuration: `use_tau_classifier: true` (default for mixture prior), `tau_smoothing_alpha: 1.0`
 
 **Validation (see `TAU_CLASSIFIER_IMPLEMENTATION_REPORT.md`):**

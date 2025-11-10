@@ -57,6 +57,7 @@ model:
   # Prior type
   prior_type: "standard"          # or "mixture"
   num_components: 10              # Only for mixture prior
+  use_tau_classifier: true        # Latent-only classifier (mixture only; requires num_components >= num_classes)
 
   # Training
   max_epochs: 100
@@ -76,6 +77,8 @@ model:
 **For detailed parameter descriptions**, see annotated configs in `configs/`.
 
 **For model architecture theory**, see `/docs/theory/`.
+
+> **Note:** When `use_tau_classifier: true`, the config validator enforces `num_components >= num_classes`. During training you'll also see an INFO block summarizing the labeled-data regime (zero / few-shot / low-data / standard) plus warnings if there are too few or no labeled samples—these guardrails help interpret τ-classifier results.
 
 ---
 
@@ -187,7 +190,23 @@ poetry run python experiments/run_experiment.py --config experiments/configs/mix
 
 ---
 
-### 4. Create Custom Experiment
+### 4. Run τ-Classifier Validation
+
+```bash
+poetry run python experiments/run_experiment.py \
+  --config experiments/configs/tau_classifier_validation.yaml
+```
+
+**Expect:**
+- Same runtime envelope as the mixture example (≈5 min with default settings).
+- Console logs describing the labeled-data regime and any warnings about sparse labels.
+- `REPORT.md` includes τ-specific metrics (label coverage, components/label, certainty, OOD score) and visualizations (τ heatmap, per-class accuracy).
+
+**Use for:** Evaluating the latent-only classifier, monitoring component specialization, and benchmarking the new vectorized count updates (sub-millisecond per batch even at K=50+).
+
+---
+
+### 5. Create Custom Experiment
 
 ```bash
 # 1. Copy a base config
