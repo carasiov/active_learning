@@ -36,6 +36,9 @@ from experiment_utils import (
     plot_mixture_evolution,
     plot_component_embedding_divergence,
     plot_reconstruction_by_component,
+    plot_tau_matrix_heatmap,
+    plot_tau_per_class_accuracy,
+    plot_tau_certainty_analysis,
 )
 
 
@@ -174,6 +177,45 @@ def train_model(model_config: dict, X_train, y_train, y_true, output_dir: Path):
 
         summary['mixture'] = mixture_summary
 
+    # Add τ-classifier specific metrics
+    if hasattr(model, '_tau_classifier') and model._tau_classifier is not None:
+        tau_metrics = {}
+
+        # Get τ matrix
+        tau = model._tau_classifier.get_tau()
+        tau_metrics['tau_matrix_shape'] = list(tau.shape)
+        tau_metrics['tau_sparsity'] = float(np.sum(tau < 0.05) / tau.size)
+
+        # Components per label
+        components_per_label = np.sum(tau > 0.15, axis=0)
+        tau_metrics['components_per_label'] = components_per_label.tolist()
+        tau_metrics['avg_components_per_label'] = float(np.mean(components_per_label))
+        tau_metrics['label_coverage'] = int(np.sum(components_per_label > 0))  # How many labels have components
+
+        # Dominant labels
+        dominant_labels = np.argmax(tau, axis=1)
+        tau_metrics['component_dominant_labels'] = dominant_labels.tolist()
+
+        # Certainty statistics (from predictions)
+        _, _, _, certainty = model.predict(X_train)
+        tau_metrics['certainty_mean'] = float(np.mean(certainty))
+        tau_metrics['certainty_std'] = float(np.std(certainty))
+        tau_metrics['certainty_min'] = float(np.min(certainty))
+        tau_metrics['certainty_max'] = float(np.max(certainty))
+
+        # OOD scores
+        _, _, _, _, responsibilities, _ = model.predict(X_train, return_mixture=True)
+        ood_scores = model._tau_classifier.get_ood_score(responsibilities)
+        tau_metrics['ood_score_mean'] = float(np.mean(ood_scores))
+        tau_metrics['ood_score_std'] = float(np.std(ood_scores))
+
+        # Free channels
+        free_channels = model._tau_classifier.get_free_channels()
+        tau_metrics['num_free_channels'] = int(len(free_channels))
+        tau_metrics['free_channels'] = free_channels.tolist()
+
+        summary['tau_classifier'] = tau_metrics
+
     # Add clustering metrics for 2D latents
     if config.latent_dim == 2 and config.prior_type == 'mixture':
         diag_dir = model.last_diagnostics_dir
@@ -211,6 +253,11 @@ def generate_visualizations(model, history, X_train, y_true, output_dir: Path):
     # Component-aware decoder validation
     plot_component_embedding_divergence(models, output_dir)
     plot_reconstruction_by_component(models, X_train, output_dir)
+
+    # τ-classifier specific visualizations
+    plot_tau_matrix_heatmap(models, output_dir)
+    plot_tau_per_class_accuracy(models, X_train, y_true, output_dir)
+    plot_tau_certainty_analysis(models, X_train, y_true, output_dir)
 
     return recon_paths
 
@@ -301,6 +348,18 @@ def generate_report(summary: dict, history: dict, experiment_config: dict, outpu
                 metric = key.upper()
                 f.write(f"| Clustering | {metric} | {value:.4f} |\n")
 
+        # τ-classifier metrics
+        if 'tau_classifier' in summary:
+            tau_clf = summary['tau_classifier']
+            for key, value in tau_clf.items():
+                if key in ['components_per_label', 'component_dominant_labels', 'free_channels']:  # Skip arrays
+                    continue
+                metric = key.replace('_', ' ').title()
+                if isinstance(value, float):
+                    f.write(f"| τ-Classifier | {metric} | {value:.4f} |\n")
+                else:
+                    f.write(f"| τ-Classifier | {metric} | {value} |\n")
+
         # Visualizations
         f.write("\n## Visualizations\n\n")
 
@@ -348,6 +407,22 @@ def generate_report(summary: dict, history: dict, experiment_config: dict, outpu
             for plot_path in sorted(recon_by_component_plots):
                 filename = plot_path.name
                 f.write(f"![Reconstruction by Component]({filename})\n\n")
+
+        # τ-classifier specific visualizations
+        if (output_dir / 'tau_matrix_heatmap.png').exists():
+            f.write("### τ Matrix (Component → Label Mapping)\n\n")
+            f.write("Learned probability distribution showing which components are associated with which labels:\n\n")
+            f.write("![τ Matrix Heatmap](tau_matrix_heatmap.png)\n\n")
+
+        if (output_dir / 'tau_per_class_accuracy.png').exists():
+            f.write("### Per-Class Accuracy\n\n")
+            f.write("Breakdown of classification accuracy by class:\n\n")
+            f.write("![Per-Class Accuracy](tau_per_class_accuracy.png)\n\n")
+
+        if (output_dir / 'tau_certainty_analysis.png').exists():
+            f.write("### Certainty Calibration\n\n")
+            f.write("Relationship between model certainty and actual accuracy:\n\n")
+            f.write("![Certainty Analysis](tau_certainty_analysis.png)\n\n")
 
     print(f"  Saved: {report_path}")
 

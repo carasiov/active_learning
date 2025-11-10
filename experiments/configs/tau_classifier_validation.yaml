@@ -1,71 +1,73 @@
+# ============================================================================
 # τ-Classifier Validation Experiment
-# Purpose: Validate τ-based latent-only classification with component-aware decoder
-# Expected: Classification accuracy should recover from -18% drop
+# ============================================================================
+# Purpose: Validate that τ-classifier recovers accuracy when used with component-aware decoder
+# Expected: Accuracy improves from 42% (component-aware decoder alone) to ≥60% (with τ-classifier)
+#
+# Usage:
+#   JAX_PLATFORMS=cpu python experiments/run_experiment.py --config experiments/configs/tau_classifier_validation.yaml
+# ============================================================================
 
 experiment:
   name: "tau_classifier_validation"
   description: "Validate τ-classifier with component-aware decoder (recovery experiment)"
-  tags: ["tau", "component-aware", "validation"]
-  date: "2025-11-10"
+  tags: ["tau", "validation", "recovery", "2d-latent"]
 
 data:
-  dataset: "mnist"
   num_samples: 5000
-  num_labeled: 100  # Sufficient for meaningful τ statistics
+  num_labeled: 500  # 50 per class on average (more than quick test)
   seed: 42
 
 model:
-  # Prior configuration
-  prior_type: "mixture"
-  num_components: 10
-
   # Architecture
-  latent_dim: 2  # For visualization
-  hidden_dims: [256, 128, 64]
   encoder_type: "dense"
   decoder_type: "dense"
+  classifier_type: "dense"
+  latent_dim: 2  # 2D for visualization and clustering metrics
+  hidden_dims: [256, 128, 64]
 
-  # Component-aware decoder (validated in previous experiment)
+  # Loss
+  reconstruction_loss: "bce"
+  recon_weight: 1.0
+  kl_weight: 0.50
+  label_weight: 1.0
+
+  # Mixture prior
+  prior_type: "mixture"
+  num_components: 10
+  kl_c_weight: 0.001
+  kl_c_anneal_epochs: 0
+
+  # Component-aware decoder + τ-classifier (THIS IS WHAT WE'RE TESTING)
   use_component_aware_decoder: true
   component_embedding_dim: 8
+  top_m_gating: 0
+  soft_embedding_warmup_epochs: 0
 
-  # τ-Classifier (NEW - this is what we're testing)
+  # τ-classifier configuration
   use_tau_classifier: true
   tau_smoothing_alpha: 1.0
 
-  # Regularization (validated settings from previous experiments)
-  component_diversity_weight: -0.05  # NEGATIVE = reward diversity
+  # Regularization for mixture (prevent component collapse)
   dirichlet_alpha: 5.0
-  kl_c_weight: 0.001
+  dirichlet_weight: 1.0
+  component_diversity_weight: -0.10  # NEGATIVE = entropy reward (increased from -0.05)
 
-training:
-  batch_size: 128
+  # Mixture tracking
+  mixture_history_log_every: 1
+
+  # Training
   learning_rate: 0.001
+  batch_size: 128
   max_epochs: 50
-  patience: 15
+  patience: 30
+  val_split: 0.1
+  random_seed: 42
 
-  # Loss weights
-  recon_weight: 1.0
-  kl_weight: 1.0
-  label_weight: 1.0  # Classification weight
+  # Regularization
+  grad_clip_norm: 1.0
+  weight_decay: 0.0001
+  dropout_rate: 0.2
 
-  # Annealing
-  kl_c_anneal_epochs: 0  # No annealing needed for this experiment
-
-callbacks:
-  - logging
-  - plotting
-  - mixture_tracking
-
-output:
-  checkpoint: true
-  visualizations: true
-  diagnostics: true
-
-metrics_to_track:
-  - accuracy
-  - reconstruction_loss
-  - kl_loss
-  - component_usage
-  - tau_matrix_statistics
-  - component_label_alignment
+  # Monitoring
+  monitor_metric: "classification_loss"
