@@ -248,8 +248,13 @@ class SSVAE:
             patience=self.config.patience,
         )
 
-        # Log hyperparameters
-        print(f"Training with τ-classifier (τ-based latent-only classification)", flush=True)
+        # Log hyperparameters (matching standard training loop)
+        self._trainer._log_session_hyperparameters(
+            max_epochs=self.config.max_epochs,
+            patience=self.config.patience
+        )
+
+        print(f"\nTraining with τ-classifier (τ-based latent-only classification)", flush=True)
         print(f"Monitoring validation {monitor_metric} for early stopping.", flush=True)
         if splits.labeled_count > 0:
             print(f"Detected {splits.labeled_count} labeled samples.", flush=True)
