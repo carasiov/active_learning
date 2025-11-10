@@ -41,7 +41,8 @@ def run_training_pipeline(
     train_time = time.time() - start
     print(f"Training complete in {train_time:.1f}s")
 
-    latent, recon, predictions, certainty = model.predict(X_train)
+    # Use batched prediction to avoid OOM with convolutional architectures
+    latent, recon, predictions, certainty = model.predict_batched(X_train)
     responsibilities = None
     pi_values = None
     if getattr(config, "prior_type", "standard") == "mixture":
@@ -53,7 +54,7 @@ def run_training_pipeline(
                 _,
                 responsibilities,
                 pi_values,
-            ) = model.predict(X_train, return_mixture=True)
+            ) = model.predict_batched(X_train, return_mixture=True)
         except TypeError:
             responsibilities = None
             pi_values = None

@@ -9,8 +9,12 @@ from .classifier import Classifier
 from .decoders import (
     ComponentAwareConvDecoder,
     ComponentAwareDenseDecoder,
+    ComponentAwareHeteroscedasticConvDecoder,
+    ComponentAwareHeteroscedasticDenseDecoder,
     ConvDecoder,
     DenseDecoder,
+    HeteroscedasticConvDecoder,
+    HeteroscedasticDenseDecoder,
 )
 from .encoders import ConvEncoder, DenseEncoder, MixtureDenseEncoder
 
@@ -54,40 +58,94 @@ def build_encoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = Non
 def build_decoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = None) -> nn.Module:
     """Build decoder based on configuration.
 
-    For mixture prior with component-aware decoder enabled, creates decoders that
-    process z and component embeddings separately for functional specialization.
+    Selects decoder variant based on:
+    - decoder_type: "dense" or "conv"
+    - use_component_aware_decoder: Component-aware processing (mixture prior)
+    - use_heteroscedastic_decoder: Learned per-image variance σ(x)
+
+    Returns one of 8 possible decoder types:
+        Dense:
+            - DenseDecoder
+            - HeteroscedasticDenseDecoder
+            - ComponentAwareDenseDecoder
+            - ComponentAwareHeteroscedasticDenseDecoder
+        Conv:
+            - ConvDecoder
+            - HeteroscedasticConvDecoder
+            - ComponentAwareConvDecoder
+            - ComponentAwareHeteroscedasticConvDecoder
     """
     resolved_hw = _resolve_input_hw(config, input_hw)
 
-    # Component-aware decoders for mixture prior
+    # Determine decoder features
     use_component_aware = (
         config.prior_type == "mixture" and
         config.use_component_aware_decoder
     )
+    use_heteroscedastic = config.use_heteroscedastic_decoder
 
     if config.decoder_type == "dense":
         hidden_dims = _resolve_encoder_hidden_dims(config, resolved_hw)
         decoder_hidden_dims = tuple(reversed(hidden_dims)) or (config.latent_dim,)
 
-        if use_component_aware:
+        # Select decoder class based on features
+        if use_component_aware and use_heteroscedastic:
+            return ComponentAwareHeteroscedasticDenseDecoder(
+                hidden_dims=decoder_hidden_dims,
+                output_hw=resolved_hw,
+                component_embedding_dim=config.component_embedding_dim,
+                latent_dim=config.latent_dim,
+                sigma_min=config.sigma_min,
+                sigma_max=config.sigma_max,
+            )
+        elif use_component_aware:
             return ComponentAwareDenseDecoder(
                 hidden_dims=decoder_hidden_dims,
                 output_hw=resolved_hw,
                 component_embedding_dim=config.component_embedding_dim,
                 latent_dim=config.latent_dim,
             )
+        elif use_heteroscedastic:
+            return HeteroscedasticDenseDecoder(
+                hidden_dims=decoder_hidden_dims,
+                output_hw=resolved_hw,
+                sigma_min=config.sigma_min,
+                sigma_max=config.sigma_max,
+            )
         else:
-            return DenseDecoder(hidden_dims=decoder_hidden_dims, output_hw=resolved_hw)
+            return DenseDecoder(
+                hidden_dims=decoder_hidden_dims,
+                output_hw=resolved_hw
+            )
 
     if config.decoder_type == "conv":
-        if use_component_aware:
+        # Select decoder class based on features
+        if use_component_aware and use_heteroscedastic:
+            return ComponentAwareHeteroscedasticConvDecoder(
+                latent_dim=config.latent_dim,
+                output_hw=resolved_hw,
+                component_embedding_dim=config.component_embedding_dim,
+                sigma_min=config.sigma_min,
+                sigma_max=config.sigma_max,
+            )
+        elif use_component_aware:
             return ComponentAwareConvDecoder(
                 latent_dim=config.latent_dim,
                 output_hw=resolved_hw,
                 component_embedding_dim=config.component_embedding_dim,
             )
+        elif use_heteroscedastic:
+            return HeteroscedasticConvDecoder(
+                latent_dim=config.latent_dim,
+                output_hw=resolved_hw,
+                sigma_min=config.sigma_min,
+                sigma_max=config.sigma_max,
+            )
         else:
-            return ConvDecoder(latent_dim=config.latent_dim, output_hw=resolved_hw)
+            return ConvDecoder(
+                latent_dim=config.latent_dim,
+                output_hw=resolved_hw
+            )
 
     raise ValueError(f"Unknown decoder type: {config.decoder_type}")
 

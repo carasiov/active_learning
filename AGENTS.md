@@ -281,6 +281,8 @@ Where to learn about them:
 - Run experiments → `use_cases/experiments/README.md` §Quick-Start
 - Understand module → `implementation.md` §Module-Organization
 
+**Note:** This project uses [Poetry](https://python-poetry.org/) for Python dependency management and running commands. Ensure Poetry is installed and use `poetry run` for all CLI operations.
+
 ### Common Commands
 ```bash
 # Quick sanity check

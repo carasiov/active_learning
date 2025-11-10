@@ -354,9 +354,15 @@ class SSVAE:
         responsibilities = self._get_responsibilities_from_extras(extras)
         pred_class, pred_certainty = self._resolve_predictions(logits, responsibilities)
 
+        # Handle heteroscedastic decoder (returns tuple)
+        if isinstance(recon, tuple):
+            recon_np = (np.array(recon[0]), np.array(recon[1]))
+        else:
+            recon_np = np.array(recon)
+
         result = (
             np.array(z_mean),
-            np.array(recon),
+            recon_np,
             np.array(pred_class, dtype=np.int32),
             np.array(pred_certainty),
         )
@@ -412,14 +418,30 @@ class SSVAE:
 
         # Stack samples
         latent_stack = jnp.stack(latent_samples) if num_samples > 1 else latent_samples[0]
-        recon_stack = jnp.stack(recon_samples) if num_samples > 1 else recon_samples[0]
         logits_stack = jnp.stack(logits_samples) if num_samples > 1 else logits_samples[0]
+
+        # Handle heteroscedastic decoder (recon_samples contains tuples)
+        if isinstance(recon_samples[0], tuple):
+            # Stack means and sigmas separately
+            means = [r[0] for r in recon_samples]
+            sigmas = [r[1] for r in recon_samples]
+            mean_stack = jnp.stack(means) if num_samples > 1 else means[0]
+            sigma_stack = jnp.stack(sigmas) if num_samples > 1 else sigmas[0]
+            recon_stack = (mean_stack, sigma_stack)
+        else:
+            recon_stack = jnp.stack(recon_samples) if num_samples > 1 else recon_samples[0]
 
         pred_class, pred_certainty = self._resolve_predictions(logits_stack, last_responsibilities)
 
+        # Convert recon_stack to numpy
+        if isinstance(recon_stack, tuple):
+            recon_np = (np.array(recon_stack[0]), np.array(recon_stack[1]))
+        else:
+            recon_np = np.array(recon_stack)
+
         result = (
             np.array(latent_stack),
-            np.array(recon_stack),
+            recon_np,
             np.array(pred_class, dtype=np.int32),
             np.array(pred_certainty),
         )
@@ -430,6 +452,84 @@ class SSVAE:
             result += (np.array(q_stack), pi_np)
 
         return result
+
+    def predict_batched(
+        self,
+        data: np.ndarray,
+        *,
+        batch_size: int = 512,
+        sample: bool = False,
+        num_samples: int = 1,
+        return_mixture: bool = False,
+    ) -> Tuple:
+        """Perform batched prediction to avoid OOM with large datasets and conv architectures.
+        
+        This method splits large datasets into smaller batches to prevent out-of-memory errors
+        that can occur with convolutional architectures due to large intermediate tensors.
+        
+        Args:
+            data: Input images [N, H, W]
+            batch_size: Batch size for prediction (default: 512)
+            sample: Whether to sample from latent distribution
+            num_samples: Number of samples to draw (if sample=True)
+            return_mixture: Return mixture-specific outputs (responsibilities, π)
+            
+        Returns:
+            Standard: (latent, reconstruction, class_predictions, certainty)
+            With mixture: (latent, reconstruction, class_predictions, certainty, q_c, π)
+        """
+        total = data.shape[0]
+        if total == 0 or total <= batch_size:
+            return self.predict(
+                data,
+                sample=sample,
+                num_samples=num_samples,
+                return_mixture=return_mixture,
+            )
+        
+        # Collect results from each batch
+        latent_batches = []
+        recon_batches = []
+        pred_batches = []
+        cert_batches = []
+        resp_batches = [] if return_mixture else None
+        pi_value = None
+        
+        for start in range(0, total, batch_size):
+            end = min(start + batch_size, total)
+            batch_data = data[start:end]
+            
+            if return_mixture:
+                latent, recon, preds, cert, resp, pi = self.predict(
+                    batch_data,
+                    sample=sample,
+                    num_samples=num_samples,
+                    return_mixture=True,
+                )
+                resp_batches.append(resp)
+                if pi_value is None:
+                    pi_value = pi  # π is constant across batches
+            else:
+                latent, recon, preds, cert = self.predict(
+                    batch_data, sample=sample, num_samples=num_samples
+                )
+            
+            latent_batches.append(latent)
+            recon_batches.append(recon)
+            pred_batches.append(preds)
+            cert_batches.append(cert)
+        
+        # Concatenate batches
+        latent_all = np.concatenate(latent_batches, axis=0)
+        recon_all = np.concatenate(recon_batches, axis=0)
+        pred_all = np.concatenate(pred_batches, axis=0)
+        cert_all = np.concatenate(cert_batches, axis=0)
+        
+        if return_mixture:
+            resp_all = np.concatenate(resp_batches, axis=0)
+            return latent_all, recon_all, pred_all, cert_all, resp_all, pi_value
+        else:
+            return latent_all, recon_all, pred_all, cert_all
 
     def _build_callbacks(
         self, *, weights_path: str | None, export_history: bool

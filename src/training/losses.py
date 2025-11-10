@@ -103,6 +103,102 @@ def weighted_reconstruction_loss(
     raise ValueError(f"Unknown reconstruction_loss type: '{loss_type}'. Valid options: 'mse', 'bce'")
 
 
+def heteroscedastic_reconstruction_loss(
+    x: jnp.ndarray,
+    mean: jnp.ndarray,
+    sigma: jnp.ndarray,
+    weight: float,
+) -> jnp.ndarray:
+    """Heteroscedastic reconstruction loss with learned per-image variance.
+
+    Computes the negative log-likelihood under a Gaussian observation model:
+        p(x|mean,σ) = N(x; mean, σ²I)
+        -log p(x|mean,σ) = (1/2σ²)||x - mean||² + log σ + const
+
+    The loss balances two objectives:
+    1. Reconstruction accuracy: ||x - mean||² / (2σ²)
+       - Low σ → high precision required → large penalty for errors
+       - High σ → low precision allowed → small penalty for errors
+    2. Variance regularization: log σ
+       - Prevents trivial solution σ → ∞ to minimize first term
+       - Encourages model to be confident (low σ) when appropriate
+
+    Args:
+        x: Ground truth images [batch, H, W]
+        mean: Predicted mean reconstructions [batch, H, W]
+        sigma: Predicted per-image standard deviations [batch,]
+        weight: Loss scaling factor
+
+    Returns:
+        Weighted scalar loss
+    """
+    # Compute squared error per image
+    diff = jnp.square(x - mean)
+    if diff.ndim > 1:
+        axes = tuple(range(1, diff.ndim))
+        se_per_image = jnp.sum(diff, axis=axes)  # [batch,]
+    else:
+        se_per_image = diff
+
+    # Numerical stability: ensure sigma is bounded away from zero
+    sigma_safe = jnp.maximum(sigma, EPS)
+
+    # Negative log-likelihood: NLL = (1/2σ²)||x - mean||² + log σ
+    nll = se_per_image / (2 * sigma_safe ** 2) + jnp.log(sigma_safe)
+
+    return weight * jnp.mean(nll)
+
+
+def weighted_heteroscedastic_reconstruction_loss(
+    x: jnp.ndarray,
+    mean_components: jnp.ndarray,
+    sigma_components: jnp.ndarray,
+    responsibilities: jnp.ndarray,
+    weight: float,
+) -> jnp.ndarray:
+    """Expected heteroscedastic reconstruction loss under q(c|x).
+
+    Computes the expectation of the heteroscedastic NLL over mixture components:
+        L = E_q(c|x) [ -log p(x|mean_c, σ_c) ]
+          = Σ_c q(c|x) [ ||x - mean_c||²/(2σ_c²) + log σ_c ]
+
+    Each component can learn its own variance characteristics, enabling:
+    - Components specializing in clean inputs → low σ
+    - Components specializing in noisy inputs → high σ
+    - Adaptive uncertainty based on which component is responsible
+
+    Args:
+        x: Ground truth images [batch, H, W]
+        mean_components: Per-component mean reconstructions [batch, K, H, W]
+        sigma_components: Per-component standard deviations [batch, K]
+        responsibilities: Component probabilities q(c|x) [batch, K]
+        weight: Loss scaling factor
+
+    Returns:
+        Weighted scalar loss
+    """
+    # Compute per-component squared errors
+    diff = jnp.square(x[:, None, ...] - mean_components)  # [batch, K, H, W]
+    axes = tuple(range(2, diff.ndim))
+    se_per_component = jnp.sum(diff, axis=axes)  # [batch, K]
+
+    # Numerical stability
+    sigma_safe = jnp.maximum(sigma_components, EPS)
+
+    # Compute per-component NLL
+    nll_per_component = (
+        se_per_component / (2 * sigma_safe ** 2) + jnp.log(sigma_safe)
+    )  # [batch, K]
+
+    # Weight by responsibilities
+    weighted_nll = jnp.sum(
+        responsibilities * nll_per_component,
+        axis=1
+    )  # [batch,]
+
+    return weight * jnp.mean(weighted_nll)
+
+
 def kl_divergence(z_mean: jnp.ndarray, z_log: jnp.ndarray, weight: float) -> jnp.ndarray:
     """Return the KL divergence term scaled by ``weight``."""
     kl = -0.5 * (1.0 + z_log - jnp.square(z_mean) - jnp.exp(z_log))

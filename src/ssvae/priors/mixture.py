@@ -22,6 +22,7 @@ from training.losses import (
     usage_sparsity_penalty,
     weighted_reconstruction_loss_bce,
     weighted_reconstruction_loss_mse,
+    weighted_heteroscedastic_reconstruction_loss,
 )
 
 
@@ -117,18 +118,23 @@ class MixtureGaussianPrior:
     def compute_reconstruction_loss(
         self,
         x_true: jnp.ndarray,
-        x_recon: jnp.ndarray,
+        x_recon: jnp.ndarray | tuple,
         encoder_output: EncoderOutput,
         config,
     ) -> jnp.ndarray:
-        """Compute weighted reconstruction loss over components.
+        """Compute weighted reconstruction loss over components (standard or heteroscedastic).
 
         The reconstruction is computed as:
             L_recon = E_{q(c|x)} [L(x, recon_c)]
 
+        For heteroscedastic decoders:
+            L_recon = E_{q(c|x)} [ ||x - mean_c||²/(2σ_c²) + log σ_c ]
+
         Args:
             x_true: Ground truth images [batch, H, W]
-            x_recon: Per-component reconstructions [batch, num_components, H, W]
+            x_recon: Per-component reconstructions or (mean, sigma) tuple
+                - Standard decoder: [batch, K, H, W]
+                - Heteroscedastic decoder: ([batch, K, H, W], [batch, K])
             encoder_output: Contains extras with responsibilities
             config: Configuration
 
@@ -142,9 +148,19 @@ class MixtureGaussianPrior:
         if responsibilities is None:
             raise ValueError("Mixture prior requires responsibilities in extras")
 
-        # x_recon should be per-component: [batch, K, H, W]
-        # We compute the weighted expectation over components
+        # Check if heteroscedastic (tuple output)
+        if isinstance(x_recon, tuple):
+            mean_components, sigma_components = x_recon
+            return weighted_heteroscedastic_reconstruction_loss(
+                x_true,
+                mean_components,
+                sigma_components,
+                responsibilities,
+                config.recon_weight,
+            )
 
+        # Standard reconstruction (backward compatible)
+        # x_recon should be per-component: [batch, K, H, W]
         if config.reconstruction_loss == "mse":
             return weighted_reconstruction_loss_mse(
                 x_true,
