@@ -28,7 +28,7 @@ __pycache__/
 poetry.toml
 
 # --- Ignore specific files ---
-AGENTS.md
+#AGENTS.md
 
 # --- Ignore data/text files ---
 *.csv
