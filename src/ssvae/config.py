@@ -61,6 +61,9 @@ INFORMATIVE_HPARAMETERS = (
     "soft_embedding_warmup_epochs",
     "use_tau_classifier",
     "tau_smoothing_alpha",
+    "use_heteroscedastic_decoder",
+    "sigma_min",
+    "sigma_max",
 )
 
 @dataclass
@@ -119,6 +122,13 @@ class SSVAEConfig:
             classifier head (only applies to mixture prior).
         tau_smoothing_alpha: Laplace smoothing prior (α_0) for τ-classifier soft counts.
             Prevents zero probabilities for unseen component-label pairs.
+        use_heteroscedastic_decoder: If True, use heteroscedastic decoder that learns per-image
+            variance σ(x) for aleatoric uncertainty quantification. Decoder outputs (mean, sigma)
+            tuple instead of just mean. Loss becomes: ||x - mean||²/(2σ²) + log σ.
+        sigma_min: Minimum allowed standard deviation for heteroscedastic decoder (default: 0.05).
+            Prevents variance collapse and ensures numerical stability.
+        sigma_max: Maximum allowed standard deviation for heteroscedastic decoder (default: 0.5).
+            Prevents variance explosion and keeps uncertainty estimates reasonable.
     """
 
     num_classes: int = 10
@@ -160,6 +170,9 @@ class SSVAEConfig:
     soft_embedding_warmup_epochs: int = 0  # 0 means no warmup
     use_tau_classifier: bool = True  # Use τ-based classification (mixture prior only)
     tau_smoothing_alpha: float = 1.0  # Laplace smoothing prior (α_0)
+    use_heteroscedastic_decoder: bool = False  # Learn per-image variance σ(x)
+    sigma_min: float = 0.05  # Minimum allowed σ (prevents collapse)
+    sigma_max: float = 0.5  # Maximum allowed σ (prevents explosion)
 
     def __post_init__(self):
         """Validate configuration after initialization."""
@@ -210,6 +223,15 @@ class SSVAEConfig:
             )
         if self.tau_smoothing_alpha <= 0:
             raise ValueError("tau_smoothing_alpha must be positive")
+
+        # Heteroscedastic decoder validation
+        if self.sigma_min <= 0:
+            raise ValueError("sigma_min must be positive")
+        if self.sigma_max <= self.sigma_min:
+            raise ValueError(
+                f"sigma_max ({self.sigma_max}) must be greater than "
+                f"sigma_min ({self.sigma_min})"
+            )
 
     def get_informative_hyperparameters(self) -> Dict[str, object]:
         return {name: getattr(self, name) for name in INFORMATIVE_HPARAMETERS}

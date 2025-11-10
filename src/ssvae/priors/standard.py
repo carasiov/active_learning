@@ -10,7 +10,12 @@ from typing import Dict
 import jax.numpy as jnp
 
 from ssvae.priors.base import EncoderOutput
-from training.losses import kl_divergence, reconstruction_loss_bce, reconstruction_loss_mse
+from training.losses import (
+    kl_divergence,
+    reconstruction_loss_bce,
+    reconstruction_loss_mse,
+    heteroscedastic_reconstruction_loss,
+)
 
 
 class StandardGaussianPrior:
@@ -52,21 +57,31 @@ class StandardGaussianPrior:
     def compute_reconstruction_loss(
         self,
         x_true: jnp.ndarray,
-        x_recon: jnp.ndarray,
+        x_recon: jnp.ndarray | tuple,
         encoder_output: EncoderOutput,
         config,
     ) -> jnp.ndarray:
-        """Compute simple reconstruction loss.
+        """Compute reconstruction loss (standard or heteroscedastic).
 
         Args:
-            x_true: Ground truth images
-            x_recon: Reconstructed images
+            x_true: Ground truth images [batch, H, W]
+            x_recon: Reconstructed images or (mean, sigma) tuple
+                - Standard decoder: [batch, H, W]
+                - Heteroscedastic decoder: ([batch, H, W], [batch,])
             encoder_output: Not used for standard prior
             config: Configuration with reconstruction_loss type and weight
 
         Returns:
-            Weighted reconstruction loss (MSE or BCE)
+            Weighted reconstruction loss (MSE, BCE, or heteroscedastic NLL)
         """
+        # Check if heteroscedastic (tuple output)
+        if isinstance(x_recon, tuple):
+            mean, sigma = x_recon
+            return heteroscedastic_reconstruction_loss(
+                x_true, mean, sigma, config.recon_weight
+            )
+
+        # Standard reconstruction (backward compatible)
         if config.reconstruction_loss == "mse":
             return reconstruction_loss_mse(x_true, x_recon, config.recon_weight)
         elif config.reconstruction_loss == "bce":
