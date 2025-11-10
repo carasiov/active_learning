@@ -276,4 +276,210 @@ poetry run python use_cases/experiments/run_experiment.py \
 **Next Session Goal**: Validate implementation through tests and experiments
 
 **Branch**: `claude/heteroscedastic-decoder-review-011CUzhjm2QDuKwX8fgtMVsQ`
-**Last Commit**: `6768076` (validation experiments)
+**Last Commit**: `6e52df8` (integration fixes for network and visualization)
+
+---
+
+## Validation Experiment Results (Session 2)
+
+### Integration Fixes Applied
+
+**Issue**: Heteroscedastic decoder outputs `(mean, sigma)` tuples not handled in:
+- Network forward pass (mixture prior component-wise processing)
+- Model predict methods (numpy conversion)
+- Visualization plotters (reconstruction display)
+
+**Solution** (Commit `6e52df8`):
+1. **Network (src/ssvae/network.py)**:
+   - Updated `ForwardOutput.recon` type annotation to support tuples
+   - Added tuple detection in mixture prior path
+   - Separate reshaping and expectation for mean and sigma
+   - Store `(mean_per_component, sigma_per_component)` in extras
+
+2. **Models (src/ssvae/models.py)**:
+   - Handle tuple outputs in `_predict_deterministic()`
+   - Handle tuple outputs in `_predict_with_sampling()`
+   - Stack means and sigmas separately when sampling
+
+3. **Visualization (use_cases/experiments/src/visualization/plotters.py)**:
+   - Extract mean from tuple for reconstruction plots
+   - Maintains backward compatibility
+
+### Experiment Comparison
+
+**Configuration**:
+- Both use same architecture: mixture prior (K=10), component-aware decoder, τ-classifier
+- Same hyperparameters: latent_dim=16, hidden_dims=[256,128,64], 50 labeled samples
+- Only difference: `use_heteroscedastic_decoder` (True vs False)
+
+**Results**:
+
+| Metric | Heteroscedastic | Baseline | Ratio |
+|--------|----------------|----------|-------|
+| **Training** |
+| Epochs | 51 | 118 | 0.43x |
+| Time (s) | 176.9 | 370.3 | 0.48x |
+| Final Loss | 15,834 | 117.6 | **135x** |
+| Recon Loss | 15,370 | 25.6 | **600x** |
+| KL(z) | 372.3 | 0.025 | **14,892x** |
+| **Performance** |
+| Accuracy | 9.5% | 37.0% | 0.26x |
+| Certainty (mean) | 0.182 | 0.450 | 0.40x |
+| Certainty (range) | [0.180, 0.182] | [0.150, 0.861] | - |
+| **Mixture Quality** |
+| K_eff | 1.00 | 9.90 | **0.10x** |
+| Active Components | 1 | 10 | 0.10x |
+| Component Entropy | 0.001 | 0.031 | 0.03x |
+| Max Component Usage | 99.98% | 12.5% | 8.0x |
+| **τ-Classifier** |
+| Label Coverage | 2/10 | 9/10 | 0.22x |
+| Avg Comp/Label | 0.30 | 2.10 | 0.14x |
+| τ Sparsity | 0.04 | 0.61 | 0.07x |
+
+### Critical Issues Identified
+
+#### 1. Component Collapse ⚠️
+**Heteroscedastic model collapsed to 1 active component**:
+- Component 5: 99.98% usage
+- All other components: <0.02% usage each
+- K_eff = 1.00 (should be ~10)
+- This defeats the purpose of the mixture prior entirely
+
+**Root Cause**: Extremely high reconstruction loss creates unstable gradients that prevent mixture learning.
+
+#### 2. Reconstruction Loss Scale Mismatch ⚠️
+**Heteroscedastic reconstruction loss is 600x higher than baseline**:
+
+**Standard MSE Loss**:
+```
+L_recon = recon_weight * ||x - x̂||²
+       ≈ 500 * 0.05  (typical pixel-wise MSE)
+       ≈ 25
+```
+
+**Heteroscedastic NLL Loss**:
+```
+L_het = recon_weight * (||x - x̂||²/(2σ²) + log σ)
+      ≈ 500 * (0.05/(2*0.05²) + log(0.05))
+      ≈ 500 * (0.05/0.005 + (-3.0))
+      ≈ 500 * (10 - 3)
+      ≈ 3,500  (before considering actual errors)
+```
+
+When σ is near σ_min = 0.05:
+- Division by σ² = 0.0025 amplifies errors by 400x
+- This creates massive gradient magnitudes
+- Training becomes unstable, mixture collapses
+
+#### 3. KL Divergence Anomaly
+**KL(z) is 14,892x higher for heteroscedastic** (372 vs 0.025):
+- This suggests the encoder is producing very different latent distributions
+- Likely a consequence of the reconstruction loss instability
+- The model may be "fleeing" to extreme latent values to try to reduce reconstruction loss
+
+### Analysis & Recommendations
+
+#### Issue: Loss Scale Incompatibility
+The heteroscedastic NLL formula has fundamentally different magnitude than MSE:
+- MSE scales linearly with squared error
+- NLL includes division by σ², creating non-linear amplification
+- Using the same `recon_weight=500` for both is incorrect
+
+#### Recommended Fixes
+
+**Option 1: Reduce recon_weight for heteroscedastic** (Quick Fix)
+```yaml
+# heteroscedastic_validation.yaml
+recon_weight: 50.0  # 10x reduction from 500.0
+```
+- Reduces heteroscedastic loss to similar magnitude as standard MSE
+- May require tuning to find optimal value
+
+**Option 2: Normalize heteroscedastic loss** (Better Fix)
+Modify `heteroscedastic_reconstruction_loss()` to normalize:
+```python
+# Compute NLL
+nll_per_image = se_per_image / (2 * sigma_safe ** 2) + jnp.log(sigma_safe)
+
+# Normalize by dividing by typical sigma value to match MSE scale
+# This makes the loss magnitude similar to standard MSE
+normalized_nll = nll_per_image / jnp.log(1.0 / sigma_min)
+
+return weight * jnp.mean(normalized_nll)
+```
+
+**Option 3: Separate weight parameter** (Most Flexible)
+Add new config parameter:
+```python
+heteroscedastic_recon_weight: float = 50.0  # Separate from recon_weight
+```
+- Use `recon_weight` for standard decoders
+- Use `heteroscedastic_recon_weight` for heteroscedastic decoders
+- Allows independent tuning
+
+#### Next Steps
+1. Implement one of the loss scaling fixes above
+2. Re-run heteroscedastic validation experiment
+3. Verify:
+   - Reconstruction loss comparable to baseline (~25-50 range)
+   - All components active (K_eff > 8)
+   - Better accuracy (>30%)
+   - Reasonable certainty range
+4. Add variance analysis:
+   - Check σ distribution (should be ~0.1-0.2, not collapsed)
+   - Correlate σ with reconstruction error
+   - Visualize learned uncertainty
+
+### Positive Outcomes Despite Issues
+
+**What Worked**:
+- ✅ Integration successful - all code paths handle tuples correctly
+- ✅ Training runs without errors - no crashes or exceptions
+- ✅ Faster convergence (51 vs 118 epochs) - though to wrong solution
+- ✅ Backward compatibility maintained - standard decoder still works perfectly
+- ✅ All visualizations generated successfully
+
+**What Needs Fixing**:
+- ⚠️ Loss scale mismatch causing component collapse
+- ⚠️ Need appropriate recon_weight for heteroscedastic loss
+- ⚠️ May need additional regularization to stabilize mixture training
+
+---
+
+## Session 2 Git Commits
+
+```bash
+6e52df8 - Add heteroscedastic decoder integration for network and visualization
+```
+
+**Files Modified**:
+- src/ssvae/network.py: Tuple handling in forward pass
+- src/ssvae/models.py: Tuple handling in predict methods
+- use_cases/experiments/src/visualization/plotters.py: Tuple handling in plots
+
+**Branch Status**: All commits pushed ✅
+
+---
+
+## Updated Summary
+
+**Implementation Status**: ✅ **INTEGRATION COMPLETE, NEEDS TUNING**
+- Core heteroscedastic decoder: ✅ Implemented
+- Unit tests: ✅ All 25 tests passing
+- Integration: ✅ Network, models, visualization
+- Validation experiments: ⚠️ **Requires loss scaling fix**
+
+**Validation Results**: ⚠️ **COMPONENT COLLAPSE DUE TO LOSS SCALE**
+- Heteroscedastic model collapsed to 1 component (K_eff = 1.00)
+- Reconstruction loss 600x higher than baseline
+- Need to reduce `recon_weight` or normalize loss
+
+**Next Steps**:
+1. Implement loss scaling fix (Option 1, 2, or 3 above)
+2. Re-run validation experiment
+3. Analyze variance distributions
+4. Compare uncertainty quantification quality
+5. Document final results
+
+**Branch**: `claude/heteroscedastic-decoder-review-011CUzhjm2QDuKwX8fgtMVsQ`
+**Last Commit**: `6e52df8` (integration fixes)
