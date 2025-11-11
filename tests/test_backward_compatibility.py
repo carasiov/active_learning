@@ -15,7 +15,6 @@ def test_default_config_unchanged():
     assert config.prior_type == "standard"
     assert config.num_components == 10
     assert config.kl_c_weight == 1.0
-    assert config.component_kl_weight == 1.0
     
     # Verify it's backward compatible
     assert config.encoder_type == "dense"
@@ -87,7 +86,7 @@ def test_config_serialization_includes_mixture_fields():
     config = SSVAEConfig(
         prior_type="mixture",
         num_components=7,
-        component_kl_weight=0.05,
+        kl_c_weight=0.05,
         use_tau_classifier=False,
     )
     

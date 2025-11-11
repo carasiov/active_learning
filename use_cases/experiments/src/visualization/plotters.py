@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend
@@ -108,6 +108,30 @@ def plot_latent_spaces(
 
 def _sanitize_model_name(name: str) -> str:
     return "".join(c.lower() if c.isalnum() else "_" for c in name).strip("_") or "model"
+
+
+def _extract_component_recon(extras: Dict[str, Any]) -> Tuple[np.ndarray | None, np.ndarray | None, str | None]:
+    recon_per_component = extras.get("recon_per_component")
+    if recon_per_component is None:
+        return None, None, "recon_per_component not found in extras"
+
+    sigma_per_component = None
+    if isinstance(recon_per_component, tuple):
+        recon_per_component, sigma_per_component = recon_per_component
+
+    recon_per_component = np.asarray(recon_per_component)
+    if recon_per_component.ndim < 4:
+        return None, None, f"unexpected recon_per_component shape {recon_per_component.shape}"
+    if recon_per_component.shape[0] != 1:
+        return None, None, f"expected single-sample recon, got batch {recon_per_component.shape[0]}"
+    recon_per_component = recon_per_component[0]
+
+    if sigma_per_component is not None:
+        sigma_per_component = np.asarray(sigma_per_component)
+        if sigma_per_component.ndim >= 2:
+            sigma_per_component = sigma_per_component[0]
+
+    return recon_per_component, sigma_per_component, None
 
 
 def plot_reconstructions(
@@ -619,13 +643,10 @@ def plot_reconstruction_by_component(
                     print(f"  Skipping {model_name}: extras is not a dict")
                     continue
 
-                recon_per_component = extras.get("recon_per_component")
-                if recon_per_component is None:
-                    print(f"  Skipping {model_name}: recon_per_component not found in extras")
+                recon_per_component, sigma_per_component, error_msg = _extract_component_recon(extras)
+                if error_msg:
+                    print(f"  Skipping {model_name}: {error_msg}")
                     continue
-
-                # Convert to numpy: Shape (1, K, H, W)
-                recon_per_component = np.array(recon_per_component)[0]  # Shape: (K, H, W)
 
                 # Get responsibilities for weighted reconstruction
                 responsibilities = extras.get("responsibilities")
@@ -652,7 +673,10 @@ def plot_reconstruction_by_component(
                 for c in range(K):
                     ax = axes[sample_idx, c + 1]
                     ax.imshow(_prep_image(recon_per_component[c]), cmap='gray')
-                    title = f'C{c}\n(q={resp_np[c]:.2f})' if sample_idx == 0 else f'q={resp_np[c]:.2f}'
+                    if sigma_per_component is not None:
+                        title = f'C{c}\n(q={resp_np[c]:.2f}, σ={sigma_per_component[c]:.2f})' if sample_idx == 0 else f'q={resp_np[c]:.2f}, σ={sigma_per_component[c]:.2f}'
+                    else:
+                        title = f'C{c}\n(q={resp_np[c]:.2f})' if sample_idx == 0 else f'q={resp_np[c]:.2f}'
                     ax.set_title(title, fontsize=8)
                     ax.axis('off')
 

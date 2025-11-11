@@ -1,7 +1,9 @@
 """Unit tests for mixture encoder implementation."""
 from __future__ import annotations
 
-from types import SimpleNamespace
+import sys
+from pathlib import Path
+from types import MethodType, SimpleNamespace
 
 import jax
 import jax.numpy as jnp
@@ -10,7 +12,10 @@ import pytest
 from jax import random
 
 from callbacks.mixture_tracking import MixtureHistoryTracker
+from ssvae import SSVAE
 from ssvae.components.encoders import DenseEncoder, MixtureConvEncoder, MixtureDenseEncoder
+sys.path.append(str(Path(__file__).resolve().parents[1]))
+from use_cases.experiments.src.visualization.plotters import _extract_component_recon
 
 
 def test_mixture_encoder_output_shapes():
@@ -242,3 +247,59 @@ def test_mixture_history_tracker_batches_inputs(tmp_path):
     assert len(tracker.tracked_epochs) == 1
     assert len(tracker.usage_history) == 1
     assert len(tracker.pi_history) == 1
+
+
+def test_predict_batched_handles_heteroscedastic_outputs():
+    """predict_batched should concatenate heteroscedastic recon tuples batch-wise."""
+    dummy_model = object.__new__(SSVAE)
+    batches = [
+        (
+            np.zeros((3, 2), dtype=np.float32),
+            (np.zeros((3, 4, 4), dtype=np.float32), np.full((3,), 0.1, dtype=np.float32)),
+            np.zeros(3, dtype=np.int32),
+            np.zeros(3, dtype=np.float32),
+        ),
+        (
+            np.ones((2, 2), dtype=np.float32),
+            (np.ones((2, 4, 4), dtype=np.float32), np.full((2,), 0.2, dtype=np.float32)),
+            np.ones(2, dtype=np.int32),
+            np.ones(2, dtype=np.float32),
+        ),
+    ]
+    call_idx = {"value": 0}
+
+    def fake_predict(self, batch, *, sample=False, num_samples=1, return_mixture=False):
+        assert not sample and not return_mixture
+        out = batches[call_idx["value"]]
+        call_idx["value"] += 1
+        return out
+
+    dummy_model.predict = MethodType(fake_predict, dummy_model)
+
+    data = np.zeros((5, 4, 4), dtype=np.float32)
+    latent, recon, preds, cert = SSVAE.predict_batched(dummy_model, data, batch_size=3)
+
+    assert latent.shape == (5, 2)
+    assert isinstance(recon, tuple)
+    mean, sigma = recon
+    assert mean.shape == (5, 4, 4)
+    assert sigma.shape == (5,)
+    assert np.allclose(sigma[:3], 0.1) and np.allclose(sigma[3:], 0.2)
+    assert preds.shape == (5,)
+    assert cert.shape == (5,)
+
+
+def test_extract_component_recon_handles_heteroscedastic():
+    mean = np.ones((1, 2, 4, 4), dtype=np.float32)
+    sigma = np.full((1, 2), 0.3, dtype=np.float32)
+    extras = {"recon_per_component": (mean, sigma)}
+    recon, sigma_out, err = _extract_component_recon(extras)
+    assert err is None
+    assert recon.shape == (2, 4, 4)
+    assert sigma_out.shape == (2,)
+    assert np.allclose(sigma_out, 0.3)
+
+    extras_bad = {"recon_per_component": np.zeros((2, 2, 4, 4))}
+    recon_bad, _, err_bad = _extract_component_recon(extras_bad)
+    assert recon_bad is None
+    assert err_bad is not None

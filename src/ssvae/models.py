@@ -490,10 +490,13 @@ class SSVAE:
         # Collect results from each batch
         latent_batches = []
         recon_batches = []
+        recon_mean_batches = []
+        recon_sigma_batches = []
         pred_batches = []
         cert_batches = []
         resp_batches = [] if return_mixture else None
         pi_value = None
+        heteroscedastic_mode: bool | None = None
         
         for start in range(0, total, batch_size):
             end = min(start + batch_size, total)
@@ -515,13 +518,30 @@ class SSVAE:
                 )
             
             latent_batches.append(latent)
-            recon_batches.append(recon)
+
+            if isinstance(recon, tuple):
+                if heteroscedastic_mode is False:
+                    raise ValueError("Mixed heteroscedastic and standard reconstructions in batched prediction.")
+                heteroscedastic_mode = True
+                recon_mean_batches.append(recon[0])
+                recon_sigma_batches.append(recon[1])
+            else:
+                if heteroscedastic_mode is True:
+                    raise ValueError("Mixed heteroscedastic and standard reconstructions in batched prediction.")
+                heteroscedastic_mode = False
+                recon_batches.append(recon)
+
             pred_batches.append(preds)
             cert_batches.append(cert)
         
         # Concatenate batches
         latent_all = np.concatenate(latent_batches, axis=0)
-        recon_all = np.concatenate(recon_batches, axis=0)
+        if heteroscedastic_mode:
+            mean_all = np.concatenate(recon_mean_batches, axis=0)
+            sigma_all = np.concatenate(recon_sigma_batches, axis=0)
+            recon_all: np.ndarray | Tuple[np.ndarray, np.ndarray] = (mean_all, sigma_all)
+        else:
+            recon_all = np.concatenate(recon_batches, axis=0)
         pred_all = np.concatenate(pred_batches, axis=0)
         cert_all = np.concatenate(cert_batches, axis=0)
         

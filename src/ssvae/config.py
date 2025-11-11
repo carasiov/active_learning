@@ -109,7 +109,6 @@ class SSVAEConfig:
             - NEGATIVE (e.g., -0.05): Encourage diversity - RECOMMENDED
             - POSITIVE: Discourage diversity (causes mode collapse)
         kl_c_anneal_epochs: If >0, linearly ramp kl_c_weight from 0 to its configured value across this many epochs.
-        component_kl_weight: Deprecated alias for kl_c_weight kept for backward compatibility.
         component_embedding_dim: Dimensionality of component embeddings (default: same as latent_dim).
             Small values (4-16) recommended to avoid overwhelming latent information.
         use_component_aware_decoder: If True, use component-aware decoder architecture that processes
@@ -157,7 +156,6 @@ class SSVAEConfig:
     contrastive_weight: float = 0.0
     prior_type: str = "standard"
     num_components: int = 10
-    component_kl_weight: float | None = None
     kl_c_weight: float = 1.0
     dirichlet_alpha: float | None = None
     dirichlet_weight: float = 1.0
@@ -182,15 +180,6 @@ class SSVAEConfig:
                 f"reconstruction_loss must be one of {valid_losses}, "
                 f"got '{self.reconstruction_loss}'"
             )
-        # Backward compatibility: if legacy component_kl_weight is provided and
-        # kl_c_weight wasn't explicitly set, adopt the legacy value.
-        if self.component_kl_weight is not None:
-            default_kl_c = SSVAEConfig.__dataclass_fields__["kl_c_weight"].default
-            if self.kl_c_weight == default_kl_c:
-                self.kl_c_weight = float(self.component_kl_weight)
-        # Mirror into legacy field for any downstream code still reading it.
-        self.component_kl_weight = float(self.kl_c_weight)
-
         if self.kl_c_anneal_epochs < 0:
             raise ValueError("kl_c_anneal_epochs must be >= 0")
         if self.dirichlet_alpha is not None and self.dirichlet_alpha <= 0.0:

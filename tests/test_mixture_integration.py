@@ -11,7 +11,7 @@ def test_mixture_model_trains_without_error():
     config = SSVAEConfig(
         prior_type="mixture",
         num_components=3,
-        component_kl_weight=0.1,
+        kl_c_weight=0.1,
         latent_dim=2,
         hidden_dims=(64, 32),
         max_epochs=2,
