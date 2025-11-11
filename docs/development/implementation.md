@@ -401,29 +401,21 @@ print(f"Active components: {(diagnostics['component_usage'] > 0.01).sum()}")
 **`DenseEncoder(nn.Module)`**
 - Fully connected encoder
 - Architecture: input → hidden layers → (z_mean, z_logvar)
-- For mixture prior: also outputs component_logits
 
-**Parameters:**
-```python
-latent_dim: int                   # Latent space dimension
-hidden_dims: Tuple[int, ...]      # Layer sizes (e.g., (256, 128, 64))
-num_components: Optional[int]     # Mixture components (if applicable)
-dropout_rate: float = 0.0         # Dropout probability
-```
-
-**Output:**
-```python
-# Standard prior
-z_mean, z_logvar = encoder(x, deterministic=True)
-
-# Mixture prior
-z_mean, z_logvar, component_logits = encoder(x, deterministic=True)
-```
+**`MixtureDenseEncoder(nn.Module)`**
+- Dense variant used whenever `prior_type="mixture"` with dense encoders
+- Emits `component_logits` in addition to `(z_mean, z_logvar, z)`
+- Shares the same MLP trunk as `DenseEncoder`
 
 **`ConvEncoder(nn.Module)`**
 - Convolutional encoder for image data
-- Architecture: Conv layers → Flatten → Dense → (z_mean, z_logvar)
+- Architecture: Conv blocks → Flatten → Dense → (z_mean, z_logvar)
 - Useful for larger images (CIFAR-10, etc.)
+
+**`MixtureConvEncoder(nn.Module)`**
+- Convolutional counterpart to `MixtureDenseEncoder`
+- Reuses the conv stack but adds a logits head so conv architectures can drive mixture priors
+- Output signature: `(component_logits, z_mean, z_logvar, z)`
 
 ---
 

@@ -82,3 +82,37 @@ class ConvEncoder(nn.Module):
         else:
             z = z_mean
         return z_mean, z_log, z
+
+
+class MixtureConvEncoder(nn.Module):
+    """Convolutional encoder that also predicts mixture component assignments."""
+
+    latent_dim: int
+    num_components: int
+
+    @nn.compact
+    def __call__(
+        self,
+        x: jnp.ndarray,
+        *,
+        training: bool,
+    ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
+        del training  # Conv blocks are deterministic; kept for API consistency.
+        x = x[..., None]
+        x = nn.Conv(features=32, kernel_size=(3, 3), strides=(2, 2), padding="SAME", name="conv_0")(x)
+        x = nn.leaky_relu(x, negative_slope=0.2)
+        x = nn.Conv(features=64, kernel_size=(3, 3), strides=(2, 2), padding="SAME", name="conv_1")(x)
+        x = nn.leaky_relu(x, negative_slope=0.2)
+        x = nn.Conv(features=128, kernel_size=(3, 3), strides=(1, 1), padding="SAME", name="conv_2")(x)
+        x = nn.leaky_relu(x, negative_slope=0.2)
+        x = x.reshape((x.shape[0], -1))
+
+        component_logits = nn.Dense(self.num_components, name="component_logits")(x)
+        z_mean = nn.Dense(self.latent_dim, name="z_mean")(x)
+        z_log = nn.Dense(self.latent_dim, name="z_log")(x)
+        if self.has_rng("reparam"):
+            eps = random.normal(self.make_rng("reparam"), z_mean.shape)
+            z = z_mean + jnp.exp(0.5 * z_log) * eps
+        else:
+            z = z_mean
+        return component_logits, z_mean, z_log, z

@@ -16,7 +16,7 @@ from .decoders import (
     HeteroscedasticConvDecoder,
     HeteroscedasticDenseDecoder,
 )
-from .encoders import ConvEncoder, DenseEncoder, MixtureDenseEncoder
+from .encoders import ConvEncoder, DenseEncoder, MixtureConvEncoder, MixtureDenseEncoder
 
 
 def _resolve_input_hw(config: SSVAEConfig, input_hw: Tuple[int, int] | None) -> Tuple[int, int]:
@@ -36,17 +36,22 @@ def _resolve_encoder_hidden_dims(config: SSVAEConfig, input_hw: Tuple[int, int])
 
 def build_encoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = None) -> nn.Module:
     resolved_hw = _resolve_input_hw(config, input_hw)
-    
+
     if config.prior_type == "mixture":
-        if config.encoder_type != "dense":
-            raise ValueError(f"Mixture prior not supported with {config.encoder_type} encoder")
-        hidden_dims = _resolve_encoder_hidden_dims(config, resolved_hw)
-        return MixtureDenseEncoder(
-            hidden_dims=hidden_dims,
-            latent_dim=config.latent_dim,
-            num_components=config.num_components,
-        )
-    
+        if config.encoder_type == "dense":
+            hidden_dims = _resolve_encoder_hidden_dims(config, resolved_hw)
+            return MixtureDenseEncoder(
+                hidden_dims=hidden_dims,
+                latent_dim=config.latent_dim,
+                num_components=config.num_components,
+            )
+        if config.encoder_type == "conv":
+            return MixtureConvEncoder(
+                latent_dim=config.latent_dim,
+                num_components=config.num_components,
+            )
+        raise ValueError(f"Mixture prior not supported with encoder_type '{config.encoder_type}'")
+
     if config.encoder_type == "dense":
         hidden_dims = _resolve_encoder_hidden_dims(config, resolved_hw)
         return DenseEncoder(hidden_dims=hidden_dims, latent_dim=config.latent_dim)

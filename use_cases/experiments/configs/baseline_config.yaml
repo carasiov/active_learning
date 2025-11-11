@@ -91,10 +91,10 @@ model:
   component_kl_weight: 0.0          # Legacy alias for kl_c_weight (deprecated, keep 0)
 
   # Mixture prior regularization
-  dirichlet_alpha: null             # Dirichlet-MAP prior strength (null = disabled, try 2.0-5.0)
+  dirichlet_alpha: 5.0             # Dirichlet-MAP prior strength (null = disabled, try 2.0-5.0)
   dirichlet_weight: 0.0             # Dirichlet-MAP penalty weight
   
-  component_diversity_weight: -0.05 # Usage diversity regularization
+  component_diversity_weight: -0.07 # Usage diversity regularization
                                     #   NEGATIVE (e.g., -0.05): Encourage diversity (RECOMMENDED)
                                     #   POSITIVE: Discourage diversity (causes collapse)
                                     #   0: No regularization
@@ -102,7 +102,7 @@ model:
   # ═════════════════════════════════════════════════════════════════════════
   # Component-Aware Decoder (Mixture Prior Feature)
   # ═════════════════════════════════════════════════════════════════════════
-  use_component_aware_decoder: false # Enable component-aware decoding
+  use_component_aware_decoder: true # Enable component-aware decoding
                                     #   true: Separate processing for z and e_c (recommended)
                                     #   false: Standard decoder (ignores components)
   component_embedding_dim: 8        # Component embedding dimensionality
@@ -127,7 +127,7 @@ model:
   # ═════════════════════════════════════════════════════════════════════════
   # Heteroscedastic Decoder (Aleatoric Uncertainty)
   # ═════════════════════════════════════════════════════════════════════════
-  use_heteroscedastic_decoder: false # Learn per-image variance σ(x)
+  use_heteroscedastic_decoder: true # Learn per-image variance σ(x)
                                     #   true: Decoder outputs (mean, sigma) for uncertainty
                                     #   false: Standard decoder (mean only)
   sigma_min: 0.05                   # Minimum allowed σ (prevents variance collapse)

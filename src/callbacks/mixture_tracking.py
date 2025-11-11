@@ -34,10 +34,14 @@ class MixtureHistoryTracker(TrainingCallback):
         output_dir: str | Path,
         log_every: int = 1,
         enabled: bool = True,
+        max_samples: int = 5000,
+        eval_batch_size: int = 256,
     ):
         self.output_dir = Path(output_dir)
         self.log_every = log_every
         self.enabled = enabled
+        self.max_samples = max_samples
+        self.eval_batch_size = eval_batch_size
 
         # History storage
         self.pi_history: list[np.ndarray] = []
@@ -82,33 +86,47 @@ class MixtureHistoryTracker(TrainingCallback):
         if state is None:
             return
 
-        # Use a small subset for efficiency (max 5000 samples)
+        # Use a capped subset for efficiency
         x_train = splits.x_train
-        max_samples = 5000
-        if x_train.shape[0] > max_samples:
-            indices = np.random.choice(x_train.shape[0], size=max_samples, replace=False)
+        if x_train.shape[0] > self.max_samples:
+            indices = np.random.choice(x_train.shape[0], size=self.max_samples, replace=False)
             x_train = x_train[indices]
 
-        # Forward pass to get responsibilities
+        batch_size = int(max(1, min(self.eval_batch_size, x_train.shape[0])))
+        usage_sum = None
+        total_samples = 0
+        pi_value = None
+
         try:
-            forward_output = state.apply_fn({"params": state.params}, x_train, training=False)
-            component_logits, _, _, _, _, _, extras = forward_output
+            for start in range(0, x_train.shape[0], batch_size):
+                end = min(start + batch_size, x_train.shape[0])
+                batch = jnp.asarray(x_train[start:end])
+                forward_output = state.apply_fn({"params": state.params}, batch, training=False)
+                extras = getattr(forward_output, "extras", None)
+                if extras is None:
+                    continue
 
-            # Extract responsibilities and π
-            responsibilities = extras.get("responsibilities") if hasattr(extras, "get") else None
-            pi = extras.get("pi") if hasattr(extras, "get") else None
+                responsibilities = extras.get("responsibilities") if hasattr(extras, "get") else None
+                pi = extras.get("pi") if hasattr(extras, "get") else None
 
-            if responsibilities is not None:
-                # Compute mean usage across samples
-                usage = np.asarray(responsibilities).mean(axis=0)
+                if responsibilities is not None:
+                    resp_np = np.asarray(responsibilities)
+                    batch_sum = resp_np.sum(axis=0)
+                    usage_sum = batch_sum if usage_sum is None else usage_sum + batch_sum
+                    total_samples += resp_np.shape[0]
+
+                if pi is not None:
+                    pi_value = np.asarray(pi)
+
+            if usage_sum is not None and total_samples > 0:
+                usage = usage_sum / float(total_samples)
                 self.usage_history.append(usage)
 
-            if pi is not None:
-                pi_np = np.asarray(pi)
-                self.pi_history.append(pi_np)
+            if pi_value is not None:
+                self.pi_history.append(pi_value)
 
-            self.tracked_epochs.append(epoch)
-
+            if usage_sum is not None or pi_value is not None:
+                self.tracked_epochs.append(epoch)
         except Exception as e:
             print(f"Warning: Failed to track mixture history at epoch {epoch}: {e}")
 
