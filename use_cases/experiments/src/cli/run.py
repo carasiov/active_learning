@@ -1,13 +1,16 @@
 """CLI entrypoint for running a single experiment.
 
 Phase 6: Enhanced to generate architecture codes and augment configs with metadata.
+Phase 6 (Terminal Cleanup): Professional, organized console output.
 """
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
 
+import numpy as np
 from ssvae import SSVAEConfig
+from utils import get_device_info
 
 from ..core.naming import generate_architecture_code
 from ..io import create_run_paths, write_config_copy, write_report, write_summary
@@ -18,6 +21,7 @@ from ..pipeline import (
     prepare_data,
     run_training_pipeline,
 )
+from ..utils import format_experiment_header, format_training_section_header
 
 EXPERIMENTS_DIR = Path(__file__).resolve().parents[2]
 
@@ -57,8 +61,6 @@ def main() -> None:
         exp_meta.get("name"),
         architecture_code,
     )
-    print(f"Architecture: {architecture_code}")
-    print(f"Output directory: {run_paths.root}")
 
     # Phase 6: Augment config with metadata
     experiment_config = augment_config_metadata(
@@ -69,7 +71,38 @@ def main() -> None:
     )
     write_config_copy(experiment_config, run_paths)
 
+    # Load data
     X_train, y_semi, y_true = prepare_data(data_config)
+
+    # Create data info for header
+    val_split = model_config.get("val_split", 0.1)
+    train_size = int(len(X_train) * (1 - val_split))
+    val_size = len(X_train) - train_size
+    labeled_count = int((~np.isnan(y_semi)).sum())
+
+    data_info = {
+        "dataset": data_config.get("dataset", "MNIST"),
+        "total": len(X_train),
+        "labeled": labeled_count,
+        "train_size": train_size,
+        "val_size": val_size,
+    }
+
+    # Get device info
+    device_type, device_count = get_device_info()
+    device_info = (device_type, device_count) if device_type else None
+
+    # Phase 6 (Terminal Cleanup): Print clean experiment header
+    header = format_experiment_header(
+        config=experiment_config,
+        run_id=run_id,
+        architecture_code=architecture_code,
+        output_path=run_paths.root,
+        data_info=data_info,
+        device_info=device_info,
+    )
+    print(header)
+    print(format_training_section_header())
 
     model, history, summary, viz_meta = run_training_pipeline(
         model_config, X_train, y_semi, y_true, run_paths

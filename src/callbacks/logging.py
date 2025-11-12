@@ -19,13 +19,15 @@ class ConsoleLogger(TrainingCallback):
     def on_train_start(self, trainer: "Trainer") -> None:
         self._header_printed = False
 
-        device_type, device_count = get_device_info()
-        if device_type:
-            plural = "s" if device_count != 1 else ""
-            print(
-                f"Training on {device_type.upper()} ({device_count} device{plural})",
-                flush=True,
-            )
+        # Phase 6 (Terminal Cleanup): Silenced device info
+        # Device info shown in experiment header
+        # device_type, device_count = get_device_info()
+        # if device_type:
+        #     plural = "s" if device_count != 1 else ""
+        #     print(
+        #         f"Training on {device_type.upper()} ({device_count} device{plural})",
+        #         flush=True,
+        #     )
 
     def on_epoch_end(
         self,
