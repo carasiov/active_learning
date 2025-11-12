@@ -1,6 +1,6 @@
 """Configuration helpers for experiments CLI.
 
-Phase 6: Enhanced with metadata augmentation for self-documenting experiments.
+Includes metadata augmentation for self-documenting experiments.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ def augment_config_metadata(
 ) -> Dict[str, Any]:
     """Augment config with metadata for self-documenting experiments.
 
-    Phase 6: Adds run_id, architecture_code, and timestamp to config for
+    Adds run_id, architecture_code, and timestamp to config for
     complete provenance tracking.
 
     Args:
@@ -44,7 +44,7 @@ def augment_config_metadata(
         >>> config["timestamp"]
         '20241112_143027'
     """
-    # Add metadata at top level (won't overwrite existing keys due to Phase 1 validation)
+    # Add metadata at top level
     config["run_id"] = run_id
     config["architecture_code"] = architecture_code
     config["timestamp"] = timestamp

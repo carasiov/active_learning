@@ -12,7 +12,7 @@ from mnist.mnist import load_mnist_scaled
 def prepare_data(data_config: Dict[str, int | float], *, rng_seed: int | None = None) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Load and subset MNIST according to the experiment configuration.
 
-    Phase 6 (Terminal Cleanup): Silent loading, info displayed in experiment header.
+    Silent loading; dataset info displayed in experiment header.
     """
     num_samples = int(data_config.get("num_samples", 5000))
     num_labeled = int(data_config.get("num_labeled", 50))

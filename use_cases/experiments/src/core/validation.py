@@ -102,16 +102,14 @@ def _validate_tau_classifier(config: SSVAEConfig) -> None:
 def _validate_component_aware_decoder(config: SSVAEConfig) -> None:
     """Validate component-aware decoder configuration.
 
-    DEPRECATED: This validation was moved to SSVAEConfig.__post_init__() as a warning
-    (not error) for consistency with τ-classifier and learnable_pi behavior.
-
-    The factory (src/ssvae/components/factory.py) handles the fallback gracefully,
-    so this should be a warning that allows execution to continue, not a hard error.
+    NOTE: This validation was moved to SSVAEConfig.__post_init__() as a warning
+    for consistency with τ-classifier and learnable_pi behavior. The factory
+    handles the fallback gracefully, so this is a warning rather than an error.
 
     Rule: Requires mixture-based prior (standard prior has no components).
+
+    This function is no longer called but kept for reference.
     """
-    # This function is no longer called (commented out in validate_config)
-    # Kept for reference/documentation purposes
     if not config.use_component_aware_decoder:
         return  # Not enabled, skip validation
 

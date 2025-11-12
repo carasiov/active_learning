@@ -1,6 +1,6 @@
 """Default metric providers mirroring the legacy single-script behavior.
 
-Updated in Phase 3 to return ComponentResult for explicit status tracking.
+Returns ComponentResult for explicit status tracking.
 """
 from __future__ import annotations
 

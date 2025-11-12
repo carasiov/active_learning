@@ -35,7 +35,7 @@ def run_training_pipeline(
     weights_path = run_paths.artifacts / "checkpoint.ckpt"
     history = {}
 
-    # Phase 6 (Terminal Cleanup): Header shown in CLI, just train here
+    # Train model (header shown in CLI)
     start = time.time()
     history = model.fit(X_train, y_train, weights_path=str(weights_path))
     train_time = time.time() - start

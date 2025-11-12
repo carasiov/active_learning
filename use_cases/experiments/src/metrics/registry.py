@@ -1,6 +1,6 @@
 """Simple registry for experiment metric providers.
 
-Updated in Phase 3 to support ComponentResult status objects alongside
+Supports ComponentResult status objects alongside
 legacy dict/None returns for backward compatibility.
 """
 from __future__ import annotations
@@ -53,7 +53,7 @@ def register_metric(func: MetricProvider) -> MetricProvider:
 def collect_metrics(context: MetricContext) -> MetricResult:
     """Run all registered metric providers and merge their results.
 
-    Handles both ComponentResult (Phase 3) and legacy dict/None returns
+    Handles both ComponentResult  and legacy dict/None returns
     for backward compatibility.
 
     Args:
@@ -89,7 +89,7 @@ def collect_metrics(context: MetricContext) -> MetricResult:
             }
             continue
 
-        # Handle ComponentResult (Phase 3)
+        # Handle ComponentResult 
         if isinstance(result, ComponentResult):
             if result.is_success:
                 logger.debug(f"✓ {provider_name}: {list(result.data.keys())}")

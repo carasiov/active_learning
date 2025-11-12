@@ -1,7 +1,7 @@
 """CLI entrypoint for running a single experiment.
 
-Phase 6: Enhanced to generate architecture codes and augment configs with metadata.
-Phase 6 (Terminal Cleanup): Professional, organized console output.
+Generates architecture codes, augments configs with metadata, and provides
+professional console output with clean warning display.
 """
 from __future__ import annotations
 
@@ -49,8 +49,7 @@ def main() -> None:
     data_config = experiment_config.get("data", {})
     model_config = experiment_config.get("model", {})
 
-    # Phase 6: Generate architecture code for directory naming
-    # Create SSVAEConfig early for validation and code generation
+    # Create SSVAEConfig early for validation and architecture code generation
     # Capture warnings during config validation to display them cleanly
     _model_config = {**model_config}
     if isinstance(_model_config.get("hidden_dims"), list):
@@ -61,7 +60,7 @@ def main() -> None:
         ssvae_config = SSVAEConfig(**_model_config)
         architecture_code = generate_architecture_code(ssvae_config)
 
-    # Phase 6 (Terminal Cleanup): Validate config (fail fast on architectural errors)
+    # Validate config (fail fast on architectural errors)
     try:
         validate_config(ssvae_config)
     except ConfigValidationError as e:
@@ -73,7 +72,7 @@ def main() -> None:
         print("Aborting: Fix the configuration and try again.")
         exit(1)
 
-    # Phase 6 (Terminal Cleanup): Display warnings cleanly if any exist
+    # Display warnings cleanly if any exist
     if w:
         print("\n" + "=" * 80)
         print("Configuration Warnings")
@@ -82,13 +81,13 @@ def main() -> None:
             print(f"  ⚠  {warning.message}")
         print("=" * 80 + "\n")
 
-    # Phase 6: Create run paths with architecture code
+    # Create run paths with architecture code
     run_id, timestamp, run_paths = create_run_paths(
         exp_meta.get("name"),
         architecture_code,
     )
 
-    # Phase 6: Augment config with metadata
+    # Augment config with metadata
     experiment_config = augment_config_metadata(
         experiment_config,
         run_id,
@@ -97,8 +96,7 @@ def main() -> None:
     )
     write_config_copy(experiment_config, run_paths)
 
-    # Phase 6 (Terminal Cleanup): Suppress warnings for the rest of execution
-    # (we've already validated config and shown warnings above)
+    # Suppress warnings for the rest of execution (already validated and shown above)
     warnings.filterwarnings('ignore', category=UserWarning)
 
     # Load data
@@ -122,7 +120,7 @@ def main() -> None:
     device_type, device_count = get_device_info()
     device_info = (device_type, device_count) if device_type else None
 
-    # Phase 6 (Terminal Cleanup): Print clean experiment header
+    # Print experiment header
     header = format_experiment_header(
         config=experiment_config,
         run_id=run_id,
@@ -138,7 +136,7 @@ def main() -> None:
         model_config, X_train, y_semi, y_true, run_paths
     )
 
-    # Phase 6: Enhance summary with metadata for self-documenting experiments
+    # Add metadata to summary for self-documenting experiments
     summary["metadata"] = {
         "run_id": run_id,
         "architecture_code": architecture_code,

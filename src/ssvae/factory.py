@@ -266,7 +266,7 @@ class SSVAEFactory:
                 num_components=config.num_components,
                 latent_dim=config.latent_dim,
                 input_shape=input_shape,
-                uniform_weights=True,  # Learnable weights in Phase 3
+                uniform_weights=True,  # Learnable weights not yet implemented
                 num_samples_kl=config.vamp_num_samples_kl,
             )
         

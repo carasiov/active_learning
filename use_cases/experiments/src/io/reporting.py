@@ -45,7 +45,7 @@ def write_report(
         experiment_config: Experiment configuration
         run_paths: Run directory paths
         recon_paths: Optional reconstruction file paths
-        plot_status: Optional plot generation status (from Phase 4)
+        plot_status: Optional plot generation status (optional)
     """
     report_path = run_paths.report
     figures_rel = Path("figures")
@@ -105,7 +105,7 @@ def write_report(
         if "tau_classifier" in summary:
             _write_metric_rows("τ-Classifier", summary["tau_classifier"])
 
-        # Add plot status section (Phase 4)
+        # Add plot status section Optional
         if plot_status:
             handle.write("\n### Visualization Status\n\n")
             handle.write("| Plot | Status | Details |\n")
@@ -146,7 +146,7 @@ def write_report(
                 handle.write(f"### {label}\n\n")
                 handle.write(f"![{label}]({rel.as_posix()})\n\n")
 
-        # Core plots (Phase 5: updated paths to core/ subdirectory)
+        # Core plots 
         _embed_if_exists("Loss Comparison", "core/loss_comparison.png")
 
         handle.write("### Latent Space\n\n")
@@ -154,7 +154,7 @@ def write_report(
             handle.write("**By Class Label:**\n\n")
             handle.write("![Latent Spaces](figures/core/latent_spaces.png)\n\n")
 
-        # Mixture plots (Phase 5: updated paths to mixture/ subdirectory)
+        # Mixture plots 
         if (run_paths.figures / "mixture" / "latent_by_component.png").exists():
             handle.write("**By Component Assignment:**\n\n")
             handle.write("![Latent by Component](figures/mixture/latent_by_component.png)\n\n")
@@ -167,7 +167,7 @@ def write_report(
         if recon_paths:
             handle.write("### Reconstructions\n\n")
             for model_name, filename in recon_paths.items():
-                # filename already includes 'core/' prefix from Phase 5
+                # filename already includes subdirectory prefix
                 rel = figures_rel / filename
                 handle.write(f"**{model_name}**\n\n")
                 handle.write(f"![Reconstructions]({rel.as_posix()})\n\n")
@@ -181,7 +181,7 @@ def write_report(
                     rel = figures_rel / "mixture" / plot_path.name
                     handle.write(f"![Mixture Evolution]({rel.as_posix()})\n\n")
 
-        # More mixture plots (Phase 5: updated paths to mixture/ subdirectory)
+        # More mixture plots 
         if (run_paths.figures / "mixture" / "component_embedding_divergence.png").exists():
             handle.write("### Component Embedding Divergence\n\n")
             handle.write("![Component Embedding Divergence](figures/mixture/component_embedding_divergence.png)\n\n")
@@ -195,7 +195,7 @@ def write_report(
                     rel = figures_rel / "mixture" / plot_path.name
                     handle.write(f"![Reconstruction by Component]({rel.as_posix()})\n\n")
 
-        # Tau plots (Phase 5: updated paths to tau/ subdirectory)
+        # Tau plots 
         if (run_paths.figures / "tau" / "tau_matrix_heatmap.png").exists():
             handle.write("### τ Matrix (Component → Label Mapping)\n\n")
             handle.write("![τ Matrix Heatmap](figures/tau/tau_matrix_heatmap.png)\n\n")

@@ -69,14 +69,8 @@ class SSVAE:
         self.latent_dim = self.config.latent_dim
         self.weights_path: str | None = None
 
-        # Phase 6 (Terminal Cleanup): Silenced verbose output
-        # Device banner and model configuration now shown in experiment header
-        # Print device banner once
-        # if not SSVAE._DEVICE_BANNER_PRINTED:
-        #     print_device_banner()
-        #     SSVAE._DEVICE_BANNER_PRINTED = True
-
-        # Print model configuration
+        # Device banner and model configuration shown in experiment header
+        # Commented out to avoid duplicate output
         # print(f"\n{'=' * 60}")
         # print("Model Configuration")
         # print(f"{'=' * 60}")
@@ -350,9 +344,8 @@ class SSVAE:
         num_components = self.config.num_components
         total_classes = self.config.num_classes
 
-        # Phase 6 (Terminal Cleanup): Silenced INFO message
         # τ-classifier info shown in experiment header
-        # Keep warnings below (important for misconfiguration)
+        # Warnings below are important for misconfiguration detection
         # message_lines = [
         #     f"INFO: τ-classifier training with {labeled_count} labeled samples "
         #     f"across {observed_classes}/{total_classes} classes.",

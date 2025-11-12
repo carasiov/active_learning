@@ -1,6 +1,6 @@
 """Experiment orchestration pipeline (config, data prep, training).
 
-Phase 6: Enhanced with metadata augmentation for self-documenting experiments.
+Includes metadata augmentation for self-documenting experiments.
 """
 
 from .config import add_repo_paths, augment_config_metadata, load_experiment_config

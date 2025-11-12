@@ -75,12 +75,9 @@ def create_run_paths(
 ) -> Tuple[str, str, RunPaths]:
     """Create organized run directory structure with architecture code.
 
-    Phase 6: Enhanced to include architecture code in directory naming for
-    easy experiment identification.
-
     Creates a timestamped directory with organized subdirectories for
-    artifacts, figures, and logs. Following Phase 1 design for component-based
-    organization.
+    artifacts, figures, and logs, including architecture code in directory
+    name for easy experiment identification.
 
     Args:
         experiment_name: User-provided experiment name (will be sanitized)
@@ -122,7 +119,7 @@ def create_run_paths(
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     slug = sanitize_name(experiment_name)
 
-    # Phase 6: Include architecture code in directory name
+    # Include architecture code in directory name if provided
     if architecture_code:
         run_id = f"{slug}__{architecture_code}__{timestamp}"
     else:

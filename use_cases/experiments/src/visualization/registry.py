@@ -1,7 +1,6 @@
 """Visualization registry for experiments.
 
-Updated in Phase 4 to handle ComponentResult for explicit status tracking,
-following the pattern established in Phase 3 for metrics.
+Handles ComponentResult for explicit status tracking of plot generation.
 """
 from __future__ import annotations
 
@@ -41,7 +40,7 @@ def register_plotter(func: Plotter) -> Plotter:
 def render_all_plots(context: VisualizationContext) -> PlotResult:
     """Render all registered plots and aggregate their results.
 
-    Supports both ComponentResult (Phase 4) and legacy dict/None returns.
+    Supports both ComponentResult  and legacy dict/None returns.
 
     Returns:
         Dictionary containing plot metadata and status information.
@@ -56,7 +55,7 @@ def render_all_plots(context: VisualizationContext) -> PlotResult:
         try:
             result = plotter(context)
 
-            # Handle ComponentResult (Phase 4)
+            # Handle ComponentResult 
             if isinstance(result, ComponentResult):
                 if result.is_success:
                     logger.debug(f"✓ {plotter_name}: plot generated")

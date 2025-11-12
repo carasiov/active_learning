@@ -23,7 +23,7 @@ def plot_loss_comparison(
 ):
     """Generate multi-panel loss comparison plots with train and validation curves.
 
-    Phase 6 Fix: Added validation curves to spot overfitting.
+    Added validation curves to spot overfitting.
     """
     if metrics is None:
         metrics = [
@@ -69,7 +69,7 @@ def plot_loss_comparison(
     
     plt.tight_layout()
 
-    # Save to core subdirectory (Phase 5)
+    # Save to appropriate subdirectory
     core_dir = output_dir / 'core'
     core_dir.mkdir(parents=True, exist_ok=True)
     output_path = core_dir / 'loss_comparison.png'
@@ -121,7 +121,7 @@ def plot_latent_spaces(
 
     plt.tight_layout()
 
-    # Save to core subdirectory (Phase 5)
+    # Save to appropriate subdirectory
     core_dir = output_dir / 'core'
     core_dir.mkdir(parents=True, exist_ok=True)
     output_path = core_dir / 'latent_spaces.png'
@@ -231,7 +231,7 @@ def plot_reconstructions(
 
         plt.tight_layout()
 
-        # Save to core subdirectory (Phase 5)
+        # Save to appropriate subdirectory
         core_dir = output_dir / 'core'
         core_dir.mkdir(parents=True, exist_ok=True)
         filename = f"{_sanitize_model_name(model_name)}_reconstructions.png"
@@ -253,7 +253,7 @@ def plot_latent_by_component(
 ):
     """Generate latent space scatter plots colored by component assignment.
 
-    Phase 6 Fix: Compute on full dataset (not just validation subset).
+    Compute on full dataset (not just validation subset).
     Only applicable for mixture priors with 2D latents.
 
     Args:
@@ -285,7 +285,7 @@ def plot_latent_by_component(
         ax = axes[idx]
 
         try:
-            # Phase 6 Fix: Compute on full dataset instead of loading validation subset
+            # Compute on full dataset instead of loading validation subset
             # This matches plot_latent_spaces and ensures all points are shown
             latent, _, _, _, responsibilities, _ = model.predict_batched(
                 X_data, return_mixture=True
@@ -325,7 +325,7 @@ def plot_latent_by_component(
 
     plt.tight_layout()
 
-    # Save to mixture subdirectory (Phase 5)
+    # Save to appropriate subdirectory
     mixture_dir = output_dir / 'mixture'
     mixture_dir.mkdir(parents=True, exist_ok=True)
     output_path = mixture_dir / 'latent_by_component.png'
@@ -399,7 +399,7 @@ def plot_responsibility_histogram(
 
     plt.tight_layout()
 
-    # Save to mixture subdirectory (Phase 5)
+    # Save to appropriate subdirectory
     mixture_dir = output_dir / 'mixture'
     mixture_dir.mkdir(parents=True, exist_ok=True)
     output_path = mixture_dir / 'responsibility_histogram.png'
@@ -590,7 +590,7 @@ def plot_component_embedding_divergence(
 
     plt.tight_layout()
 
-    # Save to mixture subdirectory (Phase 5)
+    # Save to appropriate subdirectory
     mixture_dir = output_dir / 'mixture'
     mixture_dir.mkdir(parents=True, exist_ok=True)
     output_path = mixture_dir / 'component_embedding_divergence.png'
@@ -732,7 +732,7 @@ def plot_reconstruction_by_component(
             plt.suptitle(f'{model_name}: Reconstruction by Component', fontsize=12, y=0.995)
             plt.tight_layout()
 
-            # Save to mixture subdirectory (Phase 5)
+            # Save to appropriate subdirectory
             mixture_dir = output_dir / 'mixture'
             mixture_dir.mkdir(parents=True, exist_ok=True)
             filename = f"{_sanitize_model_name(model_name)}_reconstruction_by_component.png"
@@ -842,7 +842,7 @@ def plot_tau_matrix_heatmap(
 
     plt.tight_layout()
 
-    # Save to tau subdirectory (Phase 5)
+    # Save to appropriate subdirectory
     tau_dir = output_dir / 'tau'
     tau_dir.mkdir(parents=True, exist_ok=True)
     output_path = tau_dir / 'tau_matrix_heatmap.png'
@@ -942,7 +942,7 @@ def plot_tau_per_class_accuracy(
 
     plt.tight_layout()
 
-    # Save to tau subdirectory (Phase 5)
+    # Save to appropriate subdirectory
     tau_dir = output_dir / 'tau'
     tau_dir.mkdir(parents=True, exist_ok=True)
     output_path = tau_dir / 'tau_per_class_accuracy.png'
@@ -1031,7 +1031,7 @@ def plot_tau_certainty_analysis(
 
     plt.tight_layout()
 
-    # Save to tau subdirectory (Phase 5)
+    # Save to appropriate subdirectory
     tau_dir = output_dir / 'tau'
     tau_dir.mkdir(parents=True, exist_ok=True)
     output_path = tau_dir / 'tau_certainty_analysis.png'
