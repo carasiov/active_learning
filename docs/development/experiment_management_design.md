@@ -87,15 +87,15 @@ experiment:
   tags: ["ablation", "kl-tuning", "2025-11"]
   status: "exploratory"              # exploratory | keep | baseline | failed
 
-  # Provenance (auto-populated)
+  # Provenance (auto-populated at runtime)
   run_id: "baseline__mix10-dir_tau_ca-het__20251112_143022"
   architecture_code: "mix10-dir_tau_ca-het"
   timestamp: "2025-11-12T14:30:22"
 
-  # For resumed runs (optional)
+  # For resumed runs (optional, manual specification)
   resumed_from: null                 # run_id of parent run
   resumed_epoch: null
-  config_changes: {}                 # Dict of changed params
+  config_notes: ""                   # Free-form notes about config changes
 
 # Rest of config follows...
 data:
@@ -119,11 +119,11 @@ Documents all architecture codes and validation rules. Updated automatically as 
 ## Dimension B: Configuration Layer
 
 ### Current State
-- Hand-authored YAML files
-- No override mechanism
-- No base config tracking
+- Hand-authored YAML files in `use_cases/experiments/configs/`
+- Full config snapshot saved to each run directory
+- No structured metadata or architecture encoding
 
-### Design Decision: YAML + CLI Overrides + Provenance
+### Design Decision: Enhanced Config Metadata (File-Based Only)
 
 **File structure (no change):**
 ```
@@ -134,44 +134,38 @@ use_cases/experiments/configs/
 └── ...
 ```
 
-**CLI override syntax:**
-```bash
-poetry run python use_cases/experiments/run_experiment.py \
-  --config configs/default.yaml \
-  --set model.kl_weight=1.0 \
-  --set model.num_components=20 \
-  --tag ablation \
-  --tag kl-sweep
-```
+**Workflow:**
+1. User edits/creates YAML config file
+2. Runs: `poetry run python use_cases/experiments/run_experiment.py --config configs/my_experiment.yaml`
+3. System generates architecture code from config
+4. System saves full config snapshot with metadata to run directory
 
-**Saved config.yaml records everything:**
+**Saved config.yaml includes:**
 ```yaml
 experiment:
-  name: "default+conv+mixture"
-  base_config: "configs/default.yaml"
-  cli_overrides:
-    model.kl_weight: 1.0
-    model.num_components: 20
-  tags: ["ablation", "kl-sweep"]
+  name: "baseline"
+  description: "Testing KL weight impact"
+  tags: ["ablation", "kl-tuning"]
+  status: "exploratory"
 
-# Full resolved config below (base + overrides applied)
+  # Auto-populated at runtime
+  run_id: "baseline__mix10-dir_tau_ca-het__20251112_143022"
+  architecture_code: "mix10-dir_tau_ca-het"
+  timestamp: "2025-11-12T14:30:22"
+
+# Full config follows (same as source file)
 data:
   dataset: "mnist"
   ...
 model:
-  kl_weight: 1.0          # ← Override applied
-  num_components: 20      # ← Override applied
+  kl_weight: 1.0
   ...
 ```
 
-**Implementation:**
-- Simple dotted-key override parser (no Hydra dependency)
-- Validate overrides against SSVAEConfig schema
-- Save both original base path and final merged config
-
 **Benefits:**
-- Quick experimentation without editing files
-- Full provenance (can see exactly what changed)
+- Simple: edit config files directly (familiar workflow)
+- Complete: full snapshot preserved in each run
+- Discoverable: architecture code auto-generated and validated
 - Greppable: `grep 'kl_weight: 1.0' results/*/config.yaml`
 
 ---
@@ -389,20 +383,14 @@ def tau_classifier_metrics(context: MetricContext) -> ComponentResult:
 
 **Why third:** Builds on existing config structure; improves discoverability without breaking existing runs.
 
-### Phase 4: CLI Overrides (Workflow)
-1. Implement dotted-key override parser
-2. Add `--set key=value` CLI argument
-3. Add `--tag` CLI argument
-4. Record `base_config` and `cli_overrides` in saved config.yaml
-
-**Why fourth:** Convenience feature; doesn't block other improvements.
-
-### Phase 5: Updated REPORT.md Template (Polish)
+### Phase 4: Updated REPORT.md Template (Polish)
 1. Update report generator to include component status sections
 2. Add explicit "disabled" markers with enable instructions
 3. Improve metric organization (group by component)
 
 **Why last:** Depends on Phase 2 (component status). Nice-to-have polish.
+
+**Note:** CLI overrides (`--set`) are not implemented. User works exclusively with config files.
 
 ---
 
@@ -431,7 +419,6 @@ def tau_classifier_metrics(context: MetricContext) -> ComponentResult:
 
 **To decide during implementation:**
 - Logging verbosity: Epoch-level progress (default), optionally batch-level via flag
-- CLI override syntax: `--set` (shorter, more common in ML tools)
 
 ---
 
@@ -443,9 +430,8 @@ def tau_classifier_metrics(context: MetricContext) -> ComponentResult:
 3. ✅ All loss components are visible during training: `loss.recon | loss.kl.z | loss.kl.c`
 4. ✅ Hierarchical metric names are consistent everywhere (logs, history, summary.json, plots)
 5. ✅ You can grep for experiments: `ls results/ | grep "vamp.*tau"`
-6. ✅ You can run a quick override without editing config files: `--set model.kl_weight=1.0`
-7. ✅ Logs answer "why is X missing?" without re-running or reading code
-8. ✅ The system scales from 10 throwaway runs/day to 100s of archived experiments
+6. ✅ Logs answer "why is X missing?" without re-running or reading code
+7. ✅ The system scales from 10 throwaway runs/day to 100s of archived experiments
 
 ---
 
