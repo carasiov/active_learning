@@ -1,12 +1,19 @@
-"""CLI entrypoint for running a single experiment."""
+"""CLI entrypoint for running a single experiment.
+
+Phase 6: Enhanced to generate architecture codes and augment configs with metadata.
+"""
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
 
+from ssvae import SSVAEConfig
+
+from ..core.naming import generate_architecture_code
 from ..io import create_run_paths, write_config_copy, write_report, write_summary
 from ..pipeline import (
     add_repo_paths,
+    augment_config_metadata,
     load_experiment_config,
     prepare_data,
     run_training_pipeline,
@@ -36,10 +43,30 @@ def main() -> None:
     data_config = experiment_config.get("data", {})
     model_config = experiment_config.get("model", {})
 
-    timestamp, run_paths = create_run_paths(exp_meta.get("name"))
+    # Phase 6: Generate architecture code for directory naming
+    # Create SSVAEConfig early for validation and code generation
+    _model_config = {**model_config}
+    if isinstance(_model_config.get("hidden_dims"), list):
+        _model_config["hidden_dims"] = tuple(_model_config["hidden_dims"])
+
+    ssvae_config = SSVAEConfig(**_model_config)
+    architecture_code = generate_architecture_code(ssvae_config)
+
+    # Phase 6: Create run paths with architecture code
+    run_id, timestamp, run_paths = create_run_paths(
+        exp_meta.get("name"),
+        architecture_code,
+    )
+    print(f"Architecture: {architecture_code}")
     print(f"Output directory: {run_paths.root}")
 
-    experiment_config["timestamp"] = timestamp
+    # Phase 6: Augment config with metadata
+    experiment_config = augment_config_metadata(
+        experiment_config,
+        run_id,
+        architecture_code,
+        timestamp,
+    )
     write_config_copy(experiment_config, run_paths)
 
     X_train, y_semi, y_true = prepare_data(data_config)
@@ -47,6 +74,14 @@ def main() -> None:
     model, history, summary, viz_meta = run_training_pipeline(
         model_config, X_train, y_semi, y_true, run_paths
     )
+
+    # Phase 6: Enhance summary with metadata for self-documenting experiments
+    summary["metadata"] = {
+        "run_id": run_id,
+        "architecture_code": architecture_code,
+        "timestamp": timestamp,
+        "experiment_name": exp_meta.get("name", "experiment"),
+    }
 
     write_summary(summary, run_paths)
     recon_paths = viz_meta.get("reconstructions") if isinstance(viz_meta, dict) else None

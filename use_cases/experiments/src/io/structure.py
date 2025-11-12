@@ -69,8 +69,14 @@ class RunPaths:
             path.mkdir(parents=True, exist_ok=True)
 
 
-def create_run_paths(experiment_name: str | None) -> Tuple[str, RunPaths]:
-    """Create organized run directory structure.
+def create_run_paths(
+    experiment_name: str | None,
+    architecture_code: str | None = None,
+) -> Tuple[str, str, RunPaths]:
+    """Create organized run directory structure with architecture code.
+
+    Phase 6: Enhanced to include architecture code in directory naming for
+    easy experiment identification.
 
     Creates a timestamped directory with organized subdirectories for
     artifacts, figures, and logs. Following Phase 1 design for component-based
@@ -78,12 +84,16 @@ def create_run_paths(experiment_name: str | None) -> Tuple[str, RunPaths]:
 
     Args:
         experiment_name: User-provided experiment name (will be sanitized)
+        architecture_code: Optional architecture code (e.g., "mix10-dir_tau_ca-het")
 
     Returns:
-        Tuple of (timestamp, RunPaths object)
+        Tuple of (run_id, timestamp, RunPaths object)
+        - run_id: Full directory name (e.g., "baseline__mix10-dir_tau_ca-het__20241112_143027")
+        - timestamp: ISO format timestamp string
+        - RunPaths: Structured paths for all experiment outputs
 
     Directory structure:
-        {experiment_name}_{timestamp}/
+        {experiment_name}__{architecture_code}__{timestamp}/
         ├── config.yaml
         ├── summary.json
         ├── REPORT.md
@@ -103,10 +113,23 @@ def create_run_paths(experiment_name: str | None) -> Tuple[str, RunPaths]:
             ├── experiment.log    # Full detailed log
             ├── training.log      # Training progress only
             └── errors.log        # Errors and warnings
+
+    Note:
+        Double underscore (__) separators used for easy parsing of directory names.
+        If architecture_code is None, falls back to {name}_{timestamp} format
+        for backward compatibility.
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     slug = sanitize_name(experiment_name)
-    run_root = RESULTS_DIR / f"{slug}_{timestamp}"
+
+    # Phase 6: Include architecture code in directory name
+    if architecture_code:
+        run_id = f"{slug}__{architecture_code}__{timestamp}"
+    else:
+        # Backward compatibility: no architecture code
+        run_id = f"{slug}_{timestamp}"
+
+    run_root = RESULTS_DIR / run_id
 
     # Top-level paths
     artifacts = run_root / "artifacts"
@@ -135,4 +158,4 @@ def create_run_paths(experiment_name: str | None) -> Tuple[str, RunPaths]:
         figures_ood=figures / "ood",
     )
     paths.ensure()
-    return timestamp, paths
+    return run_id, timestamp, paths

@@ -1,9 +1,55 @@
-"""Configuration helpers for experiments CLI."""
+"""Configuration helpers for experiments CLI.
+
+Phase 6: Enhanced with metadata augmentation for self-documenting experiments.
+"""
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 from typing import Any, Dict
+
+
+def augment_config_metadata(
+    config: Dict[str, Any],
+    run_id: str,
+    architecture_code: str,
+    timestamp: str,
+) -> Dict[str, Any]:
+    """Augment config with metadata for self-documenting experiments.
+
+    Phase 6: Adds run_id, architecture_code, and timestamp to config for
+    complete provenance tracking.
+
+    Args:
+        config: Experiment configuration dict
+        run_id: Full run directory name (e.g., "baseline__mix10-dir__20241112_143027")
+        architecture_code: Architecture code (e.g., "mix10-dir_tau_ca-het")
+        timestamp: ISO format timestamp string
+
+    Returns:
+        Augmented config with metadata added to top level
+
+    Example:
+        >>> config = {"experiment": {...}, "data": {...}, "model": {...}}
+        >>> config = augment_config_metadata(
+        ...     config,
+        ...     "baseline__mix10-dir_tau_ca-het__20241112_143027",
+        ...     "mix10-dir_tau_ca-het",
+        ...     "20241112_143027"
+        ... )
+        >>> config["run_id"]
+        'baseline__mix10-dir_tau_ca-het__20241112_143027'
+        >>> config["architecture_code"]
+        'mix10-dir_tau_ca-het'
+        >>> config["timestamp"]
+        '20241112_143027'
+    """
+    # Add metadata at top level (won't overwrite existing keys due to Phase 1 validation)
+    config["run_id"] = run_id
+    config["architecture_code"] = architecture_code
+    config["timestamp"] = timestamp
+
+    return config
 
 
 def load_experiment_config(config_path: str | Path) -> Dict[str, Any]:
