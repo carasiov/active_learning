@@ -21,7 +21,10 @@ def plot_loss_comparison(
     output_dir: Path,
     metrics: List[tuple] = None
 ):
-    """Generate multi-panel loss comparison plots."""
+    """Generate multi-panel loss comparison plots with train and validation curves.
+
+    Phase 6 Fix: Added validation curves to spot overfitting.
+    """
     if metrics is None:
         metrics = [
             ('loss', 'Total Loss'),
@@ -29,24 +32,35 @@ def plot_loss_comparison(
             ('kl_loss', 'KL Divergence'),
             ('classification_loss', 'Classification Loss'),
         ]
-    
+
     n_metrics = len(metrics)
     n_cols = 2
     n_rows = (n_metrics + 1) // 2
-    
+
     fig, axes = plt.subplots(n_rows, n_cols, figsize=(14, 5 * n_rows))
     axes = axes.flatten() if n_metrics > 1 else [axes]
-    
+
     for (metric, title), ax in zip(metrics, axes):
         for model_name, history in histories.items():
+            # Plot training curve
             if metric in history and len(history[metric]) > 0:
                 epochs = range(1, len(history[metric]) + 1)
-                ax.plot(epochs, history[metric], label=model_name, linewidth=2, alpha=0.8)
-        
+                ax.plot(epochs, history[metric],
+                       label=f'{model_name} (Train)',
+                       linewidth=2, alpha=0.8, linestyle='-')
+
+            # Plot validation curve
+            val_metric = f'val_{metric}'
+            if val_metric in history and len(history[val_metric]) > 0:
+                epochs = range(1, len(history[val_metric]) + 1)
+                ax.plot(epochs, history[val_metric],
+                       label=f'{model_name} (Val)',
+                       linewidth=2, alpha=0.8, linestyle='--')
+
         ax.set_xlabel('Epoch')
         ax.set_ylabel(title)
         ax.set_title(title)
-        ax.legend()
+        ax.legend(loc='best')
         ax.grid(True, alpha=0.3)
     
     # Hide unused subplots
@@ -239,11 +253,12 @@ def plot_latent_by_component(
 ):
     """Generate latent space scatter plots colored by component assignment.
 
+    Phase 6 Fix: Compute on full dataset (not just validation subset).
     Only applicable for mixture priors with 2D latents.
 
     Args:
         models: Dictionary of model_name -> model
-        X_data: Input data
+        X_data: Input data (full dataset)
         y_true: True labels
         output_dir: Directory to save plots
     """
@@ -269,18 +284,16 @@ def plot_latent_by_component(
     for idx, (model_name, model) in enumerate(mixture_models.items()):
         ax = axes[idx]
 
-        # Load latent data with responsibilities
-        diag_dir = model.last_diagnostics_dir
-        if not diag_dir:
-            continue
-
         try:
-            latent_data = model._diagnostics.load_latent_data(diag_dir)
-            if latent_data is None:
-                continue
+            # Phase 6 Fix: Compute on full dataset instead of loading validation subset
+            # This matches plot_latent_spaces and ensures all points are shown
+            latent, _, _, _, responsibilities, _ = model.predict_batched(
+                X_data, return_mixture=True
+            )
 
-            z_mean = latent_data['z_mean']
-            responsibilities = latent_data['q_c']
+            if responsibilities is None:
+                print(f"Warning: Model {model_name} did not return responsibilities")
+                continue
 
             # Component assignments
             component_assignments = responsibilities.argmax(axis=1)
@@ -293,7 +306,7 @@ def plot_latent_by_component(
                 mask = component_assignments == c
                 if mask.sum() > 0:
                     color = cmap(c / n_components)
-                    ax.scatter(z_mean[mask, 0], z_mean[mask, 1],
+                    ax.scatter(latent[mask, 0], latent[mask, 1],
                               label=f'C{c}', alpha=0.6, s=20, color=color)
 
             ax.set_xlabel('Latent Dim 1')
