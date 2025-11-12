@@ -146,23 +146,28 @@ def write_report(
                 handle.write(f"### {label}\n\n")
                 handle.write(f"![{label}]({rel.as_posix()})\n\n")
 
-        _embed_if_exists("Loss Comparison", "loss_comparison.png")
-        handle.write("### Latent Space\n\n")
-        if (run_paths.figures / "latent_spaces.png").exists():
-            handle.write("**By Class Label:**\n\n")
-            handle.write("![Latent Spaces](figures/latent_spaces.png)\n\n")
-        if (run_paths.figures / "latent_by_component.png").exists():
-            handle.write("**By Component Assignment:**\n\n")
-            handle.write("![Latent by Component](figures/latent_by_component.png)\n\n")
+        # Core plots (Phase 5: updated paths to core/ subdirectory)
+        _embed_if_exists("Loss Comparison", "core/loss_comparison.png")
 
-        if (run_paths.figures / "responsibility_histogram.png").exists():
+        handle.write("### Latent Space\n\n")
+        if (run_paths.figures / "core" / "latent_spaces.png").exists():
+            handle.write("**By Class Label:**\n\n")
+            handle.write("![Latent Spaces](figures/core/latent_spaces.png)\n\n")
+
+        # Mixture plots (Phase 5: updated paths to mixture/ subdirectory)
+        if (run_paths.figures / "mixture" / "latent_by_component.png").exists():
+            handle.write("**By Component Assignment:**\n\n")
+            handle.write("![Latent by Component](figures/mixture/latent_by_component.png)\n\n")
+
+        if (run_paths.figures / "mixture" / "responsibility_histogram.png").exists():
             handle.write("### Responsibility Confidence\n\n")
             handle.write("Distribution of max_c q(c|x):\n\n")
-            handle.write("![Responsibility Histogram](figures/responsibility_histogram.png)\n\n")
+            handle.write("![Responsibility Histogram](figures/mixture/responsibility_histogram.png)\n\n")
 
         if recon_paths:
             handle.write("### Reconstructions\n\n")
             for model_name, filename in recon_paths.items():
+                # filename already includes 'core/' prefix from Phase 5
                 rel = figures_rel / filename
                 handle.write(f"**{model_name}**\n\n")
                 handle.write(f"![Reconstructions]({rel.as_posix()})\n\n")
@@ -176,28 +181,32 @@ def write_report(
                     rel = figures_rel / "mixture" / plot_path.name
                     handle.write(f"![Mixture Evolution]({rel.as_posix()})\n\n")
 
-        if (run_paths.figures / "component_embedding_divergence.png").exists():
+        # More mixture plots (Phase 5: updated paths to mixture/ subdirectory)
+        if (run_paths.figures / "mixture" / "component_embedding_divergence.png").exists():
             handle.write("### Component Embedding Divergence\n\n")
-            handle.write("![Component Embedding Divergence](figures/component_embedding_divergence.png)\n\n")
+            handle.write("![Component Embedding Divergence](figures/mixture/component_embedding_divergence.png)\n\n")
 
-        recon_by_component = sorted(run_paths.figures.glob("*_reconstruction_by_component.png"))
-        if recon_by_component:
-            handle.write("### Reconstruction by Component\n\n")
-            for plot_path in recon_by_component:
-                rel = figures_rel / plot_path.name
-                handle.write(f"![Reconstruction by Component]({rel.as_posix()})\n\n")
+        mixture_dir = run_paths.figures / "mixture"
+        if mixture_dir.exists():
+            recon_by_component = sorted(mixture_dir.glob("*_reconstruction_by_component.png"))
+            if recon_by_component:
+                handle.write("### Reconstruction by Component\n\n")
+                for plot_path in recon_by_component:
+                    rel = figures_rel / "mixture" / plot_path.name
+                    handle.write(f"![Reconstruction by Component]({rel.as_posix()})\n\n")
 
-        if (run_paths.figures / "tau_matrix_heatmap.png").exists():
+        # Tau plots (Phase 5: updated paths to tau/ subdirectory)
+        if (run_paths.figures / "tau" / "tau_matrix_heatmap.png").exists():
             handle.write("### τ Matrix (Component → Label Mapping)\n\n")
-            handle.write("![τ Matrix Heatmap](figures/tau_matrix_heatmap.png)\n\n")
+            handle.write("![τ Matrix Heatmap](figures/tau/tau_matrix_heatmap.png)\n\n")
 
-        if (run_paths.figures / "tau_per_class_accuracy.png").exists():
+        if (run_paths.figures / "tau" / "tau_per_class_accuracy.png").exists():
             handle.write("### Per-Class Accuracy\n\n")
-            handle.write("![Per-Class Accuracy](figures/tau_per_class_accuracy.png)\n\n")
+            handle.write("![Per-Class Accuracy](figures/tau/tau_per_class_accuracy.png)\n\n")
 
-        if (run_paths.figures / "tau_certainty_analysis.png").exists():
+        if (run_paths.figures / "tau" / "tau_certainty_analysis.png").exists():
             handle.write("### Certainty Calibration\n\n")
-            handle.write("![Certainty Analysis](figures/tau_certainty_analysis.png)\n\n")
+            handle.write("![Certainty Analysis](figures/tau/tau_certainty_analysis.png)\n\n")
 
     print(f"  Saved report: {report_path}")
     return report_path

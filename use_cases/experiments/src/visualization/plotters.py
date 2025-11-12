@@ -54,7 +54,12 @@ def plot_loss_comparison(
         axes[idx].set_visible(False)
     
     plt.tight_layout()
-    output_path = output_dir / 'loss_comparison.png'
+
+    # Save to core subdirectory (Phase 5)
+    core_dir = output_dir / 'core'
+    core_dir.mkdir(parents=True, exist_ok=True)
+    output_path = core_dir / 'loss_comparison.png'
+
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"  Saved: {output_path}")
     plt.close()
@@ -99,9 +104,14 @@ def plot_latent_spaces(
     # Hide unused subplots
     for idx in range(n_models, len(axes)):
         axes[idx].set_visible(False)
-    
+
     plt.tight_layout()
-    output_path = output_dir / 'latent_spaces.png'
+
+    # Save to core subdirectory (Phase 5)
+    core_dir = output_dir / 'core'
+    core_dir.mkdir(parents=True, exist_ok=True)
+    output_path = core_dir / 'latent_spaces.png'
+
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"  Saved: {output_path}")
     plt.close()
@@ -206,11 +216,16 @@ def plot_reconstructions(
             recon_ax.axis("off")
 
         plt.tight_layout()
+
+        # Save to core subdirectory (Phase 5)
+        core_dir = output_dir / 'core'
+        core_dir.mkdir(parents=True, exist_ok=True)
         filename = f"{_sanitize_model_name(model_name)}_reconstructions.png"
-        output_path = output_dir / filename
+        output_path = core_dir / filename
+
         plt.savefig(output_path, dpi=150, bbox_inches="tight")
         plt.close(fig)
-        saved[model_name] = filename
+        saved[model_name] = str(Path('core') / filename)  # Return relative path
         print(f"  Saved: {output_path}")
 
     return saved
@@ -296,7 +311,12 @@ def plot_latent_by_component(
         axes[idx].set_visible(False)
 
     plt.tight_layout()
-    output_path = output_dir / 'latent_by_component.png'
+
+    # Save to mixture subdirectory (Phase 5)
+    mixture_dir = output_dir / 'mixture'
+    mixture_dir.mkdir(parents=True, exist_ok=True)
+    output_path = mixture_dir / 'latent_by_component.png'
+
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"  Saved: {output_path}")
     plt.close()
@@ -365,7 +385,12 @@ def plot_responsibility_histogram(
         axes[idx].set_visible(False)
 
     plt.tight_layout()
-    output_path = output_dir / 'responsibility_histogram.png'
+
+    # Save to mixture subdirectory (Phase 5)
+    mixture_dir = output_dir / 'mixture'
+    mixture_dir.mkdir(parents=True, exist_ok=True)
+    output_path = mixture_dir / 'responsibility_histogram.png'
+
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"  Saved: {output_path}")
     plt.close()
@@ -551,7 +576,12 @@ def plot_component_embedding_divergence(
         axes[idx].set_visible(False)
 
     plt.tight_layout()
-    output_path = output_dir / 'component_embedding_divergence.png'
+
+    # Save to mixture subdirectory (Phase 5)
+    mixture_dir = output_dir / 'mixture'
+    mixture_dir.mkdir(parents=True, exist_ok=True)
+    output_path = mixture_dir / 'component_embedding_divergence.png'
+
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"  Saved: {output_path}")
     plt.close()
@@ -689,8 +719,12 @@ def plot_reconstruction_by_component(
             plt.suptitle(f'{model_name}: Reconstruction by Component', fontsize=12, y=0.995)
             plt.tight_layout()
 
+            # Save to mixture subdirectory (Phase 5)
+            mixture_dir = output_dir / 'mixture'
+            mixture_dir.mkdir(parents=True, exist_ok=True)
             filename = f"{_sanitize_model_name(model_name)}_reconstruction_by_component.png"
-            output_path = output_dir / filename
+            output_path = mixture_dir / filename
+
             plt.savefig(output_path, dpi=150, bbox_inches='tight')
             print(f"  Saved: {output_path}")
             plt.close(fig)
@@ -794,7 +828,12 @@ def plot_tau_matrix_heatmap(
         axes[idx].set_visible(False)
 
     plt.tight_layout()
-    output_path = output_dir / 'tau_matrix_heatmap.png'
+
+    # Save to tau subdirectory (Phase 5)
+    tau_dir = output_dir / 'tau'
+    tau_dir.mkdir(parents=True, exist_ok=True)
+    output_path = tau_dir / 'tau_matrix_heatmap.png'
+
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"  Saved: {output_path}")
     plt.close()
@@ -889,7 +928,12 @@ def plot_tau_per_class_accuracy(
             print(f"Warning: Could not plot per-class accuracy for {model_name}: {e}")
 
     plt.tight_layout()
-    output_path = output_dir / 'tau_per_class_accuracy.png'
+
+    # Save to tau subdirectory (Phase 5)
+    tau_dir = output_dir / 'tau'
+    tau_dir.mkdir(parents=True, exist_ok=True)
+    output_path = tau_dir / 'tau_per_class_accuracy.png'
+
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"  Saved: {output_path}")
     plt.close()
@@ -973,7 +1017,12 @@ def plot_tau_certainty_analysis(
             print(f"Warning: Could not plot certainty analysis for {model_name}: {e}")
 
     plt.tight_layout()
-    output_path = output_dir / 'tau_certainty_analysis.png'
+
+    # Save to tau subdirectory (Phase 5)
+    tau_dir = output_dir / 'tau'
+    tau_dir.mkdir(parents=True, exist_ok=True)
+    output_path = tau_dir / 'tau_certainty_analysis.png'
+
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"  Saved: {output_path}")
     plt.close()
