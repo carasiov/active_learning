@@ -35,8 +35,18 @@ def write_report(
     experiment_config: Mapping,
     run_paths: RunPaths,
     recon_paths: Optional[Dict[str, str]] = None,
+    plot_status: Optional[Mapping] = None,
 ) -> Path:
-    """Render a single-run markdown report referencing figures/ subdir."""
+    """Render a single-run markdown report referencing figures/ subdir.
+
+    Args:
+        summary: Experiment summary metrics
+        history: Training history
+        experiment_config: Experiment configuration
+        run_paths: Run directory paths
+        recon_paths: Optional reconstruction file paths
+        plot_status: Optional plot generation status (from Phase 4)
+    """
     report_path = run_paths.report
     figures_rel = Path("figures")
 
@@ -94,6 +104,38 @@ def write_report(
             _write_metric_rows("Clustering", summary["clustering"])
         if "tau_classifier" in summary:
             _write_metric_rows("τ-Classifier", summary["tau_classifier"])
+
+        # Add plot status section (Phase 4)
+        if plot_status:
+            handle.write("\n### Visualization Status\n\n")
+            handle.write("| Plot | Status | Details |\n")
+            handle.write("|------|--------|----------|\n")
+
+            for plot_name, status_info in plot_status.items():
+                if isinstance(status_info, dict):
+                    status = status_info.get("status", "unknown")
+                    reason = status_info.get("reason", "")
+                    legacy = status_info.get("legacy", False)
+
+                    # Format status with indicator
+                    if status == "success":
+                        status_str = "✓ Success"
+                    elif status == "disabled":
+                        status_str = "○ Disabled"
+                    elif status == "skipped":
+                        status_str = "⊘ Skipped"
+                    elif status == "failed":
+                        status_str = "✗ Failed"
+                    else:
+                        status_str = status
+
+                    if legacy:
+                        status_str += " (legacy)"
+
+                    # Format plot name
+                    plot_display = plot_name.replace("_", " ").title()
+
+                    handle.write(f"| {plot_display} | {status_str} | {reason} |\n")
 
         handle.write("\n## Visualizations\n\n")
 

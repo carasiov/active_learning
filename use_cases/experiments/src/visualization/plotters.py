@@ -11,6 +11,7 @@ import numpy as np
 import seaborn as sns
 
 from .registry import VisualizationContext, register_plotter
+from ..metrics.status import ComponentResult
 
 sns.set_style("whitegrid")
 
@@ -1163,61 +1164,185 @@ def _single_history_dict(history):
 
 
 @register_plotter
-def loss_curves_plotter(context: VisualizationContext):
-    plot_loss_comparison(_single_history_dict(context.history), context.figures_dir)
+def loss_curves_plotter(context: VisualizationContext) -> ComponentResult:
+    """Generate loss curves plot (always succeeds).
+
+    Returns:
+        ComponentResult with success status
+    """
+    try:
+        plot_loss_comparison(_single_history_dict(context.history), context.figures_dir)
+        return ComponentResult.success(data={})
+    except Exception as e:
+        return ComponentResult.failed(
+            reason="Failed to generate loss curves",
+            error=e,
+        )
 
 
 @register_plotter
-def latent_space_plotter(context: VisualizationContext):
-    plot_latent_spaces(_single_model_dict(context.model), context.x_train, context.y_true, context.figures_dir)
+def latent_space_plotter(context: VisualizationContext) -> ComponentResult:
+    """Generate latent space visualization (always succeeds).
+
+    Returns:
+        ComponentResult with success status
+    """
+    try:
+        plot_latent_spaces(_single_model_dict(context.model), context.x_train, context.y_true, context.figures_dir)
+        return ComponentResult.success(data={})
+    except Exception as e:
+        return ComponentResult.failed(
+            reason="Failed to generate latent space plot",
+            error=e,
+        )
 
 
 @register_plotter
-def latent_by_component_plotter(context: VisualizationContext):
+def latent_by_component_plotter(context: VisualizationContext) -> ComponentResult:
+    """Generate latent space colored by component assignment.
+
+    Only applicable for mixture priors.
+
+    Returns:
+        ComponentResult.disabled if not mixture prior
+        ComponentResult.success if plot generated
+    """
     if getattr(context.config, "prior_type", "standard") != "mixture":
-        return None
-    plot_latent_by_component(_single_model_dict(context.model), context.x_train, context.y_true, context.figures_dir)
-    return None
+        return ComponentResult.disabled(
+            reason="Requires mixture prior"
+        )
+
+    try:
+        plot_latent_by_component(_single_model_dict(context.model), context.x_train, context.y_true, context.figures_dir)
+        return ComponentResult.success(data={})
+    except Exception as e:
+        return ComponentResult.failed(
+            reason="Failed to generate latent by component plot",
+            error=e,
+        )
 
 
 @register_plotter
-def reconstructions_plotter(context: VisualizationContext):
-    paths = plot_reconstructions(_single_model_dict(context.model), context.x_train, context.figures_dir)
-    return {"reconstructions": paths}
+def reconstructions_plotter(context: VisualizationContext) -> ComponentResult:
+    """Generate reconstruction visualizations (always succeeds).
+
+    Returns:
+        ComponentResult with reconstruction paths in data
+    """
+    try:
+        paths = plot_reconstructions(_single_model_dict(context.model), context.x_train, context.figures_dir)
+        return ComponentResult.success(data={"reconstructions": paths})
+    except Exception as e:
+        return ComponentResult.failed(
+            reason="Failed to generate reconstructions",
+            error=e,
+        )
 
 
 @register_plotter
-def responsibility_histogram_plotter(context: VisualizationContext):
+def responsibility_histogram_plotter(context: VisualizationContext) -> ComponentResult:
+    """Generate responsibility confidence histogram.
+
+    Only applicable for mixture priors.
+
+    Returns:
+        ComponentResult.disabled if not mixture prior
+        ComponentResult.success if plot generated
+    """
     if getattr(context.config, "prior_type", "standard") != "mixture":
-        return None
-    plot_responsibility_histogram(_single_model_dict(context.model), context.figures_dir)
-    return None
+        return ComponentResult.disabled(
+            reason="Requires mixture prior"
+        )
+
+    try:
+        plot_responsibility_histogram(_single_model_dict(context.model), context.figures_dir)
+        return ComponentResult.success(data={})
+    except Exception as e:
+        return ComponentResult.failed(
+            reason="Failed to generate responsibility histogram",
+            error=e,
+        )
 
 
 @register_plotter
-def mixture_evolution_plotter(context: VisualizationContext):
+def mixture_evolution_plotter(context: VisualizationContext) -> ComponentResult:
+    """Generate π and component usage evolution plots.
+
+    Only applicable for mixture priors.
+
+    Returns:
+        ComponentResult.disabled if not mixture prior
+        ComponentResult.success if plot generated
+    """
     if getattr(context.config, "prior_type", "standard") != "mixture":
-        return None
-    plot_mixture_evolution(_single_model_dict(context.model), context.figures_dir)
-    return None
+        return ComponentResult.disabled(
+            reason="Requires mixture prior"
+        )
+
+    try:
+        plot_mixture_evolution(_single_model_dict(context.model), context.figures_dir)
+        return ComponentResult.success(data={})
+    except Exception as e:
+        return ComponentResult.failed(
+            reason="Failed to generate mixture evolution plots",
+            error=e,
+        )
 
 
 @register_plotter
-def component_embedding_plotter(context: VisualizationContext):
+def component_embedding_plotter(context: VisualizationContext) -> ComponentResult:
+    """Generate component embedding and reconstruction-by-component visualizations.
+
+    Only applicable for mixture priors with component-aware decoders.
+
+    Returns:
+        ComponentResult.disabled if not mixture prior or not component-aware
+        ComponentResult.success if plots generated
+    """
     if getattr(context.config, "prior_type", "standard") != "mixture":
-        return None
+        return ComponentResult.disabled(
+            reason="Requires mixture prior"
+        )
+
     if not getattr(context.config, "use_component_aware_decoder", False):
-        return None
-    plot_component_embedding_divergence(_single_model_dict(context.model), context.figures_dir)
-    plot_reconstruction_by_component(_single_model_dict(context.model), context.x_train, context.figures_dir)
-    return None
+        return ComponentResult.disabled(
+            reason="Requires component-aware decoder"
+        )
+
+    try:
+        plot_component_embedding_divergence(_single_model_dict(context.model), context.figures_dir)
+        plot_reconstruction_by_component(_single_model_dict(context.model), context.x_train, context.figures_dir)
+        return ComponentResult.success(data={})
+    except Exception as e:
+        return ComponentResult.failed(
+            reason="Failed to generate component embedding plots",
+            error=e,
+        )
 
 
 @register_plotter
-def tau_matrix_plotter(context: VisualizationContext):
+def tau_matrix_plotter(context: VisualizationContext) -> ComponentResult:
+    """Generate τ-classifier visualization suite.
+
+    Includes τ matrix heatmap, per-class accuracy, and certainty analysis.
+    Only applicable when τ-classifier is enabled.
+
+    Returns:
+        ComponentResult.disabled if τ-classifier not available
+        ComponentResult.success if plots generated
+    """
     if getattr(context.model, "_tau_classifier", None) is None:
-        return None
-    plot_tau_matrix_heatmap(_single_model_dict(context.model), context.figures_dir)
-    plot_tau_per_class_accuracy(_single_model_dict(context.model), context.x_train, context.y_true, context.figures_dir)
-    plot_tau_certainty_analysis(_single_model_dict(context.model), context.x_train, context.y_true, context.figures_dir)
-    return None
+        return ComponentResult.disabled(
+            reason="τ-classifier not available"
+        )
+
+    try:
+        plot_tau_matrix_heatmap(_single_model_dict(context.model), context.figures_dir)
+        plot_tau_per_class_accuracy(_single_model_dict(context.model), context.x_train, context.y_true, context.figures_dir)
+        plot_tau_certainty_analysis(_single_model_dict(context.model), context.x_train, context.y_true, context.figures_dir)
+        return ComponentResult.success(data={})
+    except Exception as e:
+        return ComponentResult.failed(
+            reason="Failed to generate τ-classifier plots",
+            error=e,
+        )
