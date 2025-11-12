@@ -27,24 +27,70 @@ results/{slug}_{timestamp}/
 └── REPORT.md            # Human report
 ```
 
-### Design Decision: Enhanced Metadata, Same Structure
+### Design Decision: Architecture-Encoded Naming + Metadata
 
-**Keep:** Simple timestamped directories (works well, no naming collisions)
+**Directory naming structure:**
+```
+{experiment-name}__{architecture-code}__{timestamp}/
+```
 
-**Add:** Structured provenance in `config.yaml` header:
+Where:
+- `experiment-name`: User-chosen (e.g., "baseline", "kl-ablation", "quick")
+- `architecture-code`: Auto-generated from config: `{prior}_{classifier}_{decoder}`
+- `timestamp`: `YYYYMMDD_HHMMSS` for uniqueness
+
+**Architecture code format:**
+```
+prior:
+  std              standard Gaussian
+  mix{K}           mixture K components (e.g., mix10)
+  mix{K}-dir       mixture + Dirichlet prior
+  vamp{K}-km       VampPrior K components, k-means init
+  vamp{K}-rand     VampPrior, random init
+  geo{K}-circle    geometric circle arrangement
+  geo{K}-grid      geometric grid arrangement
+
+classifier:
+  tau              τ-classifier (latent-only, responsibility-based)
+  head             standard classifier head on z
+
+decoder:
+  plain            plain decoder
+  ca               component-aware
+  het              heteroscedastic
+  ca-het           component-aware + heteroscedastic
+
+decoder modifiers (append):
+  -contr           contrastive learning enabled
+```
+
+**Validation rules:**
+1. τ-classifier requires mixture-based prior (mix/vamp/geo, not std)
+2. Component-aware decoder requires mixture-based prior
+3. VampPrior requires init method (-km or -rand)
+4. Geometric requires arrangement (-circle or -grid)
+
+**Examples:**
+```
+baseline__mix10-dir_tau_ca-het__20251112_143022/
+quick__std_head_plain__20251112_145030/
+vamprior-test__vamp20-km_tau_ca-het__20251112_144022/
+contrastive__mix10-dir_tau_ca-het-contr__20251113_091500/
+```
+
+**Structured metadata in `config.yaml` header:**
 
 ```yaml
 experiment:
-  name: "mixture_ablation_kl05"
+  name: "baseline"
   description: "Testing reduced KL weight impact on component usage"
   tags: ["ablation", "kl-tuning", "2025-11"]
   status: "exploratory"              # exploratory | keep | baseline | failed
 
   # Provenance (auto-populated)
-  run_id: "mixture_ablation_kl05_20251112_143022"
+  run_id: "baseline__mix10-dir_tau_ca-het__20251112_143022"
+  architecture_code: "mix10-dir_tau_ca-het"
   timestamp: "2025-11-12T14:30:22"
-  git_commit: "f8b5a17"              # Short hash of current commit
-  git_dirty: false                   # Uncommitted changes present?
 
   # For resumed runs (optional)
   resumed_from: null                 # run_id of parent run
@@ -57,11 +103,16 @@ data:
   ...
 ```
 
+**Auto-generated legend file** (`results/NAMING_LEGEND.md`):
+Documents all architecture codes and validation rules. Updated automatically as new patterns are used.
+
 **Benefits:**
-- Every run is self-documenting (provenance embedded in config.yaml)
-- Can grep by tag: `grep -r '"ablation"' results/*/config.yaml`
-- Git hash allows exact code reconstruction
-- Status field enables cleanup scripts: `find results/ -name config.yaml | xargs grep 'status: "exploratory"'`
+- **Self-describing**: Directory name encodes architecture, no need to open config
+- **Greppable**: `ls results/ | grep "vamp.*tau"` finds all VampPrior + τ-classifier runs
+- **Comparable**: Easy to spot architectural differences at a glance
+- **User control**: Experiment name remains human-chosen and meaningful
+- **No collisions**: Timestamp ensures uniqueness
+- **Status tracking**: Can filter/cleanup exploratory runs
 
 ---
 
@@ -329,13 +380,14 @@ def tau_classifier_metrics(context: MetricContext) -> ComponentResult:
 
 **Why second:** Fixes the "silent disappearance" pain point immediately.
 
-### Phase 3: Enhanced Provenance (Reproducibility)
-1. Add git commit/dirty detection utility
-2. Expand `experiment` metadata section in config.yaml
-3. Record provenance automatically when creating run directory
-4. Add `status` field and tagging support
+### Phase 3: Architecture-Encoded Naming & Provenance
+1. Implement architecture code generator from config
+2. Add validation for architecture code combinations
+3. Implement new directory naming: `{name}__{arch}__{timestamp}`
+4. Expand `experiment` metadata section in config.yaml (architecture_code, status, tags)
+5. Generate `results/NAMING_LEGEND.md` documentation
 
-**Why third:** Builds on existing config structure; no breaking changes.
+**Why third:** Builds on existing config structure; improves discoverability without breaking existing runs.
 
 ### Phase 4: CLI Overrides (Workflow)
 1. Implement dotted-key override parser
@@ -367,24 +419,33 @@ def tau_classifier_metrics(context: MetricContext) -> ComponentResult:
 
 ---
 
-## Open Questions for User Verification
+## Design Decisions Summary
 
-1. **Logging verbosity:** Epoch-level progress only, or also batch-level (every N batches)?
-2. **CLI override syntax:** `--set model.kl_weight=1.0` or `--override model.kl_weight=1.0`?
-3. **Run status values:** `exploratory | keep | baseline | failed` sufficient, or need more?
-4. **Git dirty warning:** Should the system refuse to run if uncommitted changes exist, or just warn?
+**Finalized:**
+- ✅ Architecture-encoded naming: `{name}__{arch}__{timestamp}`
+- ✅ Hierarchical metric names: `loss.recon`, `loss.kl.z`, `metric.accuracy.val`
+- ✅ Component status protocol: All components report `success|disabled|failed`
+- ✅ Contrastive learning encoded in decoder segment: `ca-het-contr`
+- ✅ No git tracking (local-only workflow)
+- ✅ Run status: `exploratory | keep | baseline | failed`
+
+**To decide during implementation:**
+- Logging verbosity: Epoch-level progress (default), optionally batch-level via flag
+- CLI override syntax: `--set` (shorter, more common in ML tools)
 
 ---
 
 ## Success Criteria
 
 **You'll know this design works when:**
-1. ✅ Toggling any component always produces an explicit status message (no silent disappearance)
-2. ✅ All loss components are visible during training and in final summary
-3. ✅ Every run has full provenance (can reproduce exact code + config state)
-4. ✅ You can run a quick override without editing config files
-5. ✅ Logs answer "why is X missing?" without re-running or reading code
-6. ✅ The system scales from 10 throwaway runs/day to 100s of archived experiments
+1. ✅ Directory names are self-describing: `baseline__mix10-dir_tau_ca-het__20251112_143022`
+2. ✅ Toggling any component always produces an explicit status message (no silent disappearance)
+3. ✅ All loss components are visible during training: `loss.recon | loss.kl.z | loss.kl.c`
+4. ✅ Hierarchical metric names are consistent everywhere (logs, history, summary.json, plots)
+5. ✅ You can grep for experiments: `ls results/ | grep "vamp.*tau"`
+6. ✅ You can run a quick override without editing config files: `--set model.kl_weight=1.0`
+7. ✅ Logs answer "why is X missing?" without re-running or reading code
+8. ✅ The system scales from 10 throwaway runs/day to 100s of archived experiments
 
 ---
 
