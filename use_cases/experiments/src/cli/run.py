@@ -6,11 +6,15 @@ Phase 6 (Terminal Cleanup): Professional, organized console output.
 from __future__ import annotations
 
 import argparse
+import warnings
 from pathlib import Path
 
 import numpy as np
 from ssvae import SSVAEConfig
 from utils import get_device_info
+
+# Phase 6 (Terminal Cleanup): Show each warning only once to prevent duplicates
+warnings.simplefilter('once', UserWarning)
 
 from ..core.naming import generate_architecture_code
 from ..io import create_run_paths, write_config_copy, write_report, write_summary
