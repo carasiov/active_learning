@@ -14,6 +14,7 @@ from ssvae import SSVAEConfig
 from utils import get_device_info
 
 from ..core.naming import generate_architecture_code
+from ..core.validation import validate_config, ConfigValidationError
 from ..io import create_run_paths, write_config_copy, write_report, write_summary
 from ..pipeline import (
     add_repo_paths,
@@ -59,6 +60,18 @@ def main() -> None:
         warnings.simplefilter("always", UserWarning)
         ssvae_config = SSVAEConfig(**_model_config)
         architecture_code = generate_architecture_code(ssvae_config)
+
+    # Phase 6 (Terminal Cleanup): Validate config (fail fast on architectural errors)
+    try:
+        validate_config(ssvae_config)
+    except ConfigValidationError as e:
+        print("\n" + "=" * 80)
+        print("Configuration Error")
+        print("=" * 80)
+        print(f"  ✗  {e}")
+        print("=" * 80 + "\n")
+        print("Aborting: Fix the configuration and try again.")
+        exit(1)
 
     # Phase 6 (Terminal Cleanup): Display warnings cleanly if any exist
     if w:
