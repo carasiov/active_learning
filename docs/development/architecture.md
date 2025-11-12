@@ -73,40 +73,57 @@ The system implements a semi-supervised variational autoencoder (SSVAE) with a m
 
 **Purpose:** Enable pluggable prior distributions without modifying core model code.
 
-**Location:** `src/ssvae/components/priors/protocol.py`
+**Location:** `src/ssvae/priors/base.py`
 
 **Interface:**
 ```python
 class PriorMode(Protocol):
     """Protocol defining interface for different prior modes."""
 
-    def kl_divergence(
+    def compute_kl_terms(
         self,
-        z_mean: Array,
-        z_logvar: Array,
-        component_logits: Optional[Array] = None
-    ) -> Array:
-        """Compute KL divergence for this prior mode."""
+        encoder_output: EncoderOutput,
+        config
+    ) -> Dict[str, Array]:
+        """Compute all KL divergence and regularization terms."""
         ...
 
-    def sample(
+    def compute_reconstruction_loss(
         self,
-        key: PRNGKey,
-        latent_dim: int,
-        num_samples: int = 1
+        x_true: Array,
+        x_recon: Array | Tuple,
+        encoder_output: EncoderOutput,
+        config
     ) -> Array:
-        """Sample from the prior distribution."""
+        """Compute reconstruction loss (handles heteroscedastic decoders)."""
+        ...
+
+    def get_prior_type(self) -> str:
+        """Return identifier string ('standard', 'mixture', 'vamp', 'geometric_mog')."""
+        ...
+
+    def requires_component_embeddings(self) -> bool:
+        """Whether decoder needs component embeddings for functional specialization."""
         ...
 ```
 
-**Implementations:**
-- `StandardPrior`: Simple $\mathcal{N}(0, I)$ Gaussian
-- `MixturePrior`: Mixture of Gaussians with learnable weights $\pi$
+**Current Implementations:**
+- `StandardGaussianPrior`: Simple N(0,I) Gaussian (no component structure)
+- `MixtureGaussianPrior`: K-channel mixture with learnable π and component embeddings (production)
+- `VampPrior`: Learned pseudo-inputs with MC-KL estimation (spatial separation)
+- `GeometricMixtureOfGaussiansPrior`: Fixed geometric centers (diagnostic/curriculum only)
 
 **Design Rationale:**
-- Protocol (not abstract base class) for static type checking without runtime overhead
-- New priors (VampPrior, flows) can be added by implementing this protocol
-- No changes to `SSVAE` class required when adding new priors
+- Protocol (not ABC) for static type checking without runtime overhead
+- New priors can be added by implementing protocol and registering in `PRIOR_REGISTRY`
+- No changes to core `SSVAE` class required when adding new priors
+- Each prior controls both KL computation AND reconstruction loss (handles heteroscedastic decoders)
+
+**When to Use Each Prior:**
+- **Standard:** Baseline VAE experiments, no semi-supervised learning
+- **Mixture:** Production semi-supervised learning with functional specialization
+- **VampPrior:** When spatial visualization is critical (2D latent plots)
+- **Geometric MoG:** Debugging, curriculum learning, quick visualization (NOT production)
 
 ### 2. SSVAEFactory
 

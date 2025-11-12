@@ -47,9 +47,15 @@ class PriorMode(Protocol):
             config: Model configuration
 
         Returns:
-            Dictionary of KL terms, e.g.:
-                - Standard prior: {"kl_z": scalar}
-                - Mixture prior: {"kl_z": scalar, "kl_c": scalar}
+            Dictionary of KL/regularization terms. All priors **must** return
+            at least the following keys (set to zero when not applicable):
+                - "kl_z": Latent KL term
+                - "dirichlet_penalty": Dirichlet MAP penalty on π
+            Mixture-style priors add:
+                - "kl_c": KL over component assignments
+                - "component_diversity": Usage sparsity penalty
+                - "component_entropy": H[q(c|x)] (diagnostic)
+                - "pi_entropy": H[π] (diagnostic)
 
         Example:
             >>> kl_terms = prior.compute_kl_terms(encoder_output, config)

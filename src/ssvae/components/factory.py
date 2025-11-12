@@ -37,7 +37,9 @@ def _resolve_encoder_hidden_dims(config: SSVAEConfig, input_hw: Tuple[int, int])
 def build_encoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = None) -> nn.Module:
     resolved_hw = _resolve_input_hw(config, input_hw)
 
-    if config.prior_type == "mixture":
+    # All mixture-based priors (mixture, vamp, geometric_mog) use mixture encoder
+    # which outputs component logits in addition to z_mean and z_log_var
+    if config.is_mixture_based_prior():
         if config.encoder_type == "dense":
             hidden_dims = _resolve_encoder_hidden_dims(config, resolved_hw)
             return MixtureDenseEncoder(
@@ -50,7 +52,7 @@ def build_encoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = Non
                 latent_dim=config.latent_dim,
                 num_components=config.num_components,
             )
-        raise ValueError(f"Mixture prior not supported with encoder_type '{config.encoder_type}'")
+        raise ValueError(f"Mixture-based prior ({config.prior_type}) not supported with encoder_type '{config.encoder_type}'")
 
     if config.encoder_type == "dense":
         hidden_dims = _resolve_encoder_hidden_dims(config, resolved_hw)
@@ -83,8 +85,10 @@ def build_decoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = Non
     resolved_hw = _resolve_input_hw(config, input_hw)
 
     # Determine decoder features
+    # Component-aware decoder: Used by mixture prior and geometric_mog (NOT vamp)
+    # VampPrior relies on spatial separation, doesn't need component embeddings
     use_component_aware = (
-        config.prior_type == "mixture" and
+        config.prior_type in {"mixture", "geometric_mog"} and
         config.use_component_aware_decoder
     )
     use_heteroscedastic = config.use_heteroscedastic_decoder

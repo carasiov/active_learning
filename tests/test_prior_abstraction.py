@@ -7,14 +7,15 @@ standard and mixture priors behave as expected.
 from __future__ import annotations
 
 import jax.numpy as jnp
-import numpy as np
 import pytest
 
 from ssvae.config import SSVAEConfig
 from ssvae.priors import (
     EncoderOutput,
+    GeometricMixtureOfGaussiansPrior,
     MixtureGaussianPrior,
     StandardGaussianPrior,
+    VampPrior,
     get_prior,
 )
 
@@ -43,8 +44,8 @@ class TestPriorRegistry:
 class TestStandardGaussianPrior:
     """Test StandardGaussianPrior behavior."""
 
-    def test_compute_kl_returns_only_kl_z(self):
-        """Standard prior should return only kl_z term."""
+    def test_compute_kl_returns_required_terms(self):
+        """Standard prior should return kl_z and zero dirichlet_penalty."""
         prior = StandardGaussianPrior()
         config = SSVAEConfig(kl_weight=1.0)
 
@@ -61,9 +62,10 @@ class TestStandardGaussianPrior:
 
         kl_terms = prior.compute_kl_terms(encoder_output, config)
 
-        # Should have only kl_z
-        assert set(kl_terms.keys()) == {"kl_z"}
+        # Should have kl_z plus dirichlet_penalty placeholder
+        assert set(kl_terms.keys()) == {"kl_z", "dirichlet_penalty"}
         assert kl_terms["kl_z"] >= 0.0
+        assert jnp.isclose(kl_terms["dirichlet_penalty"], 0.0)
 
     def test_kl_divergence_zero_for_standard_gaussian(self):
         """KL should be ~0 when q(z|x) = N(0,I)."""
@@ -128,7 +130,7 @@ class TestMixtureGaussianPrior:
         config = SSVAEConfig(
             kl_weight=1.0,
             kl_c_weight=1.0,
-            usage_sparsity_weight=0.1,
+            component_diversity_weight=0.1,
             dirichlet_alpha=0.5,
             dirichlet_weight=1.0,
         )
@@ -155,7 +157,14 @@ class TestMixtureGaussianPrior:
         kl_terms = prior.compute_kl_terms(encoder_output, config)
 
         # Should have all mixture-specific terms
-        expected_keys = {"kl_z", "kl_c", "dirichlet_penalty", "usage_sparsity", "component_entropy", "pi_entropy"}
+        expected_keys = {
+            "kl_z",
+            "kl_c",
+            "dirichlet_penalty",
+            "component_diversity",
+            "component_entropy",
+            "pi_entropy",
+        }
         assert set(kl_terms.keys()) == expected_keys
 
         # All should be finite
@@ -238,10 +247,166 @@ class TestMixtureGaussianPrior:
             prior.compute_kl_terms(encoder_output, config)
 
 
+class TestGeometricMixtureOfGaussiansPrior:
+    """Tests for the geometric mixture prior."""
+
+    def _encoder_output(
+        self,
+        batch_size: int,
+        latent_dim: int,
+        num_components: int,
+        responsibilities: jnp.ndarray,
+        pi: jnp.ndarray,
+    ) -> EncoderOutput:
+        return EncoderOutput(
+            z_mean=jnp.zeros((batch_size, latent_dim)),
+            z_log_var=jnp.zeros((batch_size, latent_dim)),
+            z=jnp.zeros((batch_size, latent_dim)),
+            component_logits=jnp.zeros((batch_size, num_components)),
+            extras={
+                "responsibilities": responsibilities,
+                "pi": pi,
+            },
+        )
+
+    def test_compute_kl_includes_dirichlet_key(self):
+        """Geometric prior should always expose dirichlet_penalty."""
+        num_components = 3
+        latent_dim = 2
+        batch_size = 4
+
+        prior = GeometricMixtureOfGaussiansPrior(
+            num_components=num_components,
+            latent_dim=latent_dim,
+        )
+        config = SSVAEConfig(
+            prior_type="geometric_mog",
+            num_components=num_components,
+            latent_dim=latent_dim,
+            kl_weight=1.0,
+            kl_c_weight=1.0,
+            use_tau_classifier=False,
+        )
+
+        responsibilities = jnp.ones((batch_size, num_components)) / num_components
+        pi = jnp.ones(num_components) / num_components
+        encoder_output = self._encoder_output(
+            batch_size,
+            latent_dim,
+            num_components,
+            responsibilities,
+            pi,
+        )
+
+        kl_terms = prior.compute_kl_terms(encoder_output, config)
+        assert "dirichlet_penalty" in kl_terms
+        assert jnp.isclose(kl_terms["dirichlet_penalty"], 0.0)
+
+    def test_dirichlet_penalty_positive_when_learnable_pi(self):
+        """Dirichlet penalty should be positive once π deviates from uniform."""
+        num_components = 2
+        latent_dim = 2
+        batch_size = 5
+
+        prior = GeometricMixtureOfGaussiansPrior(
+            num_components=num_components,
+            latent_dim=latent_dim,
+        )
+        config = SSVAEConfig(
+            prior_type="geometric_mog",
+            num_components=num_components,
+            latent_dim=latent_dim,
+            kl_weight=1.0,
+            kl_c_weight=1.0,
+            dirichlet_alpha=0.5,
+            dirichlet_weight=1.0,
+            learnable_pi=True,
+            use_tau_classifier=False,
+        )
+
+        responsibilities = jnp.ones((batch_size, num_components)) / num_components
+        pi = jnp.array([0.8, 0.2])
+        encoder_output = self._encoder_output(
+            batch_size,
+            latent_dim,
+            num_components,
+            responsibilities,
+            pi,
+        )
+
+        kl_terms = prior.compute_kl_terms(encoder_output, config)
+        assert "dirichlet_penalty" in kl_terms
+
+        expected_penalty = -(
+            config.dirichlet_alpha - 1.0
+        ) * jnp.sum(jnp.log(pi))
+        expected_penalty *= config.dirichlet_weight
+        assert jnp.isclose(
+            kl_terms["dirichlet_penalty"],
+            expected_penalty,
+        )
+
+
+class TestVampPrior:
+    """Tests for VampPrior schema compliance."""
+
+    def test_compute_kl_includes_dirichlet_penalty(self):
+        """VampPrior should expose dirichlet_penalty even though it is zero."""
+        num_components = 3
+        latent_dim = 2
+        input_shape = (4,)
+        batch_size = 2
+
+        prior = VampPrior(
+            num_components=num_components,
+            latent_dim=latent_dim,
+            input_shape=input_shape,
+        )
+
+        def encoder_stub(params, inputs, training=False):
+            """Return zero-mean Gaussian statistics for pseudo-inputs."""
+            batch = inputs.shape[0]
+            zeros = jnp.zeros((batch, latent_dim))
+            return EncoderOutput(
+                z_mean=zeros,
+                z_log_var=jnp.zeros_like(zeros),
+                z=zeros,
+                component_logits=None,
+                extras=None,
+            )
+
+        prior.set_encoder(encoder_stub, encoder_params={})
+
+        encoder_output = EncoderOutput(
+            z_mean=jnp.zeros((batch_size, latent_dim)),
+            z_log_var=jnp.zeros((batch_size, latent_dim)),
+            z=jnp.zeros((batch_size, latent_dim)),
+            component_logits=None,
+            extras={
+                "pseudo_inputs": jnp.zeros((num_components,) + input_shape),
+            },
+        )
+
+        config = SSVAEConfig(
+            prior_type="vamp",
+            latent_dim=latent_dim,
+            num_components=num_components,
+            kl_weight=1.0,
+            use_tau_classifier=False,
+        )
+
+        kl_terms = prior.compute_kl_terms(encoder_output, config)
+        assert "dirichlet_penalty" in kl_terms
+        assert jnp.isclose(kl_terms["dirichlet_penalty"], 0.0)
+
+
 class TestPriorPolymorphism:
     """Test that priors work polymorphically."""
 
-    @pytest.mark.parametrize("prior_type", ["standard", "mixture"])
+    @pytest.mark.parametrize(
+        "prior_type",
+        ["standard", "mixture", "geometric_mog", "vamp"],
+    )
     def test_all_priors_implement_protocol(self, prior_type):
         """All priors should implement the PriorMode protocol."""
         prior = get_prior(prior_type)

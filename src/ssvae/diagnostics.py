@@ -13,9 +13,11 @@ import numpy as np
 
 from ssvae.config import SSVAEConfig
 
+COMPONENT_PRIORS = {"mixture", "geometric_mog", "vamp"}
+
 
 class DiagnosticsCollector:
-    """Collects and saves model diagnostics, especially for mixture priors.
+    """Collects and saves model diagnostics, especially for component-based priors.
 
     This class handles:
     - Component usage statistics
@@ -48,7 +50,7 @@ class DiagnosticsCollector:
         *,
         batch_size: int = 1024,
     ) -> Dict[str, float]:
-        """Collect and save mixture prior diagnostics.
+        """Collect and save diagnostics for any component-based prior.
 
         Args:
             apply_fn: Model forward function
@@ -70,8 +72,8 @@ class DiagnosticsCollector:
             - pi.npy: Learned mixture weights (if available)
             - latent.npz: Latent codes, labels, and responsibilities (if latent_dim=2)
         """
-        if self.config.prior_type != "mixture":
-            return
+        if self.config.prior_type not in COMPONENT_PRIORS:
+            return {}
 
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)

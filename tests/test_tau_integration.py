@@ -53,6 +53,22 @@ class TestTauClassifierIntegration:
         assert model._tau_classifier.num_classes == 10
         assert model._tau_classifier.alpha_0 == 1.0
 
+    def test_tau_classifier_initialization_for_vamp_prior(self):
+        """τ-classifier should also initialize for VampPrior."""
+        from ssvae import SSVAE
+        from ssvae.config import SSVAEConfig
+
+        config = SSVAEConfig(
+            latent_dim=2,
+            prior_type="vamp",
+            num_components=10,
+            use_tau_classifier=True,
+            max_epochs=2,
+        )
+
+        model = SSVAE(input_dim=(28, 28), config=config)
+        assert model._tau_classifier is not None
+
     def test_tau_classifier_disabled_for_standard_prior(self):
         """Test that τ-classifier is not used with standard prior."""
         from ssvae import SSVAE
