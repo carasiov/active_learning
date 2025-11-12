@@ -13,9 +13,6 @@ import numpy as np
 from ssvae import SSVAEConfig
 from utils import get_device_info
 
-# Phase 6 (Terminal Cleanup): Show each warning only once to prevent duplicates
-warnings.simplefilter('once', UserWarning)
-
 from ..core.naming import generate_architecture_code
 from ..io import create_run_paths, write_config_copy, write_report, write_summary
 from ..pipeline import (
@@ -53,12 +50,24 @@ def main() -> None:
 
     # Phase 6: Generate architecture code for directory naming
     # Create SSVAEConfig early for validation and code generation
+    # Capture warnings during config validation to display them cleanly
     _model_config = {**model_config}
     if isinstance(_model_config.get("hidden_dims"), list):
         _model_config["hidden_dims"] = tuple(_model_config["hidden_dims"])
 
-    ssvae_config = SSVAEConfig(**_model_config)
-    architecture_code = generate_architecture_code(ssvae_config)
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always", UserWarning)
+        ssvae_config = SSVAEConfig(**_model_config)
+        architecture_code = generate_architecture_code(ssvae_config)
+
+    # Phase 6 (Terminal Cleanup): Display warnings cleanly if any exist
+    if w:
+        print("\n" + "=" * 80)
+        print("Configuration Warnings")
+        print("=" * 80)
+        for warning in w:
+            print(f"  ⚠  {warning.message}")
+        print("=" * 80 + "\n")
 
     # Phase 6: Create run paths with architecture code
     run_id, timestamp, run_paths = create_run_paths(
@@ -74,6 +83,10 @@ def main() -> None:
         timestamp,
     )
     write_config_copy(experiment_config, run_paths)
+
+    # Phase 6 (Terminal Cleanup): Suppress warnings for the rest of execution
+    # (we've already validated config and shown warnings above)
+    warnings.filterwarnings('ignore', category=UserWarning)
 
     # Load data
     X_train, y_semi, y_true = prepare_data(data_config)
