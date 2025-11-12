@@ -257,6 +257,17 @@ class SSVAEConfig:
                 UserWarning
             )
 
+        # Component-aware decoder validation
+        mixture_based_priors = {"mixture", "vamp", "geometric_mog"}
+        if self.use_component_aware_decoder and self.prior_type not in mixture_based_priors:
+            import warnings
+            warnings.warn(
+                f"use_component_aware_decoder=True only applies to mixture-based priors {mixture_based_priors}. "
+                f"Got prior_type='{self.prior_type}'. Falling back to standard decoder.",
+                UserWarning
+            )
+            # Note: Factory will handle fallback to standard decoder gracefully
+
         # VampPrior validation
         if self.vamp_num_samples_kl < 1:
             raise ValueError("vamp_num_samples_kl must be >= 1")

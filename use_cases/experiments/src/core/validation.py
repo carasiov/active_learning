@@ -5,11 +5,15 @@ training starts. Following AGENTS.md principle: "fail fast" - validate at
 config load time, not after 20 minutes of training.
 
 Validation rules mirror the naming constraints:
-1. τ-classifier requires mixture-based prior
-2. Component-aware decoder requires mixture-based prior
-3. VampPrior requires initialization method
-4. Geometric MoG requires arrangement and validates grid constraints
+1. τ-classifier requires mixture-based prior (SSVAEConfig warns + auto-disables)
+2. Component-aware decoder requires mixture-based prior (SSVAEConfig warns, factory handles fallback)
+3. VampPrior requires initialization method (validated here + SSVAEConfig)
+4. Geometric MoG requires arrangement and validates grid constraints (validated here)
 5. Other architectural invariants
+
+Note: Some validations (τ-classifier, component-aware decoder) issue warnings and
+continue execution, while others (VampPrior invalid init, non-square grid) are
+hard errors. This reflects whether the system can gracefully handle the misconfiguration.
 
 Usage:
     from src.core.validation import validate_config
@@ -58,7 +62,7 @@ def validate_config(config: SSVAEConfig) -> None:
     """
     # Run all validation checks
     _validate_tau_classifier(config)
-    _validate_component_aware_decoder(config)
+    # _validate_component_aware_decoder(config)  # Moved to SSVAEConfig (warning, not error)
     _validate_vamp_prior(config)
     _validate_geometric_mog(config)
     _validate_heteroscedastic_decoder(config)
@@ -98,8 +102,16 @@ def _validate_tau_classifier(config: SSVAEConfig) -> None:
 def _validate_component_aware_decoder(config: SSVAEConfig) -> None:
     """Validate component-aware decoder configuration.
 
+    DEPRECATED: This validation was moved to SSVAEConfig.__post_init__() as a warning
+    (not error) for consistency with τ-classifier and learnable_pi behavior.
+
+    The factory (src/ssvae/components/factory.py) handles the fallback gracefully,
+    so this should be a warning that allows execution to continue, not a hard error.
+
     Rule: Requires mixture-based prior (standard prior has no components).
     """
+    # This function is no longer called (commented out in validate_config)
+    # Kept for reference/documentation purposes
     if not config.use_component_aware_decoder:
         return  # Not enabled, skip validation
 
