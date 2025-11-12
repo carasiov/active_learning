@@ -178,20 +178,26 @@ class ComponentResult:
         """Convert to a dict suitable for summary.json.
 
         Returns:
-            For SUCCESS: Returns the data dict directly
-            For other statuses: Returns status info dict
+            Dict with status and optional data/reason/error
 
         Examples:
             >>> ComponentResult.success({"K_eff": 7.3}).to_dict()
-            {"K_eff": 7.3}
+            {"status": "success", "K_eff": 7.3}
+
+            >>> ComponentResult.success({}).to_dict()
+            {"status": "success"}
 
             >>> ComponentResult.disabled("not enabled").to_dict()
             {"status": "disabled", "reason": "not enabled"}
         """
-        if self.is_success:
-            return self.data or {}
-
         result = {"status": self.status.value}
+
+        # Add data for success (merge into result dict)
+        if self.is_success and self.data:
+            result.update(self.data)
+
+        # Add reason for non-success statuses
         if self.reason:
             result["reason"] = self.reason
+
         return result
