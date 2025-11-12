@@ -175,7 +175,8 @@ def _validate_geometric_mog(config: SSVAEConfig) -> None:
     1. Must specify arrangement ("circle" or "grid")
     2. Grid arrangement requires perfect square num_components
     3. Radius should be reasonable (not too small or too large)
-    4. Issue warning about induced topology
+
+    Note: Topology warning is issued by SSVAEConfig.__post_init__().
     """
     if config.prior_type != "geometric_mog":
         return  # Not geometric MoG, skip validation
@@ -214,13 +215,7 @@ def _validate_geometric_mog(config: SSVAEConfig) -> None:
             "Latent space may be poorly utilized. Recommended range: 1.5-3.0"
         )
 
-    # Rule 4: Topology warning
-    import warnings
-    warnings.warn(
-        "Geometric MoG prior induces topology in latent space. "
-        "This is a diagnostic tool only. For production use, prefer "
-        "mixture or VampPrior."
-    )
+    # Note: Topology warning is issued by SSVAEConfig.__post_init__() to avoid duplication
 
 
 def _validate_heteroscedastic_decoder(config: SSVAEConfig) -> None:

@@ -151,9 +151,9 @@ def main() -> None:
     plot_status = viz_meta.get("_plot_status") if isinstance(viz_meta, dict) else None
     write_report(summary, history, experiment_config, run_paths, recon_paths, plot_status)
 
-    print("\n" + "=" * 60)
+    print("\n" + "=" * 80)
     print(f"Experiment complete! Results: {run_paths.root}")
-    print("=" * 60 + "\n")
+    print("=" * 80 + "\n")
 
 
 if __name__ == "__main__":
