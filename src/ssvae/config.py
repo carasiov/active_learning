@@ -227,7 +227,7 @@ class SSVAEConfig:
         if self.use_tau_classifier and self.prior_type not in mixture_based_priors:
             import warnings
             warnings.warn(
-                f"use_tau_classifier=True only applies to mixture-based priors {mixture_based_priors}. "
+                f"use_tau_classifier: true only applies to mixture-based priors {mixture_based_priors}. "
                 "Falling back to standard classifier."
             )
             self.use_tau_classifier = False
@@ -252,10 +252,21 @@ class SSVAEConfig:
         if self.learnable_pi and self.prior_type not in ["mixture", "geometric_mog"]:
             import warnings
             warnings.warn(
-                f"learnable_pi=True but prior_type='{self.prior_type}' doesn't use "
-                "mixture weights. This setting will be ignored.",
+                f"learnable_pi: true only applies to mixture and geometric_mog priors. "
+                f"This setting will be ignored for prior_type: '{self.prior_type}'.",
                 UserWarning
             )
+
+        # Component-aware decoder validation
+        mixture_based_priors = {"mixture", "vamp", "geometric_mog"}
+        if self.use_component_aware_decoder and self.prior_type not in mixture_based_priors:
+            import warnings
+            warnings.warn(
+                f"use_component_aware_decoder: true only applies to mixture-based priors {mixture_based_priors}. "
+                f"Got prior_type: '{self.prior_type}'. Falling back to standard decoder.",
+                UserWarning
+            )
+            # Note: Factory will handle fallback to standard decoder gracefully
 
         # VampPrior validation
         if self.vamp_num_samples_kl < 1:
@@ -285,7 +296,7 @@ class SSVAEConfig:
         if self.prior_type == "geometric_mog":
             import warnings
             warnings.warn(
-                "WARNING: geometric_mog prior induces artificial topology on latent space. "
+                "geometric_mog prior induces artificial topology on latent space. "
                 "Use only for diagnostic/curriculum purposes, not production models.",
                 UserWarning
             )

@@ -13,7 +13,7 @@ specialization.
 Key features:
 - Learned pseudo-inputs (trainable parameters)
 - Monte Carlo KL estimation: KL(q(z|x) || Σ_k π_k q(z|u_k))
-- Optional prior shaping via MMD/MC-KL (Phase 3, not implemented yet)
+- Optional prior shaping via MMD/MC-KL (not yet implemented)
 - Does NOT use component embeddings (spatial separation is sufficient)
 
 Reference:
@@ -94,12 +94,12 @@ class VampPrior:
         self.uniform_weights = uniform_weights
         self.num_samples_kl = num_samples_kl
 
-        # Mixture weights (uniform, learnable weights deferred to Phase 3)
+        # Mixture weights (uniform only; learnable weights not yet implemented)
         if uniform_weights:
             self.pi = jnp.ones(num_components) / num_components
         else:
             raise NotImplementedError(
-                "Learnable mixture weights not implemented yet (Phase 3)"
+                "Learnable mixture weights for VampPrior not yet implemented"
             )
 
     def _log_gaussian_prob(

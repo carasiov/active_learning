@@ -298,15 +298,19 @@ class Trainer:
         else:
             raise ValueError(f"Unknown monitor_metric: {self.config.monitor_metric}")
 
-        print(f"Monitoring validation {monitor_metric} for early stopping.", flush=True)
-        if splits.has_labels:
-            print(f"Detected {splits.labeled_count} labeled samples.", flush=True)
+        # Phase 6 (Terminal Cleanup): Silenced verbose output
+        # Monitoring metric and labeled samples shown in experiment header
+        # print(f"Monitoring validation {monitor_metric} for early stopping.", flush=True)
+        # if splits.has_labels:
+        #     print(f"Detected {splits.labeled_count} labeled samples.", flush=True)
 
         batch_size = self.config.batch_size
         max_epochs = num_epochs if num_epochs is not None else self.config.max_epochs
         used_patience = patience if patience is not None else self.config.patience
 
-        self._log_session_hyperparameters(max_epochs=max_epochs, patience=used_patience)
+        # Phase 6 (Terminal Cleanup): Silenced hyperparameter dump
+        # Full config available in experiment.log and config.yaml
+        # self._log_session_hyperparameters(max_epochs=max_epochs, patience=used_patience)
 
         eval_batch_size = min(batch_size, 1024)
         return TrainingSetup(

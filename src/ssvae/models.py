@@ -69,30 +69,26 @@ class SSVAE:
         self.latent_dim = self.config.latent_dim
         self.weights_path: str | None = None
 
-        # Print device banner once
-        if not SSVAE._DEVICE_BANNER_PRINTED:
-            print_device_banner()
-            SSVAE._DEVICE_BANNER_PRINTED = True
-
-        # Print model configuration
-        print(f"\n{'=' * 60}")
-        print("Model Configuration")
-        print(f"{'=' * 60}")
-        print(f"Prior type: {self.config.prior_type}")
-        print(f"Latent dim: {self.config.latent_dim}")
-        if self.config.prior_type in COMPONENT_PRIORS:
-            print(f"Components (K): {self.config.num_components}")
-            if self.config.prior_type in ["mixture", "geometric_mog"]:
-                print(f"Learnable π: {self.config.learnable_pi}")
-                if self.config.learnable_pi and self.config.dirichlet_alpha is not None:
-                    print(f"Dirichlet α: {self.config.dirichlet_alpha}")
-                    print(f"Dirichlet weight: {self.config.dirichlet_weight}")
-            print(f"Component-aware decoder: {self.config.use_component_aware_decoder}")
-            if self.config.use_tau_classifier:
-                print(f"τ-classifier enabled: True")
-        print(f"Batch size: {self.config.batch_size}")
-        print(f"Learning rate: {self.config.learning_rate}")
-        print(f"{'=' * 60}\n")
+        # Device banner and model configuration shown in experiment header
+        # Commented out to avoid duplicate output
+        # print(f"\n{'=' * 60}")
+        # print("Model Configuration")
+        # print(f"{'=' * 60}")
+        # print(f"Prior type: {self.config.prior_type}")
+        # print(f"Latent dim: {self.config.latent_dim}")
+        # if self.config.prior_type in COMPONENT_PRIORS:
+        #     print(f"Components (K): {self.config.num_components}")
+        #     if self.config.prior_type in ["mixture", "geometric_mog"]:
+        #         print(f"Learnable π: {self.config.learnable_pi}")
+        #         if self.config.learnable_pi and self.config.dirichlet_alpha is not None:
+        #             print(f"Dirichlet α: {self.config.dirichlet_alpha}")
+        #             print(f"Dirichlet weight: {self.config.dirichlet_weight}")
+        #     print(f"Component-aware decoder: {self.config.use_component_aware_decoder}")
+        #     if self.config.use_tau_classifier:
+        #         print(f"τ-classifier enabled: True")
+        # print(f"Batch size: {self.config.batch_size}")
+        # print(f"Learning rate: {self.config.learning_rate}")
+        # print(f"{'=' * 60}\n")
 
         # Create components using factory
         factory = SSVAEFactory()
@@ -348,17 +344,19 @@ class SSVAE:
         num_components = self.config.num_components
         total_classes = self.config.num_classes
 
-        message_lines = [
-            f"INFO: τ-classifier training with {labeled_count} labeled samples "
-            f"across {observed_classes}/{total_classes} classes.",
-            "      Component specialization will develop gradually - more labels will "
-            f"improve separation. Current regime: {regime}.",
-            f"      Configured for {num_components} components; ensure labeled data remains proportional.",
-            "",
-            "Note: Baseline testing uses ~500 labeled samples. Performance improves "
-            "with more labels, but the model is designed for label-efficient learning.",
-        ]
-        print("\n".join(message_lines), flush=True)
+        # τ-classifier info shown in experiment header
+        # Warnings below are important for misconfiguration detection
+        # message_lines = [
+        #     f"INFO: τ-classifier training with {labeled_count} labeled samples "
+        #     f"across {observed_classes}/{total_classes} classes.",
+        #     "      Component specialization will develop gradually - more labels will "
+        #     f"improve separation. Current regime: {regime}.",
+        #     f"      Configured for {num_components} components; ensure labeled data remains proportional.",
+        #     "",
+        #     "Note: Baseline testing uses ~500 labeled samples. Performance improves "
+        #     "with more labels, but the model is designed for label-efficient learning.",
+        # ]
+        # print("\n".join(message_lines), flush=True)
 
         if labeled_count == 0:
             warnings.warn(

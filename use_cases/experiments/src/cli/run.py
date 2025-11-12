@@ -1,16 +1,27 @@
-"""CLI entrypoint for running a single experiment."""
+"""CLI entrypoint for running a single experiment.
+
+Generates architecture codes, augments configs with metadata, and organizes console output"""
 from __future__ import annotations
 
 import argparse
+import warnings
 from pathlib import Path
 
+import numpy as np
+from ssvae import SSVAEConfig
+from utils import get_device_info
+
+from ..core.naming import generate_architecture_code
+from ..core.validation import validate_config, ConfigValidationError
 from ..io import create_run_paths, write_config_copy, write_report, write_summary
 from ..pipeline import (
     add_repo_paths,
+    augment_config_metadata,
     load_experiment_config,
     prepare_data,
     run_training_pipeline,
 )
+from ..utils import format_experiment_header, format_training_section_header
 
 EXPERIMENTS_DIR = Path(__file__).resolve().parents[2]
 
@@ -36,25 +47,109 @@ def main() -> None:
     data_config = experiment_config.get("data", {})
     model_config = experiment_config.get("model", {})
 
-    timestamp, run_paths = create_run_paths(exp_meta.get("name"))
-    print(f"Output directory: {run_paths.root}")
+    # Create SSVAEConfig early for validation and architecture code generation
+    # Capture warnings during config validation to display them cleanly
+    _model_config = {**model_config}
+    if isinstance(_model_config.get("hidden_dims"), list):
+        _model_config["hidden_dims"] = tuple(_model_config["hidden_dims"])
 
-    experiment_config["timestamp"] = timestamp
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always", UserWarning)
+        ssvae_config = SSVAEConfig(**_model_config)
+        architecture_code = generate_architecture_code(ssvae_config)
+
+    # Validate config (fail fast on architectural errors)
+    try:
+        validate_config(ssvae_config)
+    except ConfigValidationError as e:
+        print("\n" + "=" * 80)
+        print("Configuration Error")
+        print("=" * 80)
+        print(f"  ✗  {e}")
+        print("=" * 80 + "\n")
+        print("Aborting: Fix the configuration and try again.")
+        exit(1)
+
+    # Display warnings cleanly if any exist
+    if w:
+        print("\n" + "=" * 80)
+        print("Configuration Warnings")
+        print("=" * 80)
+        for warning in w:
+            print(f"  ⚠  {warning.message}")
+        print("=" * 80 + "\n")
+
+    # Create run paths with architecture code
+    run_id, timestamp, run_paths = create_run_paths(
+        exp_meta.get("name"),
+        architecture_code,
+    )
+
+    # Augment config with metadata
+    experiment_config = augment_config_metadata(
+        experiment_config,
+        run_id,
+        architecture_code,
+        timestamp,
+    )
     write_config_copy(experiment_config, run_paths)
 
+    # Suppress warnings for the rest of execution (already validated and shown above)
+    warnings.filterwarnings('ignore', category=UserWarning)
+
+    # Load data
     X_train, y_semi, y_true = prepare_data(data_config)
+
+    # Create data info for header
+    val_split = model_config.get("val_split", 0.1)
+    train_size = int(len(X_train) * (1 - val_split))
+    val_size = len(X_train) - train_size
+    labeled_count = int((~np.isnan(y_semi)).sum())
+
+    data_info = {
+        "dataset": data_config.get("dataset", "MNIST"),
+        "total": len(X_train),
+        "labeled": labeled_count,
+        "train_size": train_size,
+        "val_size": val_size,
+    }
+
+    # Get device info
+    device_type, device_count = get_device_info()
+    device_info = (device_type, device_count) if device_type else None
+
+    # Print experiment header
+    header = format_experiment_header(
+        config=experiment_config,
+        run_id=run_id,
+        architecture_code=architecture_code,
+        output_path=run_paths.root,
+        data_info=data_info,
+        device_info=device_info,
+    )
+    print(header)
+    print(format_training_section_header())
 
     model, history, summary, viz_meta = run_training_pipeline(
         model_config, X_train, y_semi, y_true, run_paths
     )
 
+    # Add metadata to summary for self-documenting experiments
+    summary["metadata"] = {
+        "run_id": run_id,
+        "architecture_code": architecture_code,
+        "timestamp": timestamp,
+        "experiment_name": exp_meta.get("name", "experiment"),
+    }
+
     write_summary(summary, run_paths)
     recon_paths = viz_meta.get("reconstructions") if isinstance(viz_meta, dict) else None
-    write_report(summary, history, experiment_config, run_paths, recon_paths)
+    plot_status = viz_meta.get("_plot_status") if isinstance(viz_meta, dict) else None
+    write_report(summary, history, experiment_config, run_paths, recon_paths, plot_status)
 
-    print("\n" + "=" * 60)
+    print("\n" + "=" * 80)
     print(f"Experiment complete! Results: {run_paths.root}")
-    print("=" * 60 + "\n")
+    print("=" * 80 + "\n")
 
 
 if __name__ == "__main__":

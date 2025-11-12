@@ -19,13 +19,15 @@ class ConsoleLogger(TrainingCallback):
     def on_train_start(self, trainer: "Trainer") -> None:
         self._header_printed = False
 
-        device_type, device_count = get_device_info()
-        if device_type:
-            plural = "s" if device_count != 1 else ""
-            print(
-                f"Training on {device_type.upper()} ({device_count} device{plural})",
-                flush=True,
-            )
+        # Phase 6 (Terminal Cleanup): Silenced device info
+        # Device info shown in experiment header
+        # device_type, device_count = get_device_info()
+        # if device_type:
+        #     plural = "s" if device_count != 1 else ""
+        #     print(
+        #         f"Training on {device_type.upper()} ({device_count} device{plural})",
+        #         flush=True,
+        #     )
 
     def on_epoch_end(
         self,
@@ -37,24 +39,27 @@ class ConsoleLogger(TrainingCallback):
         train_metrics = metrics["train"]
         val_metrics = metrics["val"]
 
+        # Phase 6: Improved column names for clarity
+        # Changes:
+        # - Clear metric names: Total, Recon, KL, Class, Contr
+        # - Consistent (T)/(V) notation for train/validation
+        # - Removed loss_no_global_priors (clutters output, rarely needed)
         metric_columns = [
-            ("Train.loss", train_metrics, "loss"),
-            ("Val.loss", val_metrics, "loss"),
-            ("Train.loss_np", train_metrics, "loss_no_global_priors"),
-            ("Val.loss_np", val_metrics, "loss_no_global_priors"),
-            ("Train.rec", train_metrics, "reconstruction_loss"),
-            ("Val.rec", val_metrics, "reconstruction_loss"),
-            ("Train.kl", train_metrics, "kl_loss"),
-            ("Val.kl", val_metrics, "kl_loss"),
-            ("Train.cls", train_metrics, "classification_loss"),
-            ("Val.cls", val_metrics, "classification_loss"),
+            ("Total (T)", train_metrics, "loss"),
+            ("Total (V)", val_metrics, "loss"),
+            ("Recon (T)", train_metrics, "reconstruction_loss"),
+            ("Recon (V)", val_metrics, "reconstruction_loss"),
+            ("KL (T)", train_metrics, "kl_loss"),
+            ("KL (V)", val_metrics, "kl_loss"),
+            ("Class (T)", train_metrics, "classification_loss"),
+            ("Class (V)", val_metrics, "classification_loss"),
         ]
 
         if "contrastive_loss" in train_metrics and "contrastive_loss" in val_metrics:
             metric_columns.extend(
                 [
-                    ("Train.con", train_metrics, "contrastive_loss"),
-                    ("Val.con", val_metrics, "contrastive_loss"),
+                    ("Contr (T)", train_metrics, "contrastive_loss"),
+                    ("Contr (V)", val_metrics, "contrastive_loss"),
                 ]
             )
 

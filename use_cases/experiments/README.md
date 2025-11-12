@@ -10,27 +10,6 @@ This guide covers the practical workflow: edit config → run experiment → int
 
 ---
 
-## Quick Start
-
-Run your first experiment in 3 commands:
-
-```bash
-# 1. Install dependencies (one-time)
-poetry install
-
-# 2. Run a quick test (7 seconds)
-JAX_PLATFORMS=cpu poetry run python use_cases/experiments/run_experiment.py --config use_cases/experiments/configs/quick.yaml
-
-# 3. View results
-cat use_cases/experiments/results/baseline_quick_*/REPORT.md
-```
-
-**Output location:** `use_cases/experiments/results/baseline_quick_<timestamp>/`
-
-**Next:** Try a full experiment with `use_cases/experiments/configs/mixture_example.yaml`
-
----
-
 ## Run Directory Layout
 
 Each run now writes to a standardized structure so downstream tools know where to look:
@@ -52,13 +31,6 @@ The layout lives in `src/io/structure.py`, so any new tooling can reuse the same
 
 ## Configuration
 
-### Example Configs
-
-| Config | Purpose | Runtime | Notes |
-|--------|---------|---------|-------|
-| `use_cases/experiments/configs/quick.yaml` | Sanity checks | ~7s | 1K samples, 10 epochs |
-| `use_cases/experiments/configs/mixture_example.yaml` | Mixture features | ~5min | K=10, history tracking enabled |
-
 ### Config Structure
 
 ```yaml
@@ -68,33 +40,100 @@ experiment:
   tags: ["baseline", "debug"]     # For organizing results
 
 data:
-  dataset: "mnist"
+  dataset: "mnist"                # Currently only MNIST supported
   num_samples: 10000              # Total dataset size
-  num_labeled: 50                 # Labeled samples for classification
+  num_labeled: 100                # Labeled samples for classification
+  seed: 42                        # Random seed for data sampling
 
 model:
-  # Architecture
-  latent_dim: 2
-  hidden_dims: [256, 128, 64]
+  # ──────────────────────────────────────────────────────────────
+  # Core Architecture
+  # ──────────────────────────────────────────────────────────────
+  num_classes: 10                 # Output classes (10 for MNIST)
+  latent_dim: 2                   # Latent space dimensions
+  
+  encoder_type: "conv"            # "conv" for images, "dense" for tabular
+  decoder_type: "conv"            # Should match encoder_type
+  classifier_type: "dense"        # Classifier architecture
+  
+  hidden_dims: [256, 128, 64]     # Layer sizes (ignored for conv)
 
-  # Prior type
-  prior_type: "standard"          # or "mixture"
-  num_components: 10              # Only for mixture prior
-  use_tau_classifier: true        # Latent-only classifier (mixture only; requires num_components >= num_classes)
+  # ──────────────────────────────────────────────────────────────
+  # Loss Configuration
+  # ──────────────────────────────────────────────────────────────
+  reconstruction_loss: "bce"      # "bce" for MNIST, "mse" for natural images
+  recon_weight: 1.0               # Reconstruction loss weight
+  kl_weight: 1.0                  # KL divergence weight (VAE β)
+  label_weight: 1.0               # Classification loss weight
 
-  # Training
-  max_epochs: 100
-  batch_size: 128
-  learning_rate: 0.001
-  patience: 30                    # Early stopping patience
+  # ──────────────────────────────────────────────────────────────
+  # Training Configuration
+  # ──────────────────────────────────────────────────────────────
+  learning_rate: 0.001            # Adam optimizer learning rate
+  batch_size: 128                 # Samples per batch
+  max_epochs: 100                 # Maximum training epochs
+  patience: 20                    # Early stopping patience
+  val_split: 0.1                  # Validation set fraction
+  
+  random_seed: 42                 # Random seed for reproducibility
+  grad_clip_norm: 5.0             # Gradient clipping (null to disable)
+  weight_decay: 0.0001            # L2 regularization
+  dropout_rate: 0.2               # Dropout in classifier
+  
+  monitor_metric: "loss"          # Early stopping metric: "loss", "val_loss", "classification_loss"
 
-  # Loss weights
-  recon_weight: 1.0
-  kl_weight: 0.5
-  kl_c_weight: 0.0005             # Component KL (mixture only)
+  # ──────────────────────────────────────────────────────────────
+  # Prior Configuration
+  # ──────────────────────────────────────────────────────────────
+  prior_type: "standard"          # "standard", "mixture", "vamp", "geometric_mog"
+  num_components: 10              # Number of mixture components (K)
 
-  # Mixture-specific
-  mixture_history_log_every: 1    # Track π/usage every N epochs
+  # Component-aware decoder (mixture/vamp/geometric_mog only)
+  use_component_aware_decoder: false  # Enable component specialization
+  component_embedding_dim: 8      # Embedding size for conditioning
+
+  # VampPrior-specific settings (prior_type="vamp" only)
+  vamp_pseudo_init_method: "kmeans"  # "kmeans" or "random"
+  vamp_num_samples_kl: 1          # Monte Carlo samples for KL (1, 5, or 10)
+  vamp_pseudo_lr_scale: 0.1       # Learning rate multiplier for pseudo-inputs
+
+  # Geometric MoG settings (prior_type="geometric_mog" only)
+  geometric_arrangement: "grid"   # "circle" or "grid"
+  geometric_radius: 2.0           # Spatial radius
+
+  # Mixture/VampPrior regularization
+  kl_c_weight: 1.0                # Component assignment KL weight
+  kl_c_anneal_epochs: 50          # Anneal kl_c_weight from 0→1 over N epochs
+  
+  component_diversity_weight: -0.10  # Entropy reward (negative = encourage diversity)
+  
+  learnable_pi: false             # Learn mixture weights π
+  dirichlet_alpha: null           # Dirichlet prior strength (null = disabled)
+  dirichlet_weight: 0.05          # Dirichlet regularization weight
+
+  # ──────────────────────────────────────────────────────────────
+  # Classification Strategy
+  # ──────────────────────────────────────────────────────────────
+  use_tau_classifier: false       # Use τ-based latent-only classification
+  tau_smoothing_alpha: 1.0        # Laplace smoothing for τ counts
+
+  # ──────────────────────────────────────────────────────────────
+  # Uncertainty Estimation
+  # ──────────────────────────────────────────────────────────────
+  use_heteroscedastic_decoder: false  # Learn per-image variance
+  sigma_min: 0.05                 # Minimum variance
+  sigma_max: 0.5                  # Maximum variance
+
+  # ──────────────────────────────────────────────────────────────
+  # Advanced Options
+  # ──────────────────────────────────────────────────────────────
+  top_m_gating: 0                 # Use only top-M components (0 = use all)
+  soft_embedding_warmup_epochs: 10  # Soft-weighted embeddings warmup
+  
+  use_contrastive: false          # Enable contrastive loss
+  contrastive_weight: 0.0         # Contrastive loss weight
+  
+  mixture_history_log_every: 1    # Log π and usage every N epochs
 ```
 
 **For detailed parameter descriptions**, see annotated configs in `configs/`.
@@ -140,28 +179,7 @@ use_cases/experiments/results/<name>_<timestamp>/
 
 **`REPORT.md`** - Start here! Human-readable summary with embedded visualizations.
 
-**`summary.json`** - Structured metrics for programmatic analysis:
-```json
-{
-  "training": {
-    "final_loss": 198.27,
-    "training_time_sec": 10.8,
-    "epochs_completed": 10
-  },
-  "classification": {
-    "final_accuracy": 0.09
-  },
-  "mixture": {              // Only for mixture prior
-    "K_eff": 1.45,
-    "active_components": 3,
-    "responsibility_confidence_mean": 0.91
-  },
-  "clustering": {           // Only if latent_dim=2
-    "nmi": 0.0,
-    "ari": 0.0
-  }
-}
-```
+**`summary.json`** - Structured metrics for programmatic analysis
 
 **`checkpoint.ckpt`** - Model weights for inference or resuming training.
 
@@ -195,29 +213,14 @@ The experimentation toolkit is now split into small packages to keep code paths 
 
 Plotters run sequentially after training, so new visualizations can be dropped in without touching the CLI or pipeline.
 
----
-
-## Common Workflows
-
-### 1. Quick Sanity Check
-
-```bash
-JAX_PLATFORMS=cpu poetry run python use_cases/experiments/run_experiment.py --config use_cases/experiments/configs/quick.yaml
-```
-
-**Expect:**
-- Runtime: ~7 seconds
-- Accuracy: Random (~10% for MNIST)
-- Loss: Decreasing trend
-
-**Use for:** Verifying code changes didn't break anything.
 
 ---
 
-### 2. Train a Baseline Model
+### 1. Example: Train a Default Model
+The default model is the current default configuration from experimentation. This has no further meaning but just reflects the current configuration for experimentation. 
 
 ```bash
-poetry run python use_cases/experiments/run_experiment.py --config use_cases/experiments/configs/mixture_example.yaml
+poetry run python use_cases/experiments/run_experiment.py --config use_cases/experiments/configs/default.yaml
 ```
 
 **Expect:**
@@ -229,131 +232,15 @@ poetry run python use_cases/experiments/run_experiment.py --config use_cases/exp
 
 ---
 
-### 3. Train a Mixture Model
+### 2. Example: How to Create Custom Experiment
 
 ```bash
-poetry run python use_cases/experiments/run_experiment.py --config use_cases/experiments/configs/mixture_example.yaml
-```
-
-**Expect:**
-- Runtime: ~5 minutes
-- K_eff: Ideally > 5 (check for component collapse if < 2)
-- Evolution plots: Shows π and usage dynamics
-- `latent_by_component.png`: Color-coded by component assignment
-
-**Use for:** Full mixture features with evolution tracking.
-
----
-
-### 4. Run τ-Classifier Validation
-
-```bash
-poetry run python use_cases/experiments/run_experiment.py \
-  --config use_cases/experiments/configs/tau_classifier_validation.yaml
-```
-
-**Expect:**
-- Same runtime envelope as the mixture example (≈5 min with default settings).
-- Console logs describing the labeled-data regime and any warnings about sparse labels.
-- `REPORT.md` includes τ-specific metrics (label coverage, components/label, certainty, OOD score) and visualizations (τ heatmap, per-class accuracy).
-
-**Use for:** Evaluating the latent-only classifier, monitoring component specialization, and benchmarking the new vectorized count updates (sub-millisecond per batch even at K=50+).
-
----
-
-### 5. Create Custom Experiment
-
-```bash
-# 1. Copy a base config
-cp use_cases/experiments/configs/mixture_example.yaml use_cases/experiments/configs/my_experiment.yaml
-
-# 2. Edit config
-# - Update experiment.name and experiment.description
-# - Adjust hyperparameters (e.g., kl_weight, num_components)
-
-# 3. Run
+# Run
 poetry run python use_cases/experiments/run_experiment.py --config use_cases/experiments/configs/my_experiment.yaml
 
-# 4. Compare results
-# Check use_cases/experiments/results/ for timestamped outputs
+# Compare results
+# Check use_cases/experiments/results/ for outputs
 ```
-
----
-
-## Interpreting Metrics
-
-### Core Metrics
-
-| Metric | Meaning | Good Range | Bad Signs |
-|--------|---------|------------|-----------|
-| **final_loss** | Total training objective | Decreasing | Increasing or NaN |
-| **final_recon_loss** | Reconstruction quality | < 200 (MNIST) | > 300 |
-| **final_kl_z** | Latent regularization | 1-10 | > 50 (posterior collapse) |
-| **final_accuracy** | Classification accuracy | N/A (few labels) | N/A |
-| **training_time_sec** | Wall-clock time | - | - |
-
-### Mixture-Specific Metrics
-
-| Metric | Meaning | Good Range | Bad Signs |
-|--------|---------|------------|-----------|
-| **K_eff** | Effective components used | 5-9 (if K=10) | < 2 (collapse) |
-| **active_components** | Components with >1% usage | 5-10 | 1-2 |
-| **responsibility_confidence_mean** | Avg max_c q(c\|x) | 0.5-0.8 | > 0.95 (over-confident) |
-| **final_pi_entropy** | Diversity of π weights | 1.5-2.3 | < 0.5 (uniform prior collapsed) |
-
-### Clustering Metrics (latent_dim=2 only)
-
-| Metric | Meaning | Good Range |
-|--------|---------|------------|
-| **nmi** | Normalized Mutual Information | 0.3-0.8 (higher = better cluster-class alignment) |
-| **ari** | Adjusted Rand Index | 0.2-0.6 (higher = better cluster-class alignment) |
-
-**Note:** Clustering metrics compare latent clusters to true class labels. Only computed when `latent_dim=2` for visualization purposes.
-
----
-
-## Regression Indicators
-
-Watch for these warning signs:
-
-### Component Collapse (Mixture Models)
-**Symptoms:**
-- K_eff ≈ 1
-- active_components = 1
-- responsibility_confidence_mean > 0.95
-
-**Fixes:**
-- Reduce `kl_c_weight` (try 0.0001 instead of 0.0005)
-- Increase `dirichlet_alpha` (try 2.0 or 5.0)
-- Use NEGATIVE `component_diversity_weight` (try -0.05) to encourage diversity
-
----
-
-### Posterior Collapse
-**Symptoms:**
-- final_kl_z < 0.1
-- Latent space shows no structure
-- Reconstructions poor despite low reconstruction loss
-
-**Fixes:**
-- Reduce `kl_weight` (try 0.1 instead of 0.5)
-- Add KL annealing: `kl_c_anneal_epochs: 10`
-
----
-
-### Training Instability
-**Symptoms:**
-- Loss oscillates wildly
-- NaN losses
-- Training crashes
-
-**Fixes:**
-- Reduce `learning_rate` (try 0.0001)
-- Reduce `batch_size` (try 64)
-- Add weight decay: `weight_decay: 0.0001`
-
-**For comprehensive regression testing**, see `VERIFICATION_CHECKLIST.md`.
-
 ---
 
 ## Troubleshooting
@@ -408,23 +295,6 @@ model:
 
 ## Advanced Topics
 
-### Experiment Metadata
-
-Use tags for organizing experiments:
-
-```yaml
-experiment:
-  name: "ablation_kl_weight_01"
-  description: "Testing reduced KL weight impact on posterior collapse"
-  tags: ["ablation", "kl-tuning", "2025-11"]
-```
-
-Organize results by grepping tags:
-```bash
-grep -r '"ablation"' use_cases/experiments/results/*/config.yaml
-```
-
----
 
 ### History Tracking Configuration
 
@@ -441,24 +311,6 @@ model:
 
 ---
 
-### Hyperparameter Tuning Guidelines
-
-**Start with these ranges:**
-
-| Parameter | Conservative | Aggressive | Notes |
-|-----------|--------------|------------|-------|
-| `kl_weight` | 0.1 | 1.0 | Higher = stronger regularization |
-| `kl_c_weight` | 0.0001 | 0.001 | Too high causes component collapse |
-| `learning_rate` | 0.0001 | 0.001 | JAX/Flax Adam default: 0.001 |
-| `num_components` | 5 | 20 | More components = harder to utilize all |
-
-**Tuning strategy:**
-1. Start with `configs/default.yaml`
-2. Change ONE parameter at a time
-3. Run 3 times (check stability)
-4. Compare `summary.json` metrics
-
----
 
 ## Related Documentation
 
