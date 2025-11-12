@@ -24,9 +24,9 @@
 # ============================================================================
 
 experiment:
-  name: "default+conv+mixture"
-  description: "Baseline mixture prior SSVAE with recommended settings"
-  tags: ["mixture", "baseline", "semi-supervised"]
+  name: "test"
+  description: "Test"
+  tags: []
 
 
 
@@ -38,7 +38,7 @@ experiment:
 # ============================================================================
 data:
   dataset: "mnist"                  # Currently only MNIST is supported
-  num_samples: 10000                # Total samples from dataset
+  num_samples: 1000                # Total samples from dataset
   num_labeled: 100                  # Labeled samples (rest are unlabeled)
   seed: 42                          # Random seed for data sampling
 
@@ -105,7 +105,7 @@ model:
   # The prior determines how latent space is structured.
   # See docs/theory/conceptual_model.md for design rationale.
   
-  prior_type: "mixture"             # Options: "standard", "mixture", "vamp", "geometric_mog"
+  prior_type: "standard"             # Options: "standard", "mixture", "vamp", "geometric_mog"
                                     # - "mixture": Learned mixture of Gaussians (RECOMMENDED)
                                     # - "vamp": Spatial clustering via pseudo-inputs
                                     # - "standard": Single Gaussian N(0,I)
@@ -116,7 +116,7 @@ model:
                                     # Typical range: 10-20 for MNIST
 
   # Component specialization (mixture/vamp/geometric_mog only)
-  use_component_aware_decoder: true # Let each component specialize its decoder pathway
+  use_component_aware_decoder: false # Let each component specialize its decoder pathway
                                     # Strongly recommended for mixture prior
   component_embedding_dim: 8        # Embedding size for component conditioning (4-16)
 
@@ -146,8 +146,8 @@ model:
                                     # Typical range: -0.05 to -0.15
   
 
-  learnable_pi: true
-  dirichlet_alpha: 0.3             # Dirichlet prior strength (null = disabled)
+  learnable_pi: false
+  dirichlet_alpha: null             # Dirichlet prior strength (null = disabled)
                                     # When enabled, try values 2.0-5.0
   dirichlet_weight: 0.05            # Dirichlet regularization weight
 
@@ -163,7 +163,7 @@ model:
   # 1. τ-classifier: Latent-only via responsibilities (mixture/vamp only)
   # 2. Standard: Separate classifier head on latent z
   
-  use_tau_classifier: true          # Use τ-based latent-only classification
+  use_tau_classifier: false          # Use τ-based latent-only classification
                                     # Requires: num_components >= num_classes
                                     # Works with: mixture, vamp priors
   tau_smoothing_alpha: 1.0          # Laplace smoothing for τ counts (prevents zeros)
@@ -176,7 +176,7 @@ model:
   # ──────────────────────────────────────────────────────────────────────────
   # Uncertainty Estimation
   # ──────────────────────────────────────────────────────────────────────────
-  use_heteroscedastic_decoder: true # Learn per-image reconstruction variance
+  use_heteroscedastic_decoder: false # Learn per-image reconstruction variance
                                     # Outputs: (mean, sigma) for uncertainty quantification
   sigma_min: 0.05                   # Minimum variance (prevents collapse)
   sigma_max: 0.5                    # Maximum variance (prevents explosion)

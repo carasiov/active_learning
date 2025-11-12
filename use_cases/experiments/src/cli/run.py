@@ -1,8 +1,6 @@
 """CLI entrypoint for running a single experiment.
 
-Generates architecture codes, augments configs with metadata, and provides
-professional console output with clean warning display.
-"""
+Generates architecture codes, augments configs with metadata, and organizes console output"""
 from __future__ import annotations
 
 import argparse
