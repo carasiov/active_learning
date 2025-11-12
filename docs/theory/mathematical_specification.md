@@ -34,7 +34,7 @@ $$
 p(c)=\mathrm{Cat}(\pi),\quad p(z\mid c)=q_\phi(z\mid u_c),\quad p(z)=\sum_{c=1}^K \pi_c\, q_\phi(z\mid u_c),\quad x\mid z,c\sim p_\theta(x\mid z,c).
 $$
 
-**(C) Fixed geometric MoG (diagnostic/curriculum):** centers arranged on circle/grid, uniform $\pi$; for quick separation demos. (Use cautiously—induces topology.)
+**(C) Fixed geometric MoG :** centers arranged on circle/grid, uniform $\pi$; 
 
 ### 3.2 Approximate Posterior
 

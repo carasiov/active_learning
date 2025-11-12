@@ -16,11 +16,15 @@ from __future__ import annotations
 from ssvae.priors.base import EncoderOutput, PriorMode
 from ssvae.priors.standard import StandardGaussianPrior
 from ssvae.priors.mixture import MixtureGaussianPrior
+from ssvae.priors.vamp import VampPrior
+from ssvae.priors.geometric_mog import GeometricMixtureOfGaussiansPrior
 
 # Prior registry for factory pattern
 PRIOR_REGISTRY = {
     "standard": StandardGaussianPrior,
     "mixture": MixtureGaussianPrior,
+    "vamp": VampPrior,
+    "geometric_mog": GeometricMixtureOfGaussiansPrior,
 }
 
 
@@ -28,8 +32,10 @@ def get_prior(prior_type: str, **kwargs) -> PriorMode:
     """Factory function to create prior instances.
 
     Args:
-        prior_type: Type of prior ("standard" or "mixture")
+        prior_type: Type of prior ("standard", "mixture", "vamp", or "geometric_mog")
         **kwargs: Additional arguments for prior initialization
+            For VampPrior: num_components, latent_dim, input_shape, uniform_weights, num_samples_kl
+            For GeometricMoG: num_components, latent_dim, arrangement, radius
 
     Returns:
         Prior instance
@@ -37,6 +43,8 @@ def get_prior(prior_type: str, **kwargs) -> PriorMode:
     Example:
         >>> prior = get_prior("standard")
         >>> prior = get_prior("mixture", num_components=10, latent_dim=16)
+        >>> prior = get_prior("vamp", num_components=50, latent_dim=16, input_shape=(28, 28))
+        >>> prior = get_prior("geometric_mog", num_components=10, latent_dim=2, radius=2.0)
     """
     if prior_type not in PRIOR_REGISTRY:
         available = ", ".join(PRIOR_REGISTRY.keys())
@@ -53,6 +61,8 @@ __all__ = [
     "EncoderOutput",
     "StandardGaussianPrior",
     "MixtureGaussianPrior",
+    "VampPrior",
+    "GeometricMixtureOfGaussiansPrior",
     "get_prior",
     "PRIOR_REGISTRY",
 ]

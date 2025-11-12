@@ -27,7 +27,7 @@ def test_load_legacy_checkpoint_config():
     # Verify defaults applied
     assert config.prior_type == "standard"
     assert config.num_components == 10
-    assert config.component_kl_weight == 1.0
+    assert config.kl_c_weight == 1.0
     
     # Verify other fields preserved
     assert config.latent_dim == 2

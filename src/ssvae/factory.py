@@ -32,6 +32,7 @@ class SSVAEFactory:
         input_dim: Tuple[int, int],
         config: SSVAEConfig,
         random_seed: int | None = None,
+        init_data: jnp.ndarray | None = None,
     ) -> Tuple[SSVAENetwork, SSVAETrainState, Callable, Callable, random.PRNGKey, PriorMode]:
         """Create complete SSVAE model with train/eval functions.
 
@@ -39,6 +40,9 @@ class SSVAEFactory:
             input_dim: Input image dimensions (height, width)
             config: SSVAE configuration
             random_seed: Random seed for reproducibility (uses config.random_seed if None)
+            init_data: Optional training data for VampPrior pseudo-input initialization.
+                      If provided and prior_type="vamp", initializes pseudo-inputs
+                      BEFORE creating the optimizer to avoid pytree mismatch.
 
         Returns:
             Tuple of:
@@ -87,6 +91,16 @@ class SSVAEFactory:
             training=True,
         )
 
+        # Initialize VampPrior pseudo-inputs BEFORE creating optimizer if data provided
+        if config.prior_type == "vamp" and init_data is not None:
+            variables = SSVAEFactory._initialize_vamp_pseudo_inputs(
+                variables=variables,
+                data=init_data,
+                config=config,
+                input_shape=out_hw,
+                rng=rng,
+            )
+
         # Create optimizer with weight decay masking
         decay_mask = _make_weight_decay_mask(variables["params"])
         opt_core = (
@@ -115,14 +129,161 @@ class SSVAEFactory:
 
         shuffle_rng = random.PRNGKey(seed + 1)
 
-        # Create prior instance
-        prior = get_prior(config.prior_type)
+        # Create prior instance with appropriate parameters
+        prior = SSVAEFactory._create_prior(config, input_dim)
 
         # Build train and eval functions (using protocol-based losses)
         train_step_fn = SSVAEFactory._build_train_step_v2(network, config, state.apply_fn, prior)
         eval_metrics_fn = SSVAEFactory._build_eval_metrics_v2(network, config, state.apply_fn, prior)
 
         return network, state, train_step_fn, eval_metrics_fn, shuffle_rng, prior
+
+    @staticmethod
+    def _initialize_vamp_pseudo_inputs(
+        variables: Dict,
+        data: jnp.ndarray,
+        config: SSVAEConfig,
+        input_shape: Tuple[int, int],
+        rng: random.PRNGKey,
+    ) -> Dict:
+        """Initialize VampPrior pseudo-inputs before optimizer creation.
+
+        Args:
+            variables: Initial model variables from network.init()
+            data: Training data [N, H, W]
+            config: SSVAE configuration
+            input_shape: Input image shape (H, W)
+            rng: Random key for sampling
+
+        Returns:
+            Updated variables dict with initialized pseudo-inputs
+        """
+        import numpy as np
+        from flax.core import freeze, unfreeze
+
+        method = config.vamp_pseudo_init_method
+        K = config.num_components
+        H, W = input_shape
+
+        # Convert to numpy for k-means
+        data_np = np.asarray(data, dtype=np.float32)
+        if data_np.ndim == 2:
+            # Already flattened [N, H*W] - reshape to [N, H, W]
+            data_np = data_np.reshape(-1, H, W)
+        elif data_np.ndim == 3:
+            # Expected shape [N, H, W]
+            pass
+        else:
+            raise ValueError(f"Expected data shape [N, H, W] or [N, H*W], got {data_np.shape}")
+
+        if data_np.shape[0] < K:
+            raise ValueError(
+                f"Not enough data samples ({data_np.shape[0]}) to initialize "
+                f"{K} pseudo-inputs. Need at least {K} samples."
+            )
+
+        print(f"\nInitializing VampPrior pseudo-inputs using {method} method...")
+
+        if method == "random":
+            # Sample random images from data
+            rng, subkey = random.split(rng)
+            indices = random.choice(
+                subkey,
+                data_np.shape[0],
+                shape=(K,),
+                replace=False,
+            )
+            pseudo_inputs = data_np[np.array(indices)]  # [K, H, W]
+            print(f"  Selected {K} random samples from {data_np.shape[0]} images")
+
+        elif method == "kmeans":
+            # Run k-means clustering on flattened data
+            try:
+                from sklearn.cluster import KMeans
+            except ImportError:
+                raise ImportError(
+                    "scikit-learn required for kmeans initialization. "
+                    "Install with: pip install scikit-learn"
+                )
+
+            # Flatten data for k-means
+            X_flat = data_np.reshape(data_np.shape[0], -1)  # [N, H*W]
+
+            # Run k-means
+            kmeans = KMeans(
+                n_clusters=K,
+                random_state=config.random_seed,
+                n_init=10,
+                max_iter=300,
+                verbose=0,
+            )
+            kmeans.fit(X_flat)
+
+            # Reshape cluster centers back to image shape
+            pseudo_inputs = kmeans.cluster_centers_.reshape(K, H, W)  # [K, H, W]
+            print(
+                f"  K-means converged in {kmeans.n_iter_} iterations "
+                f"(inertia={kmeans.inertia_:.2f})"
+            )
+
+        else:
+            raise ValueError(f"Unknown vamp_pseudo_init_method: {method}")
+
+        # Convert to JAX array
+        pseudo_inputs_jax = jnp.array(pseudo_inputs, dtype=jnp.float32)
+
+        # Update variables dict (preserving FrozenDict structure)
+        params_dict = unfreeze(variables["params"])
+        if "prior" not in params_dict:
+            params_dict["prior"] = {}
+        params_dict["prior"]["pseudo_inputs"] = pseudo_inputs_jax
+        variables = {**variables, "params": freeze(params_dict)}
+
+        print(f"  ✓ Pseudo-inputs initialized with shape {pseudo_inputs_jax.shape}\n")
+
+        return variables
+
+    @staticmethod
+    def _create_prior(config: SSVAEConfig, input_shape: Tuple[int, int]) -> PriorMode:
+        """Create prior instance based on configuration.
+
+        Args:
+            config: SSVAE configuration
+            input_shape: Input image shape (for VampPrior pseudo-inputs)
+
+        Returns:
+            Prior instance configured according to config.prior_type
+        """
+        if config.prior_type == "standard":
+            return get_prior("standard")
+        
+        elif config.prior_type == "mixture":
+            return get_prior("mixture")
+        
+        elif config.prior_type == "vamp":
+            return get_prior(
+                "vamp",
+                num_components=config.num_components,
+                latent_dim=config.latent_dim,
+                input_shape=input_shape,
+                uniform_weights=True,  # Learnable weights in Phase 3
+                num_samples_kl=config.vamp_num_samples_kl,
+            )
+        
+        elif config.prior_type == "geometric_mog":
+            return get_prior(
+                "geometric_mog",
+                num_components=config.num_components,
+                latent_dim=config.latent_dim,
+                arrangement=config.geometric_arrangement,
+                radius=config.geometric_radius,
+            )
+        
+        else:
+            raise ValueError(
+                f"Unknown prior_type: {config.prior_type}. "
+                f"Valid options: standard, mixture, vamp, geometric_mog"
+            )
 
     @staticmethod
     def _build_train_step_v2(
@@ -192,6 +353,8 @@ class SSVAEFactory:
             tau: jnp.ndarray | None = None,
         ):
             (loss, metrics), grads = train_loss_and_grad(state.params, batch_x, batch_y, key, kl_c_scale, tau)
+            if config.prior_type == "vamp":
+                grads = _scale_vamp_pseudo_gradients(grads, config.vamp_pseudo_lr_scale)
             new_state = state.apply_gradients(grads=grads)
             return new_state, metrics
 
@@ -247,3 +410,31 @@ class SSVAEFactory:
             return metrics
 
         return jax.jit(_eval_metrics)
+
+
+def _scale_vamp_pseudo_gradients(
+    grads: Dict[str, Dict[str, jnp.ndarray]] | FrozenDict,
+    scale: float,
+):
+    """Scale pseudo-input gradients to honor VampPrior-specific LR adjustments."""
+    if scale == 1.0:
+        return grads
+
+    is_frozen = isinstance(grads, FrozenDict)
+    grads_dict = grads.unfreeze() if is_frozen else dict(grads)
+
+    prior_grads = grads_dict.get("prior")
+    if prior_grads is None:
+        return grads
+
+    prior_is_frozen = isinstance(prior_grads, FrozenDict)
+    prior_dict = prior_grads.unfreeze() if prior_is_frozen else dict(prior_grads)
+
+    pseudo_grad = prior_dict.get("pseudo_inputs")
+    if pseudo_grad is None:
+        return grads
+
+    prior_dict["pseudo_inputs"] = pseudo_grad * scale
+
+    grads_dict["prior"] = freeze(prior_dict) if prior_is_frozen else prior_dict
+    return freeze(grads_dict) if is_frozen else grads_dict

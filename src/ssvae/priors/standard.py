@@ -30,7 +30,7 @@ class StandardGaussianPrior:
         >>> prior = StandardGaussianPrior()
         >>> kl_terms = prior.compute_kl_terms(encoder_output, config)
         >>> kl_terms.keys()
-        dict_keys(['kl_z'])
+        dict_keys(['kl_z', 'dirichlet_penalty'])
     """
 
     def compute_kl_terms(
@@ -45,14 +45,19 @@ class StandardGaussianPrior:
             config: Configuration with kl_weight
 
         Returns:
-            Dictionary with single key 'kl_z'
+            Dictionary with keys:
+                - kl_z: KL(q(z|x) || N(0, I))
+                - dirichlet_penalty: Always zero for standard prior
         """
         kl_z = kl_divergence(
             encoder_output.z_mean,
             encoder_output.z_log_var,
             weight=config.kl_weight,
         )
-        return {"kl_z": kl_z}
+        return {
+            "kl_z": kl_z,
+            "dirichlet_penalty": jnp.zeros_like(kl_z),
+        }
 
     def compute_reconstruction_loss(
         self,

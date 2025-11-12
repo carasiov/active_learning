@@ -401,29 +401,21 @@ print(f"Active components: {(diagnostics['component_usage'] > 0.01).sum()}")
 **`DenseEncoder(nn.Module)`**
 - Fully connected encoder
 - Architecture: input → hidden layers → (z_mean, z_logvar)
-- For mixture prior: also outputs component_logits
 
-**Parameters:**
-```python
-latent_dim: int                   # Latent space dimension
-hidden_dims: Tuple[int, ...]      # Layer sizes (e.g., (256, 128, 64))
-num_components: Optional[int]     # Mixture components (if applicable)
-dropout_rate: float = 0.0         # Dropout probability
-```
-
-**Output:**
-```python
-# Standard prior
-z_mean, z_logvar = encoder(x, deterministic=True)
-
-# Mixture prior
-z_mean, z_logvar, component_logits = encoder(x, deterministic=True)
-```
+**`MixtureDenseEncoder(nn.Module)`**
+- Dense variant used whenever `prior_type="mixture"` with dense encoders
+- Emits `component_logits` in addition to `(z_mean, z_logvar, z)`
+- Shares the same MLP trunk as `DenseEncoder`
 
 **`ConvEncoder(nn.Module)`**
 - Convolutional encoder for image data
-- Architecture: Conv layers → Flatten → Dense → (z_mean, z_logvar)
+- Architecture: Conv blocks → Flatten → Dense → (z_mean, z_logvar)
 - Useful for larger images (CIFAR-10, etc.)
+
+**`MixtureConvEncoder(nn.Module)`**
+- Convolutional counterpart to `MixtureDenseEncoder`
+- Reuses the conv stack but adds a logits head so conv architectures can drive mixture priors
+- Output signature: `(component_logits, z_mean, z_logvar, z)`
 
 ---
 
@@ -493,29 +485,78 @@ Similar to top-level `factory.py` but focused on individual components. Handles:
 
 ### `base.py` - PriorMode Protocol
 
-**Purpose:** Define interface for prior distributions.
+**Purpose:** Define interface for prior distributions using protocol-based design.
 
-**Protocol:**
+**Key Classes:**
+- `EncoderOutput`: Structured output from encoder (z_mean, z_log_var, z, component_logits, extras)
+- `PriorMode`: Protocol defining interface all priors must implement
+
+**Protocol methods:**
 ```python
 class PriorMode(Protocol):
-    """Interface for prior distributions."""
+    def compute_kl_terms(self, encoder_output: EncoderOutput, config) -> Dict[str, Array]:
+        """Compute all KL divergence and regularization terms."""
+        
+    def compute_reconstruction_loss(self, x_true, x_recon, encoder_output, config) -> Array:
+        """Compute reconstruction loss (handles heteroscedastic decoders)."""
+        
+    def get_prior_type(self) -> str:
+        """Return identifier string."""
+        
+    def requires_component_embeddings(self) -> bool:
+        """Whether decoder needs component embeddings."""
+```
 
-    def kl_divergence(
-        self,
-        z_mean: Array,
-        z_logvar: Array,
-        component_logits: Optional[Array] = None
-    ) -> Array:
-        """Compute KL divergence KL(q(z|x) || p(z))."""
-        ...
+### Prior Implementations
 
-    def sample(
-        self,
-        key: PRNGKey,
-        latent_dim: int,
-        num_samples: int = 1
-    ) -> Array:
-        """Sample from prior distribution."""
+**`standard.py` - StandardGaussianPrior:**
+- Simple N(0,I) Gaussian prior
+- Analytical KL: 0.5 * Σ(σ² + μ² - 1 - log σ²)
+- No component structure
+- Use for: Baseline VAE experiments
+
+**`mixture.py` - MixtureGaussianPrior:**
+- K-channel mixture with identical N(0,I) per component
+- Learnable π (mixture weights) and component embeddings
+- Requires: Mixture encoder outputting responsibilities
+- Use for: Production semi-supervised learning with functional specialization
+
+**`vamp.py` - VampPrior:**
+- Learned pseudo-inputs {u₁, ..., uₖ} where p(z) = Σₖ πₖ q(z|uₖ)
+- Monte Carlo KL estimation
+- Encoder dependency: `SSVAENetwork` re-encodes pseudo-inputs each forward pass and
+  stores statistics in `EncoderOutput.extras`
+- Pseudo-inputs stored in `params['prior']['pseudo_inputs']`
+- `requires_component_embeddings() = False` (spatial separation is sufficient)
+- Use for: Spatial clustering visualization, alternative to component-aware decoder
+
+**`geometric_mog.py` - GeometricMixtureOfGaussiansPrior:**
+- Fixed geometric centers (circle or grid arrangement)
+- Analytical KL with non-zero mean priors
+- WARNING: Induces artificial topology
+- Use for: Diagnostics, curriculum learning, quick visualization only
+
+### Factory Pattern
+
+**`__init__.py` - Prior Registry:**
+```python
+PRIOR_REGISTRY = {
+    "standard": StandardGaussianPrior,
+    "mixture": MixtureGaussianPrior,
+    "vamp": VampPrior,
+    "geometric_mog": GeometricMixtureOfGaussiansPrior,
+}
+
+def get_prior(prior_type: str, **kwargs) -> PriorMode:
+    """Create prior instance based on type string."""
+```
+
+**Key design:**
+- All priors implement `PriorMode` protocol (duck typing)
+- Factory enables dynamic prior selection via `config.prior_type`
+- Mixture-based priors (mixture, vamp, geometric_mog) require mixture encoder
+- VampPrior automatically consumes cached pseudo-input statistics provided by the network
+- Learnable parameters stored in `params['prior']` (embeddings, π, pseudo-inputs)
         ...
 ```
 

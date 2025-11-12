@@ -15,7 +15,6 @@ def test_default_config_unchanged():
     assert config.prior_type == "standard"
     assert config.num_components == 10
     assert config.kl_c_weight == 1.0
-    assert config.component_kl_weight == 1.0
     
     # Verify it's backward compatible
     assert config.encoder_type == "dense"
@@ -87,7 +86,8 @@ def test_config_serialization_includes_mixture_fields():
     config = SSVAEConfig(
         prior_type="mixture",
         num_components=7,
-        component_kl_weight=0.05,
+        kl_c_weight=0.05,
+        use_tau_classifier=False,
     )
     
     hparams = config.get_informative_hyperparameters()
@@ -118,7 +118,12 @@ def test_predict_handles_both_modes():
     # Mixture mode
     vae_mix = SSVAE(
         input_dim=(28, 28),
-        config=SSVAEConfig(prior_type="mixture", num_components=3, max_epochs=1)
+        config=SSVAEConfig(
+            prior_type="mixture",
+            num_components=3,
+            max_epochs=1,
+            use_tau_classifier=False,
+        ),
     )
     vae_mix.fit(X_train, y_train, weights_path="/tmp/test_predict_mix.ckpt")
     latent_mix, recon_mix, _, _ = vae_mix.predict(X_test)

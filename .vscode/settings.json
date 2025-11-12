@@ -2,8 +2,10 @@
     "python-envs.pythonProjects": [
         {
             "path": "artifacts/conv_test",
-            "envManager": "ms-python.python:venv",
-            "packageManager": "ms-python.python:pip"
+            "envManager": "ms-python.python:poetry",
+            "packageManager": "ms-python.python:poetry"
         }
-    ]
+    ],
+    "python-envs.defaultEnvManager": "ms-python.python:poetry",
+    "python-envs.defaultPackageManager": "ms-python.python:poetry"
 }

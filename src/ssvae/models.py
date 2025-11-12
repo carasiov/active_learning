@@ -33,6 +33,9 @@ from training.trainer import MetricsDict, Trainer, TrainerLoopHooks
 from training.train_state import SSVAETrainState
 
 
+COMPONENT_PRIORS = {"mixture", "geometric_mog", "vamp"}
+
+
 class SSVAE:
     """
     Modular JAX SSVAE with clean separation of concerns.
@@ -51,12 +54,15 @@ class SSVAE:
 
     _DEVICE_BANNER_PRINTED = False
 
-    def __init__(self, input_dim: Tuple[int, int], config: SSVAEConfig | None = None):
+    def __init__(self, input_dim: Tuple[int, int], config: SSVAEConfig | None = None, init_data: np.ndarray | None = None):
         """Initialize SSVAE model.
 
         Args:
             input_dim: Input image dimensions (height, width)
             config: Model configuration (uses defaults if None)
+            init_data: Optional training data for VampPrior pseudo-input initialization.
+                      If provided and prior_type="vamp", initializes pseudo-inputs
+                      before creating the optimizer. This avoids pytree mismatch errors.
         """
         self.input_dim = input_dim
         self.config = config or SSVAEConfig()
@@ -68,6 +74,26 @@ class SSVAE:
             print_device_banner()
             SSVAE._DEVICE_BANNER_PRINTED = True
 
+        # Print model configuration
+        print(f"\n{'=' * 60}")
+        print("Model Configuration")
+        print(f"{'=' * 60}")
+        print(f"Prior type: {self.config.prior_type}")
+        print(f"Latent dim: {self.config.latent_dim}")
+        if self.config.prior_type in COMPONENT_PRIORS:
+            print(f"Components (K): {self.config.num_components}")
+            if self.config.prior_type in ["mixture", "geometric_mog"]:
+                print(f"Learnable π: {self.config.learnable_pi}")
+                if self.config.learnable_pi and self.config.dirichlet_alpha is not None:
+                    print(f"Dirichlet α: {self.config.dirichlet_alpha}")
+                    print(f"Dirichlet weight: {self.config.dirichlet_weight}")
+            print(f"Component-aware decoder: {self.config.use_component_aware_decoder}")
+            if self.config.use_tau_classifier:
+                print(f"τ-classifier enabled: True")
+        print(f"Batch size: {self.config.batch_size}")
+        print(f"Learning rate: {self.config.learning_rate}")
+        print(f"{'=' * 60}\n")
+
         # Create components using factory
         factory = SSVAEFactory()
         (
@@ -77,7 +103,7 @@ class SSVAE:
             self._eval_metrics,
             self._shuffle_rng,
             self.prior,
-        ) = factory.create_model(input_dim, self.config)
+        ) = factory.create_model(input_dim, self.config, init_data=init_data)
 
         # Initialize managers
         self._checkpoint_mgr = CheckpointManager()
@@ -87,7 +113,7 @@ class SSVAE:
 
         # Initialize τ-classifier for mixture prior with latent-only classification
         self._tau_classifier = None
-        if self.config.prior_type == "mixture" and self.config.use_tau_classifier:
+        if self.config.is_mixture_based_prior() and self.config.use_tau_classifier:
             from ssvae.components.tau_classifier import TauClassifier
             self._tau_classifier = TauClassifier(
                 num_components=self.config.num_components,
@@ -103,6 +129,119 @@ class SSVAE:
 
         self._apply_fn = apply_fn
         self._rng = self.state.rng
+
+    def initialize_pseudo_inputs(
+        self,
+        data: np.ndarray,
+        method: str | None = None,
+    ) -> None:
+        """Initialize VampPrior pseudo-inputs from data.
+
+        Must be called after model creation and before training for VampPrior.
+        Uses config.vamp_pseudo_init_method if method not specified.
+
+        Args:
+            data: Training images [N, H, W]
+            method: Initialization method ("random" or "kmeans"). 
+                   If None, uses config.vamp_pseudo_init_method
+
+        Raises:
+            ValueError: If not using VampPrior or method is invalid
+        """
+        from ssvae.priors.vamp import VampPrior
+
+        if not isinstance(self.prior, VampPrior):
+            raise ValueError(
+                "initialize_pseudo_inputs() only applies to VampPrior. "
+                f"Current prior type: {self.config.prior_type}"
+            )
+
+        # Use config default if method not specified
+        if method is None:
+            method = self.config.vamp_pseudo_init_method
+
+        valid_methods = {"random", "kmeans"}
+        if method not in valid_methods:
+            raise ValueError(
+                f"method must be one of {valid_methods}, got '{method}'"
+            )
+
+        K = self.config.num_components
+        H, W = self.input_dim
+        data_np = np.asarray(data, dtype=np.float32)
+
+        if data_np.shape[0] < K:
+            raise ValueError(
+                f"Not enough data samples ({data_np.shape[0]}) to initialize "
+                f"{K} pseudo-inputs. Need at least {K} samples."
+            )
+
+        print(f"Initializing VampPrior pseudo-inputs using {method} method...")
+
+        if method == "random":
+            # Sample random images from data
+            self._rng, subkey = random.split(self._rng)
+            indices = random.choice(
+                subkey,
+                data_np.shape[0],
+                shape=(K,),
+                replace=False,
+            )
+            pseudo_inputs = data_np[indices]  # [K, H, W]
+            print(f"  Selected {K} random samples from {data_np.shape[0]} images")
+
+        elif method == "kmeans":
+            # Run k-means clustering on flattened data
+            try:
+                from sklearn.cluster import KMeans
+            except ImportError:
+                raise ImportError(
+                    "scikit-learn required for kmeans initialization. "
+                    "Install with: pip install scikit-learn"
+                )
+
+            # Flatten data for k-means
+            X_flat = data_np.reshape(data_np.shape[0], -1)  # [N, H*W]
+
+            # Run k-means
+            kmeans = KMeans(
+                n_clusters=K,
+                random_state=self.config.random_seed,
+                n_init=10,
+                max_iter=300,
+                verbose=0,
+            )
+            kmeans.fit(X_flat)
+
+            # Reshape cluster centers back to image shape
+            pseudo_inputs = kmeans.cluster_centers_.reshape(K, H, W)  # [K, H, W]
+            print(
+                f"  K-means converged in {kmeans.n_iter_} iterations "
+                f"(inertia={kmeans.inertia_:.2f})"
+            )
+
+        else:
+            raise ValueError(f"Unknown method: {method}")
+
+        # Convert to JAX array
+        pseudo_inputs_jax = jnp.array(pseudo_inputs, dtype=jnp.float32)
+
+        # Update model parameters - just replace the values in-place
+        # The optimizer will handle the updated params on first gradient step
+        from flax.core import freeze, unfreeze
+        
+        # Unfreeze, update, and refreeze to preserve FrozenDict structure
+        params_dict = unfreeze(self.state.params)
+        if "prior" not in params_dict:
+            params_dict["prior"] = {}
+        params_dict["prior"]["pseudo_inputs"] = pseudo_inputs_jax
+        new_params = freeze(params_dict)
+        
+        # Update only the params, not optimizer state
+        # The optimizer state tree structure will be fine - it just tracks the params
+        self.state = self.state.replace(params=new_params)
+
+        print(f"  ✓ Pseudo-inputs initialized with shape {pseudo_inputs_jax.shape}")
 
     def prepare_data_for_keras_model(self, data: np.ndarray) -> np.ndarray:
         """Legacy method for data preprocessing."""
@@ -167,8 +306,11 @@ class SSVAE:
         # Update RNG from state
         self._rng = self.state.rng
 
-        # Generate diagnostics if mixture prior
-        if self.config.prior_type == "mixture" and self._trainer.latest_splits is not None:
+        # Generate diagnostics for any component-based prior
+        if (
+            self.config.prior_type in COMPONENT_PRIORS
+            and self._trainer.latest_splits is not None
+        ):
             self._save_mixture_diagnostics(self._trainer.latest_splits)
 
         return history
@@ -332,13 +474,13 @@ class SSVAE:
 
         Returns:
             Standard: (latent, reconstruction, class_predictions, certainty)
-            With mixture: (latent, reconstruction, class_predictions, certainty, q_c, π)
+            With component priors: (latent, reconstruction, class_predictions, certainty, q_c, π)
         """
         x = jnp.array(data, dtype=jnp.float32)
-        mixture_active = self.config.prior_type == "mixture"
+        mixture_active = self.config.prior_type in COMPONENT_PRIORS
 
         if return_mixture and not mixture_active:
-            raise ValueError("return_mixture=True only supported for mixture priors.")
+            raise ValueError("return_mixture=True only supported for component-based priors.")
 
         if sample:
             return self._predict_with_sampling(x, num_samples, return_mixture)
@@ -369,9 +511,11 @@ class SSVAE:
 
         if return_mixture:
             responsibilities = self._get_responsibilities_from_extras(extras)
-            pi_val = extras.get("pi") if extras is not None and hasattr(extras, "get") else None
-            if responsibilities is None or pi_val is None:
+            if responsibilities is None:
                 raise ValueError("Mixture responsibilities unavailable.")
+            pi_val = extras.get("pi") if extras is not None and hasattr(extras, "get") else None
+            if pi_val is None:
+                pi_val = jnp.ones((self.config.num_components,)) / self.config.num_components
             result += (np.array(responsibilities), np.array(pi_val))
 
         return result
@@ -490,10 +634,13 @@ class SSVAE:
         # Collect results from each batch
         latent_batches = []
         recon_batches = []
+        recon_mean_batches = []
+        recon_sigma_batches = []
         pred_batches = []
         cert_batches = []
         resp_batches = [] if return_mixture else None
         pi_value = None
+        heteroscedastic_mode: bool | None = None
         
         for start in range(0, total, batch_size):
             end = min(start + batch_size, total)
@@ -515,19 +662,45 @@ class SSVAE:
                 )
             
             latent_batches.append(latent)
-            recon_batches.append(recon)
+
+            if isinstance(recon, tuple):
+                if heteroscedastic_mode is False:
+                    raise ValueError("Mixed heteroscedastic and standard reconstructions in batched prediction.")
+                heteroscedastic_mode = True
+                recon_mean_batches.append(recon[0])
+                recon_sigma_batches.append(recon[1])
+            else:
+                if heteroscedastic_mode is True:
+                    raise ValueError("Mixed heteroscedastic and standard reconstructions in batched prediction.")
+                heteroscedastic_mode = False
+                recon_batches.append(recon)
+
             pred_batches.append(preds)
             cert_batches.append(cert)
         
         # Concatenate batches
         latent_all = np.concatenate(latent_batches, axis=0)
-        recon_all = np.concatenate(recon_batches, axis=0)
+        if heteroscedastic_mode:
+            mean_all = np.concatenate(recon_mean_batches, axis=0)
+            sigma_all = np.concatenate(recon_sigma_batches, axis=0)
+            recon_all: np.ndarray | Tuple[np.ndarray, np.ndarray] = (mean_all, sigma_all)
+        else:
+            recon_all = np.concatenate(recon_batches, axis=0)
         pred_all = np.concatenate(pred_batches, axis=0)
         cert_all = np.concatenate(cert_batches, axis=0)
         
         if return_mixture:
             resp_all = np.concatenate(resp_batches, axis=0)
-            return latent_all, recon_all, pred_all, cert_all, resp_all, pi_value
+            if pi_value is None:
+                pi_value = jnp.ones((self.config.num_components,))
+            return (
+                latent_all,
+                recon_all,
+                pred_all,
+                cert_all,
+                resp_all,
+                np.array(pi_value),
+            )
         else:
             return latent_all, recon_all, pred_all, cert_all
 
@@ -548,8 +721,8 @@ class SSVAE:
         callbacks.append(CSVExporter(history_path))
         callbacks.append(LossCurvePlotter(plot_path))
 
-        # Add mixture history tracker for mixture priors
-        if self.config.prior_type == "mixture":
+        # Add mixture history tracker for component-based priors
+        if self.config.prior_type in COMPONENT_PRIORS:
             mixture_hist_dir = base_path.parent / "diagnostics" / base_path.stem
             callbacks.append(
                 MixtureHistoryTracker(
@@ -562,8 +735,8 @@ class SSVAE:
         return callbacks
 
     def _save_mixture_diagnostics(self, splits: Trainer.DataSplits) -> None:
-        """Generate and save mixture prior diagnostics."""
-        if self.config.prior_type != "mixture" or splits is None:
+        """Generate and save component-prior diagnostics (mixture/vamp/geometric)."""
+        if self.config.prior_type not in COMPONENT_PRIORS or splits is None:
             return
 
         # Use validation split if available, otherwise training split
@@ -599,7 +772,7 @@ class SSVAE:
 
     @property
     def mixture_metrics(self) -> Dict:
-        """Get mixture diagnostics metrics (K_eff, etc.)."""
+        """Get component-prior diagnostics metrics (K_eff, etc.)."""
         return self._mixture_metrics
 
 

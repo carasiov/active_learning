@@ -81,6 +81,7 @@ class TestBaselineBehavior:
             max_epochs=5,
             patience=10,
             random_seed=42,
+            use_tau_classifier=False,
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -235,7 +236,8 @@ class TestComponentFactoryContracts:
             encoder_type="dense",
             prior_type="mixture",
             num_components=5,
-            latent_dim=8
+            latent_dim=8,
+            use_tau_classifier=False,
         )
         encoder_mixture = build_encoder(config_mixture, input_hw=(28, 28))
         assert encoder_mixture is not None
@@ -253,18 +255,21 @@ class TestComponentFactoryContracts:
         decoder_conv = build_decoder(config_conv, input_hw=(28, 28))
         assert decoder_conv is not None
 
-    def test_mixture_with_conv_raises_error(self):
-        """Mixture prior + conv encoder should raise validation error."""
+    def test_mixture_with_conv_returns_mixture_conv_encoder(self):
+        """Mixture prior + conv encoder should build the new convolutional mixture module."""
+        from ssvae.components.encoders import MixtureConvEncoder
         from ssvae.components.factory import build_encoder
 
         config = SSVAEConfig(
             encoder_type="conv",
             prior_type="mixture",
-            num_components=5
+            num_components=5,
+            latent_dim=4,
+            use_tau_classifier=False,
         )
 
-        with pytest.raises(ValueError, match="Mixture prior not supported"):
-            build_encoder(config, input_hw=(28, 28))
+        encoder = build_encoder(config, input_hw=(28, 28))
+        assert isinstance(encoder, MixtureConvEncoder)
 
 
 class TestLossFunctionInvariants:

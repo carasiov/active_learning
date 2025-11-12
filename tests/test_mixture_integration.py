@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
 from ssvae import SSVAE, SSVAEConfig
 
@@ -12,12 +11,13 @@ def test_mixture_model_trains_without_error():
     config = SSVAEConfig(
         prior_type="mixture",
         num_components=3,
-        component_kl_weight=0.1,
+        kl_c_weight=0.1,
         latent_dim=2,
         hidden_dims=(64, 32),
         max_epochs=2,
         batch_size=32,
         patience=10,
+        use_tau_classifier=False,
     )
     
     # Create small dummy dataset
@@ -46,7 +46,12 @@ def test_mixture_vs_standard_mode_checkpoint_isolation():
     vae_std.fit(X, y, weights_path="/tmp/test_standard.ckpt")
     
     # Train mixture model
-    config_mix = SSVAEConfig(prior_type="mixture", num_components=3, max_epochs=1)
+    config_mix = SSVAEConfig(
+        prior_type="mixture",
+        num_components=3,
+        max_epochs=1,
+        use_tau_classifier=False,
+    )
     vae_mix = SSVAE(input_dim=(28, 28), config=config_mix)
     vae_mix.fit(X, y, weights_path="/tmp/test_mixture.ckpt")
     
@@ -56,17 +61,26 @@ def test_mixture_vs_standard_mode_checkpoint_isolation():
     assert vae_mix.config.num_components == 3
 
 
-def test_conv_mixture_raises_error():
-    """Verify mixture prior with conv encoder raises ValueError."""
+def test_conv_mixture_initializes_and_fits():
+    """Mixture prior should work with convolutional encoders."""
     config = SSVAEConfig(
         encoder_type="conv",
         decoder_type="conv",
         prior_type="mixture",
-        num_components=5,
+        num_components=4,
+        max_epochs=1,
+        batch_size=16,
+        use_tau_classifier=False,
     )
-    
-    with pytest.raises(ValueError, match="not supported"):
-        vae = SSVAE(input_dim=(28, 28), config=config)
+
+    X = np.random.rand(64, 28, 28).astype(np.float32)
+    y = np.full(64, np.nan)
+
+    vae = SSVAE(input_dim=(28, 28), config=config)
+    history = vae.fit(X, y, weights_path="/tmp/test_conv_mixture.ckpt")
+
+    assert history is not None
+    assert len(history) > 0
 
 
 def test_mixture_predict_output_shapes():
@@ -76,6 +90,7 @@ def test_mixture_predict_output_shapes():
         num_components=5,
         latent_dim=2,
         max_epochs=1,
+        use_tau_classifier=False,
     )
     
     X_train = np.random.rand(50, 28, 28).astype(np.float32)
@@ -105,6 +120,7 @@ def test_mixture_sample_prediction():
         num_components=3,
         latent_dim=2,
         max_epochs=1,
+        use_tau_classifier=False,
     )
     
     X_train = np.random.rand(50, 28, 28).astype(np.float32)

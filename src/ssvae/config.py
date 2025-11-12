@@ -46,6 +46,7 @@ INFORMATIVE_HPARAMETERS = (
     "kl_c_weight",
     "dirichlet_alpha",
     "dirichlet_weight",
+    "learnable_pi",
     "component_diversity_weight",
     "weight_decay",
     "dropout_rate",
@@ -64,6 +65,11 @@ INFORMATIVE_HPARAMETERS = (
     "use_heteroscedastic_decoder",
     "sigma_min",
     "sigma_max",
+    "vamp_num_samples_kl",
+    "vamp_pseudo_lr_scale",
+    "vamp_pseudo_init_method",
+    "geometric_arrangement",
+    "geometric_radius",
 )
 
 @dataclass
@@ -100,7 +106,11 @@ class SSVAEConfig:
         monitor_metric: Validation metric name used for early stopping.
         use_contrastive: Whether to include the contrastive loss term.
         contrastive_weight: Scaling factor for the contrastive loss when enabled.
-        prior_type: Type of prior distribution ("standard" | "mixture").
+        prior_type: Type of prior distribution ("standard" | "mixture" | "vamp" | "geometric_mog").
+            - "standard": Simple N(0,I) Gaussian prior
+            - "mixture": Mixture of identical Gaussians with component-aware decoder
+            - "vamp": Variational Mixture of Posteriors (learned pseudo-inputs, spatial separation)
+            - "geometric_mog": Fixed geometric mixture (diagnostic tool, WARNING: induces topology)
         num_components: Number of mixture components when prior_type="mixture".
         kl_c_weight: Scaling factor applied to KL(q(c|x) || π) when mixture prior is active.
         dirichlet_alpha: Optional scalar prior strength for Dirichlet-MAP regularization on π.
@@ -109,7 +119,6 @@ class SSVAEConfig:
             - NEGATIVE (e.g., -0.05): Encourage diversity - RECOMMENDED
             - POSITIVE: Discourage diversity (causes mode collapse)
         kl_c_anneal_epochs: If >0, linearly ramp kl_c_weight from 0 to its configured value across this many epochs.
-        component_kl_weight: Deprecated alias for kl_c_weight kept for backward compatibility.
         component_embedding_dim: Dimensionality of component embeddings (default: same as latent_dim).
             Small values (4-16) recommended to avoid overwhelming latent information.
         use_component_aware_decoder: If True, use component-aware decoder architecture that processes
@@ -157,10 +166,10 @@ class SSVAEConfig:
     contrastive_weight: float = 0.0
     prior_type: str = "standard"
     num_components: int = 10
-    component_kl_weight: float | None = None
     kl_c_weight: float = 1.0
     dirichlet_alpha: float | None = None
     dirichlet_weight: float = 1.0
+    learnable_pi: bool = False  # Learn mixture weights (mixture/geometric_mog only)
     component_diversity_weight: float = 0.0
     kl_c_anneal_epochs: int = 0
     mixture_history_log_every: int = 1  # Track π and usage every N epochs
@@ -174,6 +183,19 @@ class SSVAEConfig:
     sigma_min: float = 0.05  # Minimum allowed σ (prevents collapse)
     sigma_max: float = 0.5  # Maximum allowed σ (prevents explosion)
 
+    # ═════════════════════════════════════════════════════════════════════════
+    # VampPrior Configuration (prior_type="vamp")
+    # ═════════════════════════════════════════════════════════════════════════
+    vamp_num_samples_kl: int = 1  # Monte Carlo samples for KL estimation
+    vamp_pseudo_lr_scale: float = 0.1  # Learning rate scale for pseudo-inputs (smaller than model LR)
+    vamp_pseudo_init_method: str = "random"  # Pseudo-input initialization: "random" or "kmeans"
+    
+    # ═════════════════════════════════════════════════════════════════════════
+    # Geometric MoG Configuration (prior_type="geometric_mog")
+    # ═════════════════════════════════════════════════════════════════════════
+    geometric_arrangement: str = "circle"  # Geometric arrangement: "circle" or "grid"
+    geometric_radius: float = 2.0  # Radius for circle arrangement (distance from origin)
+
     def __post_init__(self):
         """Validate configuration after initialization."""
         valid_losses = {"mse", "bce"}
@@ -182,15 +204,6 @@ class SSVAEConfig:
                 f"reconstruction_loss must be one of {valid_losses}, "
                 f"got '{self.reconstruction_loss}'"
             )
-        # Backward compatibility: if legacy component_kl_weight is provided and
-        # kl_c_weight wasn't explicitly set, adopt the legacy value.
-        if self.component_kl_weight is not None:
-            default_kl_c = SSVAEConfig.__dataclass_fields__["kl_c_weight"].default
-            if self.kl_c_weight == default_kl_c:
-                self.kl_c_weight = float(self.component_kl_weight)
-        # Mirror into legacy field for any downstream code still reading it.
-        self.component_kl_weight = float(self.kl_c_weight)
-
         if self.kl_c_anneal_epochs < 0:
             raise ValueError("kl_c_anneal_epochs must be >= 0")
         if self.dirichlet_alpha is not None and self.dirichlet_alpha <= 0.0:
@@ -209,10 +222,12 @@ class SSVAEConfig:
             raise ValueError("soft_embedding_warmup_epochs must be >= 0")
 
         # τ-classifier validation
-        if self.use_tau_classifier and self.prior_type != "mixture":
+        # All mixture-based priors (mixture, vamp, geometric_mog) support τ-classifier
+        mixture_based_priors = {"mixture", "vamp", "geometric_mog"}
+        if self.use_tau_classifier and self.prior_type not in mixture_based_priors:
             import warnings
             warnings.warn(
-                "use_tau_classifier=True only applies to mixture prior. "
+                f"use_tau_classifier=True only applies to mixture-based priors {mixture_based_priors}. "
                 "Falling back to standard classifier."
             )
             self.use_tau_classifier = False
@@ -233,8 +248,58 @@ class SSVAEConfig:
                 f"sigma_min ({self.sigma_min})"
             )
 
+        # Learnable π validation
+        if self.learnable_pi and self.prior_type not in ["mixture", "geometric_mog"]:
+            import warnings
+            warnings.warn(
+                f"learnable_pi=True but prior_type='{self.prior_type}' doesn't use "
+                "mixture weights. This setting will be ignored.",
+                UserWarning
+            )
+
+        # VampPrior validation
+        if self.vamp_num_samples_kl < 1:
+            raise ValueError("vamp_num_samples_kl must be >= 1")
+        if self.vamp_pseudo_lr_scale <= 0 or self.vamp_pseudo_lr_scale > 1.0:
+            raise ValueError(
+                f"vamp_pseudo_lr_scale must be in (0, 1], got {self.vamp_pseudo_lr_scale}"
+            )
+        valid_vamp_init_methods = {"random", "kmeans"}
+        if self.vamp_pseudo_init_method not in valid_vamp_init_methods:
+            raise ValueError(
+                f"vamp_pseudo_init_method must be one of {valid_vamp_init_methods}, "
+                f"got '{self.vamp_pseudo_init_method}'"
+            )
+
+        # Geometric MoG validation
+        valid_arrangements = {"circle", "grid"}
+        if self.geometric_arrangement not in valid_arrangements:
+            raise ValueError(
+                f"geometric_arrangement must be one of {valid_arrangements}, "
+                f"got '{self.geometric_arrangement}'"
+            )
+        if self.geometric_radius <= 0:
+            raise ValueError("geometric_radius must be positive")
+        
+        # Warn if using geometric_mog (topology concerns)
+        if self.prior_type == "geometric_mog":
+            import warnings
+            warnings.warn(
+                "WARNING: geometric_mog prior induces artificial topology on latent space. "
+                "Use only for diagnostic/curriculum purposes, not production models.",
+                UserWarning
+            )
+
     def get_informative_hyperparameters(self) -> Dict[str, object]:
         return {name: getattr(self, name) for name in INFORMATIVE_HPARAMETERS}
+
+    def is_mixture_based_prior(self) -> bool:
+        """Check if prior type uses mixture encoder (outputs component logits).
+        
+        Returns:
+            True if prior_type is mixture, vamp, or geometric_mog
+        """
+        return self.prior_type in {"mixture", "vamp", "geometric_mog"}
 
 
 def get_architecture_defaults(encoder_type: str) -> dict:
