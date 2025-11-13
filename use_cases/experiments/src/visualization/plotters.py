@@ -1382,6 +1382,168 @@ def component_embedding_plotter(context: VisualizationContext) -> ComponentResul
         )
 
 
+def plot_channel_wise_latent_spaces(
+    models: Dict[str, object],
+    output_dir: Path
+):
+    """Generate per-component latent space scatter plots (color=label, alpha=responsibility).
+
+    For each component c, creates a scatter plot showing:
+    - x/y: 2D latent coordinates
+    - color: ground-truth label (fixed palette, grey for unlabeled)
+    - alpha: responsibility r[i, c] (normalized per component for visibility)
+
+    Interpretation:
+    - "Good": per-component plots dominated by one or few label colors
+    - "Bad": every plot looks multicolored, indicating poor channel specialization
+
+    Args:
+        models: Dictionary of model_name -> model
+        output_dir: Directory to save plots
+    """
+    mixture_models = {
+        name: model for name, model in models.items()
+        if (hasattr(model.config, 'prior_type') and
+            model.config.prior_type == 'mixture' and
+            model.config.latent_dim == 2)
+    }
+
+    if not mixture_models:
+        return
+
+    for model_name, model in mixture_models.items():
+        diag_dir = model.last_diagnostics_dir
+        if not diag_dir:
+            continue
+
+        try:
+            # Load latent data
+            latent_data = model._diagnostics.load_latent_data(diag_dir)
+            if latent_data is None:
+                print(f"  Skipping {model_name}: no latent data found")
+                continue
+
+            z_mean = latent_data['z_mean']  # Shape: (N, 2)
+            labels = latent_data['labels']  # Shape: (N,)
+            responsibilities = latent_data['q_c']  # Shape: (N, K)
+
+            N, K = responsibilities.shape
+
+            # Create output directory
+            channel_dir = output_dir / 'mixture' / 'channel_latents'
+            channel_dir.mkdir(parents=True, exist_ok=True)
+
+            # Fixed color palette for labels (10 classes for MNIST)
+            num_classes = int(model.config.num_classes)
+            cmap = plt.cm.get_cmap('tab10' if num_classes <= 10 else 'tab20')
+            colors = [cmap(i) for i in range(num_classes)]
+            grey = (0.7, 0.7, 0.7, 1.0)  # Grey for unlabeled
+
+            # Create a plot for each component
+            for c in range(K):
+                fig, ax = plt.subplots(figsize=(8, 7))
+
+                # Get responsibilities for this component
+                r_c = responsibilities[:, c]
+
+                # Normalize responsibilities for this component for better visibility
+                # (optional: helps when some components have very low overall responsibility)
+                r_c_norm = r_c / (r_c.max() + 1e-8)
+
+                # Separate labeled and unlabeled points
+                labeled_mask = ~np.isnan(labels)
+                unlabeled_mask = np.isnan(labels)
+
+                # Plot unlabeled points first (in grey)
+                if unlabeled_mask.any():
+                    ax.scatter(
+                        z_mean[unlabeled_mask, 0],
+                        z_mean[unlabeled_mask, 1],
+                        c=[grey],
+                        alpha=r_c_norm[unlabeled_mask],
+                        s=20,
+                        label='Unlabeled'
+                    )
+
+                # Plot labeled points by class
+                for label_idx in range(num_classes):
+                    mask = labeled_mask & (labels == label_idx)
+                    if mask.sum() > 0:
+                        ax.scatter(
+                            z_mean[mask, 0],
+                            z_mean[mask, 1],
+                            c=[colors[label_idx]],
+                            alpha=r_c_norm[mask],
+                            s=20,
+                            label=f'Class {label_idx}'
+                        )
+
+                ax.set_xlabel('Latent Dim 1')
+                ax.set_ylabel('Latent Dim 2')
+                ax.set_title(f'{model_name}: Component {c}\n(opacity = responsibility r[i, {c}])')
+                ax.legend(title='Label', bbox_to_anchor=(1.05, 1), loc='upper left',
+                         fontsize=8, ncol=1)
+                ax.grid(True, alpha=0.3)
+
+                # Add statistics text
+                mean_resp = r_c.mean()
+                max_resp = r_c.max()
+                stats_text = f'Mean r: {mean_resp:.3f}\nMax r: {max_resp:.3f}'
+                ax.text(0.02, 0.98, stats_text, transform=ax.transAxes,
+                       verticalalignment='top', bbox=dict(boxstyle='round',
+                       facecolor='white', alpha=0.8), fontsize=9)
+
+                plt.tight_layout()
+
+                # Save plot
+                output_path = channel_dir / f'channel_{c}.png'
+                plt.savefig(output_path, dpi=150, bbox_inches='tight')
+                plt.close(fig)
+
+            print(f"  Saved: {channel_dir} (K={K} component plots)")
+
+        except Exception as e:
+            print(f"Warning: Could not plot channel-wise latent spaces for {model_name}: {e}")
+            import traceback
+            traceback.print_exc()
+
+
+@register_plotter
+def channel_wise_latent_plotter(context: VisualizationContext) -> ComponentResult:
+    """Generate per-component latent space plots (color=label, alpha=responsibility).
+
+    Creates a separate scatter plot for each mixture component showing:
+    - Point color: ground-truth label (fixed palette)
+    - Point opacity: responsibility for that component
+
+    Helps assess whether components specialize on specific labels.
+
+    Only applicable for mixture priors with 2D latent space.
+
+    Returns:
+        ComponentResult.disabled if not mixture prior or not 2D
+        ComponentResult.success if plots generated
+    """
+    if getattr(context.config, "prior_type", "standard") != "mixture":
+        return ComponentResult.disabled(
+            reason="Requires mixture prior"
+        )
+
+    if context.config.latent_dim != 2:
+        return ComponentResult.disabled(
+            reason="Requires 2D latent space"
+        )
+
+    try:
+        plot_channel_wise_latent_spaces(_single_model_dict(context.model), context.figures_dir)
+        return ComponentResult.success(data={})
+    except Exception as e:
+        return ComponentResult.failed(
+            reason="Failed to generate channel-wise latent plots",
+            error=e,
+        )
+
+
 @register_plotter
 def tau_matrix_plotter(context: VisualizationContext) -> ComponentResult:
     """Generate τ-classifier visualization suite.
