@@ -24,7 +24,7 @@
 # ============================================================================
 
 experiment:
-  name: "test"
+  name: "prior_mixture"
   description: "Test"
   tags: []
 
@@ -38,8 +38,8 @@ experiment:
 # ============================================================================
 data:
   dataset: "mnist"                  # Currently only MNIST is supported
-  num_samples: 1000                # Total samples from dataset
-  num_labeled: 100                  # Labeled samples (rest are unlabeled)
+  num_samples: 10000                # Total samples from dataset
+  num_labeled: 0                  # Labeled samples (rest are unlabeled)
   seed: 42                          # Random seed for data sampling
 
 
@@ -111,12 +111,15 @@ model:
                                     # - "standard": Single Gaussian N(0,I)
                                     # - "geometric_mog": Fixed geometric arrangement (diagnostic)
   
-  num_components: 10                # Number of mixture components (K)
+  num_components: 9                # Number of mixture components (K)
                                     # Should be >= num_classes for multimodal support
                                     # Typical range: 10-20 for MNIST
 
   # Component specialization (mixture/vamp/geometric_mog only)
-  use_component_aware_decoder: false # Let each component specialize its decoder pathway
+  use_component_aware_decoder: false # Decoder variant for component embeddings:
+                                    # - false: concat [z, e_c] as input (shared decoder weights)
+                                    # - true: separate pathways z→Dense, e_c→Dense, then merge
+                                    # Both receive embeddings; true enables specialization
                                     # Strongly recommended for mixture prior
   component_embedding_dim: 8        # Embedding size for component conditioning (4-16)
 
@@ -136,7 +139,7 @@ model:
   geometric_radius: 2.0             # Spatial radius (1.5-3.0)
 
   # Mixture/VampPrior regularization (not used with standard/geometric_mog)
-  kl_c_weight: 1.0                  # Component assignment KL weight
+  kl_c_weight: 0.1                  # Component assignment KL weight
   kl_c_anneal_epochs: 50            # Anneal kl_c_weight from 0→1 over N epochs
                                     # (0 = no annealing, start at full weight)
   
@@ -176,7 +179,7 @@ model:
   # ──────────────────────────────────────────────────────────────────────────
   # Uncertainty Estimation
   # ──────────────────────────────────────────────────────────────────────────
-  use_heteroscedastic_decoder: false # Learn per-image reconstruction variance
+  use_heteroscedastic_decoder: true # Learn per-image reconstruction variance
                                     # Outputs: (mean, sigma) for uncertainty quantification
   sigma_min: 0.05                   # Minimum variance (prevents collapse)
   sigma_max: 0.5                    # Maximum variance (prevents explosion)
