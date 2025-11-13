@@ -50,6 +50,8 @@ p(y\mid x)=\sum_c q_\phi(c\mid x)\cdot\tau_{c,y}.
 $$
 Aleatoric uncertainty lives in a **heteroscedastic** decoder variance $\sigma^2(x)$ (clamped for stability). We prefer **parsimony**: use only as many channels as needed (sparse $\pi$, usage penalties), allow multiple channels per label (multimodality), and keep **free channels** for new labels or OOD. Optional priors (fixed MoG, VampPrior, flows) may shape $p(z)$; the default is $p(z\mid c)=\mathcal N(0,I)$ with conditioning in the decoder.
 
+**On decoder architectures:** Both receive component embeddings $e_c$. *Standard*: concatenate $[z;e_c]$ into shared decoder weights. *Component-aware*: separate Dense pathways for $z$ and $e_c$ before fusion, enabling component-specific feature learning. Both expose component structure; specialization requires dedicated transformation pathways.
+
 ## How We Classify and Detect OOD
 
 Classification uses latents only. Responsibilities summarize where a point sits across channels; $\tau$ maps channels to labels. The product $r\times\tau$ yields posterior label mass in latent space without peeking at pixels. OOD is "not owned by any labeled channel": use the score $1-\max_c r_c(z)\cdot\max_y\tau_{c,y}$, optionally blended with reconstruction checks. When all $p(z\mid c)$ are identical standard normals, raw latent density is uninformative for OOD—confidence from $r$ and $\tau$ carries the signal.

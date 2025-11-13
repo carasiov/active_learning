@@ -88,9 +88,11 @@ model:
   prior_type: "standard"          # "standard", "mixture", "vamp", "geometric_mog"
   num_components: 10              # Number of mixture components (K)
 
-  # Component-aware decoder (mixture/vamp/geometric_mog only)
-  use_component_aware_decoder: false  # Enable component specialization
-  component_embedding_dim: 8      # Embedding size for conditioning
+  # Decoder Architecture (mixture/vamp/geometric_mog only)
+  use_component_aware_decoder: false  # Decoder variant:
+                                    # - false: concat [z, e_c] (shared weights)
+                                    # - true: separate Dense(z) and Dense(e_c) pathways
+  component_embedding_dim: 8      # Embedding size for component conditioning
 
   # VampPrior-specific settings (prior_type="vamp" only)
   vamp_pseudo_init_method: "kmeans"  # "kmeans" or "random"
@@ -212,7 +214,6 @@ The experimentation toolkit is now split into small packages to keep code paths 
 3. Save artifacts under `context.figures_dir`; return any metadata (e.g., reconstruction filenames) that the report should mention.
 
 Plotters run sequentially after training, so new visualizations can be dropped in without touching the CLI or pipeline.
-
 
 ---
 

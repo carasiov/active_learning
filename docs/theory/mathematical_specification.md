@@ -42,9 +42,15 @@ $$
 q_\phi(c,z\mid x)=q_\phi(c\mid x)\,q_\phi(z\mid x,c),\quad q_\phi(z\mid x,c)=\mathcal{N}\big(\mu_\phi(x,c),\operatorname{diag}(\sigma_\phi^2(x,c))\big).
 $$
 
-### 3.3 Component-Aware Decoder
+### 3.3 Decoder Architectures
 
-Concatenate an embedding $e_c$ with $z$: $\tilde z=[z; e_c]$, so $p_\theta(x\mid z,c)=p_\theta(x\mid \tilde z)$. **Conditioning policy:** train by evaluating the reconstruction term as a **weighted sum over channels** (expectation under $q(c\mid x)$); for efficiency we enable **Top-$M$ gating (default $M{=}5$)** and keep $\mathrm{KL}_c$ (if used) over all $K$. Optional: a short **soft-embedding warm-up** (replace $e_c$ by $\sum_c q(c\mid x)e_c$) in the first epochs; at **generation** time, sample a hard $c$ and decode with $e_c$.
+**Standard (concatenated):** Embed component $c$ as $e_c$, then concatenate with $z$: $\tilde z=[z; e_c]$, so $p_\theta(x\mid z,c)=p_\theta(x\mid \tilde z)$ with shared decoder weights.
+
+**Component-aware:** Separate transformation pathways for $z$ and $e_c$ before fusion:
+$$z_{\text{path}} = W_z(z), \quad e_{\text{path}} = W_e(e_c), \quad \tilde z = [z_{\text{path}}; e_{\text{path}}], \quad p_\theta(x\mid z,c)=p_\theta(x\mid \tilde z).$$
+This enables component-specific feature learning while both architectures receive embedding context.
+
+**Conditioning policy:** Train by evaluating the reconstruction term as a **weighted sum over channels** (expectation under $q(c\mid x)$); for efficiency we enable **Top-$M$ gating (default $M{=}5$)** and keep $\mathrm{KL}_c$ (if used) over all $K$. Optional: a short **soft-embedding warm-up** (replace $e_c$ by $\sum_c q(c\mid x)e_c$) in the first epochs; at **generation** time, sample a hard $c$ and decode with $e_c$.
 
 ---
 
