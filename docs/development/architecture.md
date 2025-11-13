@@ -158,37 +158,6 @@ network, variables = SSVAEFactory.create_network(
 
 **Location:** `src/ssvae/config.py`
 
-**Key Parameters:**
-```python
-@dataclass
-class SSVAEConfig:
-    # Architecture
-    latent_dim: int = 2
-    hidden_dims: Tuple[int, ...] = (256, 128, 64)
-    num_classes: int = 10
-
-    # Prior
-    prior_type: str = "standard"  # or "mixture"
-    num_components: int = 10  # for mixture prior
-
-    # Loss weights
-    recon_weight: float = 1.0
-    kl_weight: float = 1.0
-    label_weight: float = 1.0
-    kl_c_weight: float = 1.0  # mixture KL weight
-
-    # Regularization
-    component_diversity_weight: float = 0.0
-    dirichlet_alpha: Optional[float] = None
-    dirichlet_weight: float = 1.0
-
-    # Training
-    batch_size: int = 128
-    learning_rate: float = 1e-3
-    max_epochs: int = 100
-    patience: int = 10
-```
-
 **Design Rationale:**
 - Dataclass provides free validation, serialization, equality
 - Explicit types catch errors at config time
