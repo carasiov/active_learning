@@ -7,12 +7,12 @@ from typing import Any, Dict, Tuple
 
 import numpy as np
 
-from ssvae import SSVAE, SSVAEConfig
+from model.ssvae import SSVAE, SSVAEConfig
 
 from .structure import RunPaths
-from metrics import MetricContext, collect_metrics
-from metrics.providers import defaults as _  # noqa: F401 - registers default metrics
-from visualization import VisualizationContext, render_all_plots
+from infrastructure.metrics import MetricContext, collect_metrics
+from infrastructure.metrics.providers import defaults as _  # noqa: F401 - registers default metrics
+from infrastructure.visualization import VisualizationContext, render_all_plots
 
 
 def _maybe_tuple_hidden_dims(model_config: Dict[str, Any]) -> Dict[str, Any]:

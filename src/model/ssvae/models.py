@@ -18,19 +18,19 @@ import numpy as np
 import warnings
 from jax import random
 from jax.nn import softmax
-from utils import configure_jax_device, print_device_banner
+from model.utils import configure_jax_device, print_device_banner
 
 configure_jax_device()
 
 import jax.numpy as jnp
 
-from callbacks import CSVExporter, ConsoleLogger, LossCurvePlotter, MixtureHistoryTracker, TrainingCallback
-from ssvae.checkpoint import CheckpointManager
-from ssvae.config import SSVAEConfig
-from ssvae.diagnostics import DiagnosticsCollector
-from ssvae.factory import SSVAEFactory
-from training.trainer import MetricsDict, Trainer, TrainerLoopHooks
-from training.train_state import SSVAETrainState
+from model.callbacks import CSVExporter, ConsoleLogger, LossCurvePlotter, MixtureHistoryTracker, TrainingCallback
+from model.ssvae.checkpoint import CheckpointManager
+from model.ssvae.config import SSVAEConfig
+from model.ssvae.diagnostics import DiagnosticsCollector
+from model.ssvae.factory import SSVAEFactory
+from model.training.trainer import MetricsDict, Trainer, TrainerLoopHooks
+from model.training.train_state import SSVAETrainState
 
 
 COMPONENT_PRIORS = {"mixture", "geometric_mog", "vamp"}

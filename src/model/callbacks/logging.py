@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict
 
-from utils import get_device_info
+from model.utils import get_device_info
 
 from .base_callback import HistoryDict, MetricsDict, TrainingCallback
 

@@ -32,6 +32,6 @@ from __future__ import annotations
 
 # Import directly from common.status to ensure consistency
 # Both metrics and visualizations use the same status model
-from common.status import ComponentResult, ComponentStatus
+from infrastructure import ComponentResult, ComponentStatus
 
 __all__ = ["ComponentResult", "ComponentStatus"]

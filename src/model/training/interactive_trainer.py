@@ -6,9 +6,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from ssvae.config import SSVAEConfig
-from callbacks import TrainingCallback
-from training.trainer import Trainer
+from model.ssvae.config import SSVAEConfig
+from model.callbacks import TrainingCallback
+from model.training.trainer import Trainer
 
 HistoryDict = Dict[str, List[float]]
 

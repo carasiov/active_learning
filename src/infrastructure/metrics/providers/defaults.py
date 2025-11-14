@@ -14,7 +14,7 @@ from ssvae.diagnostics import DiagnosticsCollector
 # Import infrastructure from metrics registry
 from metrics import MetricContext, register_metric
 # Import status directly from common
-from common.status import ComponentResult
+from infrastructure import ComponentResult
 
 
 def _final(history: Dict[str, list[float]], key: str, default: float = 0.0) -> float:

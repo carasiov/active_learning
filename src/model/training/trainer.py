@@ -8,9 +8,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from callbacks import TrainingCallback
-from ssvae.config import SSVAEConfig
-from training.train_state import SSVAETrainState
+from model.callbacks import TrainingCallback
+from model.ssvae.config import SSVAEConfig
+from model.training.train_state import SSVAETrainState
 
 MetricsDict = Dict[str, jnp.ndarray]
 HistoryDict = Dict[str, list[float]]

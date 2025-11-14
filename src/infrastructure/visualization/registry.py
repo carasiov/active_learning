@@ -11,7 +11,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 
-from common.status import ComponentResult
+from infrastructure import ComponentResult
 
 logger = logging.getLogger("experiment")
 

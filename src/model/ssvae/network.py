@@ -5,17 +5,17 @@ from pathlib import Path
 
 from typing import Dict, List, NamedTuple, Optional, Tuple
 
-from utils import configure_jax_device, print_device_banner
+from model.utils import configure_jax_device, print_device_banner
 
 configure_jax_device()
 
 import numpy as np
 
-from ssvae.config import SSVAEConfig
-from ssvae.components.factory import build_classifier, build_decoder, build_encoder, get_architecture_dims
-from callbacks import CSVExporter, ConsoleLogger, LossCurvePlotter, TrainingCallback
-from training.train_state import SSVAETrainState
-from training.trainer import Trainer
+from model.ssvae.config import SSVAEConfig
+from model.ssvae.components.factory import build_classifier, build_decoder, build_encoder, get_architecture_dims
+from model.callbacks import CSVExporter, ConsoleLogger, LossCurvePlotter, TrainingCallback
+from model.training.train_state import SSVAETrainState
+from model.training.trainer import Trainer
 
 try:
     import jax

@@ -1,11 +1,11 @@
 """Experiment-specific run directory creation.
 
-IMPORTANT: The RunPaths schema has been moved to src/runpaths/ at the repository root
+IMPORTANT: The RunPaths schema has been moved to src/infrastructure/runpaths/
 to enable reuse across projects. This module retains experiment-specific logic
 for creating runs in the experiments/results/ directory.
 
 For the RunPaths dataclass itself, import from:
-    from runpaths import RunPaths, sanitize_name
+    from infrastructure.runpaths import RunPaths, sanitize_name
 """
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Tuple
 
 # Import schema from infrastructure
-from runpaths import RunPaths, sanitize_name
+from infrastructure.runpaths import RunPaths, sanitize_name
 
 # Experiment-specific constants
 EXPERIMENTS_ROOT = Path(__file__).resolve().parents[1]

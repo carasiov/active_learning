@@ -19,9 +19,9 @@ Output:
 from pathlib import Path
 import tempfile
 
-from ssvae.config import SSVAEConfig
+from model.ssvae.config import SSVAEConfig
 from use_cases.experiments.src.naming import generate_architecture_code
-from logging import (
+from infrastructure.logging import (
     setup_experiment_logging,
     log_section_header,
     log_model_initialization,

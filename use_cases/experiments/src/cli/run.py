@@ -8,8 +8,8 @@ import warnings
 from pathlib import Path
 
 import numpy as np
-from ssvae import SSVAEConfig
-from utils import get_device_info
+from model.ssvae import SSVAEConfig
+from model.utils import get_device_info
 
 from ..naming import generate_architecture_code
 from ..validation import validate_config, ConfigValidationError
