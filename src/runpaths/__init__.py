@@ -7,7 +7,7 @@ in a standardized way. The schema can be used by:
 - Analysis tools to process results
 
 Usage:
-    from io import RunPaths, sanitize_name
+    from runpaths import RunPaths, sanitize_name
 
     # Create paths manually
     paths = RunPaths(
