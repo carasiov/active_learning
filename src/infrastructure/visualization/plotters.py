@@ -127,9 +127,9 @@ def latent_by_component_plotter(context: VisualizationContext) -> ComponentResul
     Returns:
         ComponentResult.disabled if not mixture prior, otherwise success/failed
     """
-    if getattr(context.config, "prior_type", "standard") != "mixture":
+    if not context.config.is_mixture_based_prior():
         return ComponentResult.disabled(
-            reason="Requires mixture prior"
+            reason="Requires mixture-based prior"
         )
 
     try:
@@ -152,8 +152,8 @@ def channel_latent_responsibility_plotter(context: VisualizationContext) -> Comp
     Returns:
         ComponentResult with appropriate status
     """
-    if getattr(context.config, "prior_type", "standard") != "mixture":
-        return ComponentResult.disabled(reason="Requires mixture prior")
+    if not context.config.is_mixture_based_prior():
+        return ComponentResult.disabled(reason="Requires mixture-based prior")
 
     if getattr(context.config, "latent_dim", None) != 2:
         return ComponentResult.skipped(reason="Requires 2D latent space")
@@ -184,9 +184,9 @@ def responsibility_histogram_plotter(context: VisualizationContext) -> Component
     Returns:
         ComponentResult with appropriate status
     """
-    if getattr(context.config, "prior_type", "standard") != "mixture":
+    if not context.config.is_mixture_based_prior():
         return ComponentResult.disabled(
-            reason="Requires mixture prior"
+            reason="Requires mixture-based prior"
         )
 
     try:
@@ -208,9 +208,9 @@ def mixture_evolution_plotter(context: VisualizationContext) -> ComponentResult:
     Returns:
         ComponentResult with appropriate status
     """
-    if getattr(context.config, "prior_type", "standard") != "mixture":
+    if not context.config.is_mixture_based_prior():
         return ComponentResult.disabled(
-            reason="Requires mixture prior"
+            reason="Requires mixture-based prior"
         )
 
     try:
@@ -233,9 +233,9 @@ def component_embedding_plotter(context: VisualizationContext) -> ComponentResul
     Returns:
         ComponentResult with appropriate status
     """
-    if getattr(context.config, "prior_type", "standard") != "mixture":
+    if not context.config.is_mixture_based_prior():
         return ComponentResult.disabled(
-            reason="Requires mixture prior"
+            reason="Requires mixture-based prior"
         )
 
     if not getattr(context.config, "use_component_aware_decoder", False):

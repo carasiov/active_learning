@@ -55,7 +55,7 @@ def plot_latent_by_component(
     """
     mixture_models = {
         name: model for name, model in models.items()
-        if hasattr(model.config, 'prior_type') and model.config.prior_type == 'mixture'
+        if model.config.is_mixture_based_prior()
         and model.config.latent_dim == 2
     }
 
@@ -156,7 +156,7 @@ def plot_channel_latent_responsibility(
     channel_viz_models = {
         name: model
         for name, model in models.items()
-        if getattr(getattr(model, "config", None), "prior_type", "standard") == "mixture"
+        if hasattr(model, "config") and model.config.is_mixture_based_prior()
         and getattr(getattr(model, "config", None), "latent_dim", 2) == 2
     }
 
@@ -320,7 +320,7 @@ def plot_responsibility_histogram(
     """
     mixture_models = {
         name: model for name, model in models.items()
-        if hasattr(model.config, 'prior_type') and model.config.prior_type == 'mixture'
+        if model.config.is_mixture_based_prior()
     }
 
     if not mixture_models:
@@ -398,7 +398,7 @@ def plot_mixture_evolution(
     """
     mixture_models = {
         name: model for name, model in models.items()
-        if hasattr(model.config, 'prior_type') and model.config.prior_type == 'mixture'
+        if model.config.is_mixture_based_prior()
     }
 
     if not mixture_models:
@@ -479,8 +479,8 @@ def plot_component_embedding_divergence(
     """
     component_aware_models = {
         name: model for name, model in models.items()
-        if (hasattr(model.config, 'prior_type') and
-            model.config.prior_type == 'mixture' and
+        if (
+            model.config.is_mixture_based_prior() and
             hasattr(model.config, 'use_component_aware_decoder') and
             model.config.use_component_aware_decoder)
     }
@@ -605,8 +605,8 @@ def plot_reconstruction_by_component(
     """
     component_aware_models = {
         name: model for name, model in models.items()
-        if (hasattr(model.config, 'prior_type') and
-            model.config.prior_type == 'mixture' and
+        if (
+            model.config.is_mixture_based_prior() and
             hasattr(model.config, 'use_component_aware_decoder') and
             model.config.use_component_aware_decoder)
     }
