@@ -10,7 +10,8 @@ import numpy as np
 from ssvae import SSVAE, SSVAEConfig
 
 from .structure import RunPaths
-from .metrics import MetricContext, collect_metrics
+from metrics import MetricContext, collect_metrics
+from metrics.providers import defaults as _  # noqa: F401 - registers default metrics
 from visualization import VisualizationContext, render_all_plots
 
 
