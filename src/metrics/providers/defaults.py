@@ -11,10 +11,10 @@ import numpy as np
 
 from ssvae.diagnostics import DiagnosticsCollector
 
-# Import infrastructure from top-level (registry moved to src/metrics/)
+# Import infrastructure from metrics registry
 from metrics import MetricContext, register_metric
-# Import status wrapper (re-exports from common.status)
-from .status import ComponentResult
+# Import status directly from common
+from common.status import ComponentResult
 
 
 def _final(history: Dict[str, list[float]], key: str, default: float = 0.0) -> float:

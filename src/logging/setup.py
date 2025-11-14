@@ -13,7 +13,7 @@ Design principles (from AGENTS.md):
 - Persistent logs survive terminal disconnection
 
 Usage:
-    from src.logging import setup_experiment_logging
+    from logging import setup_experiment_logging
 
     logger = setup_experiment_logging(run_paths.logs)
     logger.info("Experiment starting...")

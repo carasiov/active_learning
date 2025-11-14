@@ -12,7 +12,8 @@ packages = [
     { include = "common", from = "src" },
     { include = "metrics", from = "src" },
     { include = "visualization", from = "src" },
-    { include = "runpaths", from = "src" },
+    { include = "io", from = "src" },
+    { include = "logging", from = "src" },
 ]
 
 [tool.poetry.dependencies]

@@ -21,7 +21,7 @@ import tempfile
 
 from ssvae.config import SSVAEConfig
 from use_cases.experiments.src.naming import generate_architecture_code
-from use_cases.experiments.src.logging_setup import (
+from logging import (
     setup_experiment_logging,
     log_section_header,
     log_model_initialization,
