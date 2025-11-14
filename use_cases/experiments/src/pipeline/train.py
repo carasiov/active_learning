@@ -10,7 +10,7 @@ import numpy as np
 from ssvae import SSVAE, SSVAEConfig
 
 from ..io import RunPaths
-from metrics import MetricContext, collect_metrics
+from ..metrics import MetricContext, collect_metrics
 from visualization import VisualizationContext, render_all_plots
 
 
