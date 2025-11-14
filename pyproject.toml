@@ -12,7 +12,7 @@ packages = [
     { include = "common", from = "src" },
     { include = "metrics", from = "src" },
     { include = "visualization", from = "src" },
-    { include = "io", from = "src" },
+    { include = "runpaths", from = "src" },
     { include = "logging", from = "src" },
 ]
 
