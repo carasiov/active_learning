@@ -5,10 +5,8 @@ description = "Semi-Supervised Variational Autoencoder for Active Learning"
 authors = ["Andreas Carasiov"]
 readme = "README.md"
 packages = [
-    { include = "ssvae", from = "src" },
-    { include = "callbacks", from = "src" },
-    { include = "training", from = "src" },
-    { include = "utils", from = "src" },
+    { include = "model", from = "src" },
+    { include = "infrastructure", from = "src" },
 ]
 
 [tool.poetry.dependencies]

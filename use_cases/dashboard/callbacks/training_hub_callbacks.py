@@ -13,7 +13,7 @@ import plotly.graph_objects as go
 from queue import Empty
 from dataclasses import replace
 
-from training.interactive_trainer import InteractiveTrainer
+from model.training.interactive_trainer import InteractiveTrainer
 
 from use_cases.dashboard.utils.training_callback import DashboardMetricsCallback
 from use_cases.dashboard.core import state as dashboard_state

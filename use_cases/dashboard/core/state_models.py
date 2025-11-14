@@ -8,8 +8,8 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from ssvae import SSVAE, SSVAEConfig
-from training.interactive_trainer import InteractiveTrainer
+from model.ssvae import SSVAE, SSVAEConfig
+from model.training.interactive_trainer import InteractiveTrainer
 
 
 @dataclass(frozen=True)

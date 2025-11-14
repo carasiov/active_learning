@@ -22,8 +22,8 @@ if str(SRC_DIR) not in sys.path:
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from ssvae import SSVAE, SSVAEConfig  # noqa: E402
-from training.interactive_trainer import InteractiveTrainer  # noqa: E402
+from model.ssvae import SSVAE, SSVAEConfig  # noqa: E402
+from model.training.interactive_trainer import InteractiveTrainer  # noqa: E402
 from data.mnist import load_train_images_for_ssvae, load_mnist_splits  # noqa: E402
 
 from use_cases.dashboard.utils.visualization import (  # noqa: E402

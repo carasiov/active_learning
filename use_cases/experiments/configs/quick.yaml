@@ -135,7 +135,7 @@ model:
   # Geometric MoG settings (only used when prior_type="geometric_mog")
   # Fixed geometric arrangement for debugging/visualization
   # For details, see geometric_grid_mnist.yaml
-  geometric_arrangement: "grid"   # "circle" (any K) or "grid" (K must be perfect square)
+  geometric_arrangement: "circle"   # "circle" (any K) or "grid" (K must be perfect square)
   geometric_radius: 2.0             # Spatial radius (1.5-3.0)
 
   # Mixture/VampPrior regularization (not used with standard/geometric_mog)

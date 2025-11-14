@@ -32,8 +32,8 @@ class TestTauClassifierIntegration:
 
     def test_tau_classifier_initialization(self):
         """Test that τ-classifier is initialized correctly."""
-        from ssvae import SSVAE
-        from ssvae.config import SSVAEConfig
+        from model.ssvae import SSVAE
+        from model.ssvae.config import SSVAEConfig
 
         # Create config with τ-classifier enabled
         config = SSVAEConfig(
@@ -55,8 +55,8 @@ class TestTauClassifierIntegration:
 
     def test_tau_classifier_initialization_for_vamp_prior(self):
         """τ-classifier should also initialize for VampPrior."""
-        from ssvae import SSVAE
-        from ssvae.config import SSVAEConfig
+        from model.ssvae import SSVAE
+        from model.ssvae.config import SSVAEConfig
 
         config = SSVAEConfig(
             latent_dim=2,
@@ -71,8 +71,8 @@ class TestTauClassifierIntegration:
 
     def test_tau_classifier_disabled_for_standard_prior(self):
         """Test that τ-classifier is not used with standard prior."""
-        from ssvae import SSVAE
-        from ssvae.config import SSVAEConfig
+        from model.ssvae import SSVAE
+        from model.ssvae.config import SSVAEConfig
 
         config = SSVAEConfig(
             latent_dim=2,
@@ -88,8 +88,8 @@ class TestTauClassifierIntegration:
 
     def test_end_to_end_training_with_tau(self, mock_mnist_data, tmp_path):
         """Test complete training pipeline with τ-classifier."""
-        from ssvae import SSVAE
-        from ssvae.config import SSVAEConfig
+        from model.ssvae import SSVAE
+        from model.ssvae.config import SSVAEConfig
 
         X, y = mock_mnist_data
         checkpoint_path = str(tmp_path / "test_tau.ckpt")
@@ -133,8 +133,8 @@ class TestTauClassifierIntegration:
 
     def test_tau_counts_accumulate_during_training(self, mock_mnist_data, tmp_path):
         """Test that τ counts accumulate during training."""
-        from ssvae import SSVAE
-        from ssvae.config import SSVAEConfig
+        from model.ssvae import SSVAE
+        from model.ssvae.config import SSVAEConfig
 
         X, y = mock_mnist_data
         checkpoint_path = str(tmp_path / "test_counts.ckpt")
@@ -166,8 +166,8 @@ class TestTauClassifierIntegration:
 
     def test_prediction_with_tau_classifier(self, mock_mnist_data, tmp_path):
         """Test that predictions use τ-classifier."""
-        from ssvae import SSVAE
-        from ssvae.config import SSVAEConfig
+        from model.ssvae import SSVAE
+        from model.ssvae.config import SSVAEConfig
 
         X, y = mock_mnist_data
         checkpoint_path = str(tmp_path / "test_pred.ckpt")
@@ -204,8 +204,8 @@ class TestTauClassifierIntegration:
 
     def test_prediction_with_mixture_return(self, mock_mnist_data, tmp_path):
         """Test prediction returns responsibilities when requested."""
-        from ssvae import SSVAE
-        from ssvae.config import SSVAEConfig
+        from model.ssvae import SSVAE
+        from model.ssvae.config import SSVAEConfig
 
         X, y = mock_mnist_data
         checkpoint_path = str(tmp_path / "test_mixture.ckpt")
@@ -237,8 +237,8 @@ class TestTauClassifierIntegration:
 
     def test_tau_training_passes_tau_to_train_step(self, mock_mnist_data, tmp_path):
         """Trainer should supply τ to the train_step function when enabled."""
-        from ssvae import SSVAE
-        from ssvae.config import SSVAEConfig
+        from model.ssvae import SSVAE
+        from model.ssvae.config import SSVAEConfig
 
         X, y = mock_mnist_data
         checkpoint_path = str(tmp_path / "tau_train_step.ckpt")
@@ -271,8 +271,8 @@ class TestTauClassifierIntegration:
 
     def test_non_tau_training_does_not_request_tau(self, mock_mnist_data, tmp_path):
         """Standard prior should never receive τ context."""
-        from ssvae import SSVAE
-        from ssvae.config import SSVAEConfig
+        from model.ssvae import SSVAE
+        from model.ssvae.config import SSVAEConfig
 
         X, y = mock_mnist_data
         checkpoint_path = str(tmp_path / "standard_train.ckpt")
@@ -300,8 +300,8 @@ class TestTauClassifierIntegration:
 
     def test_tau_eval_receives_tau_context(self, mock_mnist_data, tmp_path):
         """Evaluation metrics should also see τ context when enabled."""
-        from ssvae import SSVAE
-        from ssvae.config import SSVAEConfig
+        from model.ssvae import SSVAE
+        from model.ssvae.config import SSVAEConfig
 
         X, y = mock_mnist_data
         checkpoint_path = str(tmp_path / "tau_eval.ckpt")
@@ -334,8 +334,8 @@ class TestTauClassifierIntegration:
 
     def test_backward_compatibility_standard_classifier(self, mock_mnist_data, tmp_path):
         """Test that standard classifier still works when τ disabled."""
-        from ssvae import SSVAE
-        from ssvae.config import SSVAEConfig
+        from model.ssvae import SSVAE
+        from model.ssvae.config import SSVAEConfig
 
         X, y = mock_mnist_data
         checkpoint_path = str(tmp_path / "test_standard.ckpt")
@@ -367,8 +367,8 @@ class TestTauClassifierIntegration:
 
     def test_tau_diagnostics(self, mock_mnist_data, tmp_path):
         """Test τ-classifier diagnostic outputs."""
-        from ssvae import SSVAE
-        from ssvae.config import SSVAEConfig
+        from model.ssvae import SSVAE
+        from model.ssvae.config import SSVAEConfig
 
         X, y = mock_mnist_data
         checkpoint_path = str(tmp_path / "test_diag.ckpt")
@@ -404,8 +404,8 @@ class TestTauClassifierIntegration:
 
     def test_ood_detection(self, mock_mnist_data, tmp_path):
         """Test OOD detection capability."""
-        from ssvae import SSVAE
-        from ssvae.config import SSVAEConfig
+        from model.ssvae import SSVAE
+        from model.ssvae.config import SSVAEConfig
 
         X, y = mock_mnist_data
         checkpoint_path = str(tmp_path / "test_ood.ckpt")
@@ -440,8 +440,8 @@ def run_basic_validation():
     print("-" * 60)
 
     import numpy as np
-    from ssvae import SSVAE
-    from ssvae.config import SSVAEConfig
+    from model.ssvae import SSVAE
+    from model.ssvae.config import SSVAEConfig
 
     # Create tiny dataset
     np.random.seed(42)

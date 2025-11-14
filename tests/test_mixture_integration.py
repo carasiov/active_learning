@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from ssvae import SSVAE, SSVAEConfig
+from model.ssvae import SSVAE, SSVAEConfig
 
 
 def test_mixture_model_trains_without_error():

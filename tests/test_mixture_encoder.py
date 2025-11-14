@@ -12,8 +12,8 @@ import pytest
 from jax import random
 
 from callbacks.mixture_tracking import MixtureHistoryTracker
-from ssvae import SSVAE
-from ssvae.components.encoders import DenseEncoder, MixtureConvEncoder, MixtureDenseEncoder
+from model.ssvae import SSVAE
+from model.ssvae.components.encoders import DenseEncoder, MixtureConvEncoder, MixtureDenseEncoder
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from use_cases.experiments.src.visualization.plotters import _extract_component_recon
 

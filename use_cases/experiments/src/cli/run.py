@@ -8,20 +8,17 @@ import warnings
 from pathlib import Path
 
 import numpy as np
-from ssvae import SSVAEConfig
-from utils import get_device_info
+from model.ssvae import SSVAEConfig
+from model.utils import get_device_info
 
-from ..core.naming import generate_architecture_code
-from ..core.validation import validate_config, ConfigValidationError
-from ..io import create_run_paths, write_config_copy, write_report, write_summary
-from ..pipeline import (
-    add_repo_paths,
-    augment_config_metadata,
-    load_experiment_config,
-    prepare_data,
-    run_training_pipeline,
-)
-from ..utils import format_experiment_header, format_training_section_header
+from ..naming import generate_architecture_code
+from ..validation import validate_config, ConfigValidationError
+from ..structure import create_run_paths
+from ..reporting import write_config_copy, write_report, write_summary
+from ..config import add_repo_paths, augment_config_metadata, load_experiment_config
+from ..data import prepare_data
+from ..run import run_training_pipeline
+from ..formatters import format_experiment_header, format_training_section_header
 
 EXPERIMENTS_DIR = Path(__file__).resolve().parents[2]
 
