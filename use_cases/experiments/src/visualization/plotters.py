@@ -1,12 +1,15 @@
 """Reusable utilities for model comparison and visualization."""
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend
+import matplotlib.cm as cm
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 import numpy as np
 import seaborn as sns
 
@@ -133,6 +136,48 @@ def plot_latent_spaces(
 
 def _sanitize_model_name(name: str) -> str:
     return "".join(c.lower() if c.isalnum() else "_" for c in name).strip("_") or "model"
+
+
+def _build_label_palette(num_labels: int) -> np.ndarray:
+    """Return an RGBA palette with stable colors across class counts."""
+    if num_labels <= 10:
+        base_cmap = cm.get_cmap("tab10")
+    elif num_labels <= 20:
+        base_cmap = cm.get_cmap("tab20")
+    else:
+        base_cmap = cm.get_cmap("nipy_spectral")
+
+    anchors = np.linspace(0, 1, num_labels, endpoint=False) if num_labels > 0 else np.array([0.0])
+    palette = np.stack([base_cmap(anchor) for anchor in anchors], axis=0) if num_labels > 0 else np.ones((1, 4))
+    palette[:, 3] = 1.0  # Ensure opaque baseline colors
+    return palette
+
+
+def _downsample_points(
+    latent: np.ndarray,
+    responsibilities: np.ndarray,
+    labels: np.ndarray,
+    *,
+    max_points: int = 20000,
+    seed: int = 0,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Subsample points for plotting so figures stay readable."""
+    total = latent.shape[0]
+    if total <= max_points:
+        return latent, responsibilities, labels
+
+    rng = np.random.default_rng(seed)
+    indices = np.sort(rng.choice(total, size=max_points, replace=False))
+    return latent[indices], responsibilities[indices], labels[indices]
+
+
+def _compute_limits(latent: np.ndarray, *, padding: float = 0.05) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+    """Return shared axis limits with padding for consistent layouts."""
+    x_min, x_max = latent[:, 0].min(), latent[:, 0].max()
+    y_min, y_max = latent[:, 1].min(), latent[:, 1].max()
+    x_pad = (x_max - x_min) * padding or 1e-3
+    y_pad = (y_max - y_min) * padding or 1e-3
+    return (x_min - x_pad, x_max + x_pad), (y_min - y_pad, y_max + y_pad)
 
 
 def _extract_component_recon(extras: Dict[str, Any]) -> Tuple[np.ndarray | None, np.ndarray | None, str | None]:
@@ -333,6 +378,165 @@ def plot_latent_by_component(
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     print(f"  Saved: {output_path}")
     plt.close()
+
+
+def plot_channel_latent_responsibility(
+    models: Dict[str, object],
+    X_data: np.ndarray,
+    y_true: np.ndarray,
+    output_dir: Path,
+    *,
+    max_points: int = 20000,
+    seed: int = 0,
+) -> Dict[str, Dict[str, List[str]]]:
+    """Render per-channel latent plots (color=label, alpha=responsibility)."""
+    channel_viz_models = {
+        name: model
+        for name, model in models.items()
+        if getattr(getattr(model, "config", None), "prior_type", "standard") == "mixture"
+        and getattr(getattr(model, "config", None), "latent_dim", 2) == 2
+    }
+
+    if not channel_viz_models:
+        return {}
+
+    saved_paths: Dict[str, Dict[str, List[str]]] = {}
+    y_array = np.asarray(y_true).astype(int)
+
+    for model_name, model in channel_viz_models.items():
+        try:
+            latent, _, _, _, responsibilities, _ = model.predict_batched(
+                X_data,
+                return_mixture=True,
+            )
+        except Exception as exc:
+            print(f"Warning: Could not retrieve mixture outputs for {model_name}: {exc}")
+            continue
+
+        if latent.shape[1] < 2 or responsibilities is None:
+            print(f"Warning: Skipping channel latent plot for {model_name}: latent_dim < 2 or missing q(c|x)")
+            continue
+
+        latent_2d = np.asarray(latent)[:, :2]
+        resp = np.asarray(responsibilities)
+        if resp.shape[0] != latent_2d.shape[0]:
+            print(f"Warning: Responsibilities size mismatch for {model_name}")
+            continue
+
+        latent_2d, resp, labels = _downsample_points(
+            latent_2d,
+            resp,
+            y_array,
+            max_points=max_points,
+            seed=seed,
+        )
+
+        if labels.size == 0:
+            print(f"Warning: No labels available for channel latent plot ({model_name})")
+            continue
+
+        max_label = labels.max()
+        num_classes = int(getattr(model.config, "num_classes", max(max_label + 1, 1)))
+        palette = _build_label_palette(num_classes)
+        label_colors = palette[np.clip(labels, 0, num_classes - 1)].copy()
+        invalid_mask = (labels < 0) | (labels >= num_classes)
+        if invalid_mask.any():
+            unknown_color = np.array([0.5, 0.5, 0.5, 1.0])
+            label_colors[invalid_mask] = unknown_color
+
+        channel_count = resp.shape[1]
+        if channel_count == 0:
+            continue
+
+        safe_name = _sanitize_model_name(model_name)
+        mixture_dir = output_dir / "mixture"
+        channel_dir = mixture_dir / "channel_latents"
+        if len(channel_viz_models) > 1:
+            channel_dir = channel_dir / safe_name
+        channel_dir.mkdir(parents=True, exist_ok=True)
+
+        (x_lim, y_lim) = _compute_limits(latent_2d)
+        legend_handles = [
+            Patch(facecolor=palette[i], edgecolor="none", label=str(i))
+            for i in range(num_classes)
+        ]
+        if invalid_mask.any():
+            legend_handles.append(Patch(facecolor=[0.5, 0.5, 0.5, 1.0], edgecolor="none", label="Unknown"))
+
+        def _draw_channel(ax: plt.Axes, channel_idx: int) -> None:
+            rgba = label_colors.copy()
+            rgba[:, 3] = np.clip(resp[:, channel_idx], 0.0, 1.0)
+            ax.scatter(
+                latent_2d[:, 0],
+                latent_2d[:, 1],
+                c=rgba,
+                s=10,
+                linewidths=0,
+                edgecolors="none",
+            )
+            ax.set_title(f"Channel {channel_idx}: latent space with label colors and responsibility alpha", fontsize=8)
+            ax.set_xlim(*x_lim)
+            ax.set_ylim(*y_lim)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.set_facecolor("#f5f5f5")
+
+        # Grid figure
+        n_cols = min(5, max(1, channel_count))
+        n_rows = math.ceil(channel_count / n_cols)
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 4 * n_rows))
+        if isinstance(axes, np.ndarray):
+            axes_list = axes.flatten()
+        else:
+            axes_list = [axes]
+
+        for idx in range(channel_count):
+            _draw_channel(axes_list[idx], idx)
+
+        for idx in range(channel_count, len(axes_list)):
+            axes_list[idx].axis("off")
+
+        legend_present = bool(legend_handles)
+        if legend_present:
+            fig.legend(
+                handles=legend_handles,
+                loc="lower center",
+                ncol=min(len(legend_handles), 6),
+                frameon=False,
+            )
+
+        grid_filename = "channel_latents_grid.png" if len(channel_viz_models) == 1 else f"{safe_name}_channel_latents_grid.png"
+        grid_path = channel_dir / grid_filename
+        bottom_margin = 0.14 if legend_present else 0.02
+        fig.tight_layout(rect=(0, bottom_margin, 1, 1))
+        fig.savefig(grid_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+
+        per_channel_paths: List[str] = []
+        for channel_idx in range(channel_count):
+            fig_single, ax_single = plt.subplots(figsize=(4, 4))
+            _draw_channel(ax_single, channel_idx)
+            single_path = channel_dir / f"channel_{channel_idx:02d}.png"
+            fig_single.tight_layout()
+            fig_single.savefig(single_path, dpi=150, bbox_inches="tight")
+            plt.close(fig_single)
+            try:
+                per_channel_paths.append(str(single_path.relative_to(output_dir)))
+            except ValueError:
+                per_channel_paths.append(str(single_path))
+
+        # Record relative paths for reporting
+        try:
+            relative_grid = str(grid_path.relative_to(output_dir))
+        except ValueError:
+            relative_grid = str(grid_path)
+
+        saved_paths[model_name] = {
+            "grid": relative_grid,
+            "channels": per_channel_paths,
+        }
+
+    return saved_paths
 
 
 def plot_responsibility_histogram(
@@ -1280,6 +1484,32 @@ def latent_by_component_plotter(context: VisualizationContext) -> ComponentResul
     except Exception as e:
         return ComponentResult.failed(
             reason="Failed to generate latent by component plot",
+            error=e,
+        )
+
+
+@register_plotter
+def channel_latent_responsibility_plotter(context: VisualizationContext) -> ComponentResult:
+    """Visualize channel-wise latent usage with label colors and responsibility-based alpha."""
+    if getattr(context.config, "prior_type", "standard") != "mixture":
+        return ComponentResult.disabled(reason="Requires mixture prior")
+
+    if getattr(context.config, "latent_dim", None) != 2:
+        return ComponentResult.skipped(reason="Requires 2D latent space")
+
+    try:
+        paths = plot_channel_latent_responsibility(
+            _single_model_dict(context.model),
+            context.x_train,
+            context.y_true,
+            context.figures_dir,
+        )
+        if not paths:
+            return ComponentResult.skipped(reason="Responsibilities unavailable for channel latent plots")
+        return ComponentResult.success(data={"channel_latents": paths})
+    except Exception as e:
+        return ComponentResult.failed(
+            reason="Failed to generate channel latent plots",
             error=e,
         )
 

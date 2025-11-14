@@ -22,10 +22,15 @@ use_cases/experiments/results/<name>_<timestamp>/
 ├── artifacts/                 # Checkpoints + diagnostics
 ├── figures/                   # All plots (loss curves, latent spaces, τ heatmaps…)
 │   └── mixture/               # Mixture evolution panels
+│       └── channel_latents/   # Channel-wise latent scatters (color=label, alpha=responsibility)
 └── logs/                      # CSV histories or future log streams
 ```
 
 The layout lives in `src/io/structure.py`, so any new tooling can reuse the same helper.
+
+### Channel-Wise Latent Diagnostic
+
+Mixture runs now emit `figures/mixture/channel_latents/channel_XX.png` plus a grid view. Each scatter fixes (x, y) to the true 2-D latent, colors points by the ground-truth label palette, and sets opacity to that channel’s responsibility (`r_c(x)`). This directly checks the conceptual invariant from `docs/theory/conceptual_model.md` §How-We-Classify: channels should specialize so confident regions glow in a single label color while diffuse/multi-label regions fade out. Use the grid for a global sanity check and individual files to deep-dive into problematic channels called out in review discussions.
 
 ---
 
