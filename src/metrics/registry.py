@@ -12,7 +12,7 @@ from typing import Any, Callable, Dict, List, MutableMapping, Optional, Union
 
 import numpy as np
 
-from .status import ComponentResult
+from common.status import ComponentResult
 
 # Type aliases
 MetricResult = Dict[str, Any]

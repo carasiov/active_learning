@@ -1,72 +1,24 @@
-"""Run directory organization helpers."""
+"""Experiment-specific run directory creation.
+
+IMPORTANT: The RunPaths schema has been moved to src/io/ at the repository root
+to enable reuse across projects. This module retains experiment-specific logic
+for creating runs in the experiments/results/ directory.
+
+For the RunPaths dataclass itself, import from:
+    from io import RunPaths, sanitize_name
+"""
 from __future__ import annotations
 
-import re
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Tuple
 
+# Import schema from new location
+from io import RunPaths, sanitize_name
+
+# Experiment-specific constants
 EXPERIMENTS_ROOT = Path(__file__).resolve().parents[2]
 RESULTS_DIR = EXPERIMENTS_ROOT / "results"
-
-
-def sanitize_name(name: str | None) -> str:
-    if not name:
-        return "experiment"
-    slug = re.sub(r"[^a-zA-Z0-9_-]+", "_", name.strip()).strip("_")
-    return slug or "experiment"
-
-
-@dataclass(slots=True)
-class RunPaths:
-    root: Path
-    config: Path
-    summary: Path
-    report: Path
-    artifacts: Path
-    figures: Path
-    logs: Path
-
-    # Artifact subdirectories
-    artifacts_checkpoints: Path
-    artifacts_diagnostics: Path
-    artifacts_tau: Path
-    artifacts_ood: Path
-    artifacts_uncertainty: Path
-
-    # Figure subdirectories
-    figures_core: Path
-    figures_mixture: Path
-    figures_tau: Path
-    figures_uncertainty: Path
-    figures_ood: Path
-
-    def ensure(self) -> None:
-        """Create all directories in the run structure."""
-        # Top-level directories
-        for path in (self.root, self.artifacts, self.figures, self.logs):
-            path.mkdir(parents=True, exist_ok=True)
-
-        # Artifact subdirectories
-        for path in (
-            self.artifacts_checkpoints,
-            self.artifacts_diagnostics,
-            self.artifacts_tau,
-            self.artifacts_ood,
-            self.artifacts_uncertainty,
-        ):
-            path.mkdir(parents=True, exist_ok=True)
-
-        # Figure subdirectories
-        for path in (
-            self.figures_core,
-            self.figures_mixture,
-            self.figures_tau,
-            self.figures_uncertainty,
-            self.figures_ood,
-        ):
-            path.mkdir(parents=True, exist_ok=True)
 
 
 def create_run_paths(
