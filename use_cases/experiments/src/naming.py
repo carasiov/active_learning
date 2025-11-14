@@ -28,7 +28,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ssvae.config import SSVAEConfig
+    from model.ssvae.config import SSVAEConfig
 
 
 def generate_architecture_code(config: SSVAEConfig) -> str:
@@ -372,8 +372,8 @@ debug__geo8-circle_tau_plain__20251112_160000
 
 When adding a new architectural feature:
 
-1. **Update encoder function:** Add logic to `src/core/naming.py`
-2. **Update validation:** Add constraint to `src/core/validation.py`
+1. **Update encoder function:** Add logic to `use_cases/experiments/src/naming.py`
+2. **Update validation:** Add constraint to `use_cases/experiments/src/validation.py`
 3. **Regenerate legend:** This file is auto-generated, no manual edits
 4. **Update tests:** Add test cases to `tests/test_naming.py`
 5. **Document in README:** Update experiment guide with usage examples
@@ -385,7 +385,7 @@ Plan carefully and version-bump if necessary.
 
 ## Related Documentation
 
-- **Config reference:** `src/ssvae/config.py::SSVAEConfig`
+- **Config reference:** `src/model/ssvae/config.py::SSVAEConfig`
 - **Theory:** `docs/theory/conceptual_model.md`
 - **Implementation:** `docs/development/implementation.md`
 - **Experiments:** `use_cases/experiments/README.md`

@@ -5,8 +5,8 @@ experiment directory names from SSVAE configurations.
 """
 import pytest
 
-from ssvae.config import SSVAEConfig
-from use_cases.experiments.src.core.naming import (
+from model.ssvae.config import SSVAEConfig
+from use_cases.experiments.src.naming import (
     generate_architecture_code,
     generate_naming_legend,
     _encode_prior,

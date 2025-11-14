@@ -26,7 +26,7 @@ use_cases/experiments/results/<name>_<timestamp>/
 └── logs/                      # CSV histories or future log streams
 ```
 
-The layout lives in `src/io/structure.py`, so any new tooling can reuse the same helper.
+The layout lives in `src/infrastructure/runpaths/structure.py`, so any new tooling can reuse the same helper.
 
 ### Channel-Wise Latent Diagnostic
 

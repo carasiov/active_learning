@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-from ssvae import SSVAEConfig
+from model.ssvae import SSVAEConfig
 
 
 def test_load_legacy_checkpoint_config():

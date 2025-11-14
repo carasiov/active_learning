@@ -9,8 +9,8 @@ from __future__ import annotations
 import jax.numpy as jnp
 import pytest
 
-from ssvae.config import SSVAEConfig
-from ssvae.priors import (
+from model.ssvae.config import SSVAEConfig
+from model.ssvae.priors import (
     EncoderOutput,
     GeometricMixtureOfGaussiansPrior,
     MixtureGaussianPrior,

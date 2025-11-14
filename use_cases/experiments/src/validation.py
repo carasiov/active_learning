@@ -29,7 +29,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ssvae.config import SSVAEConfig
+    from model.ssvae.config import SSVAEConfig
 
 
 class ConfigValidationError(ValueError):

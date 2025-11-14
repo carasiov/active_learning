@@ -25,7 +25,7 @@ The system implements a semi-supervised variational autoencoder (SSVAE) with a m
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    SSVAE Model (Public API)                  │
-│                     src/ssvae/models.py                      │
+│                     src/model/ssvae/models.py                      │
 │                                                               │
 │  • fit(data, labels) → train model                           │
 │  • predict(data) → latent, recon, predictions, certainty     │
@@ -73,7 +73,7 @@ The system implements a semi-supervised variational autoencoder (SSVAE) with a m
 
 **Purpose:** Enable pluggable prior distributions without modifying core model code.
 
-**Location:** `src/ssvae/priors/base.py`
+**Location:** `src/model/ssvae/priors/base.py`
 
 **Interface:**
 ```python
@@ -129,7 +129,7 @@ class PriorMode(Protocol):
 
 **Purpose:** Centralized component creation with validation and consistency checks.
 
-**Location:** `src/ssvae/factory.py`
+**Location:** `src/model/ssvae/factory.py`
 
 **Responsibilities:**
 - Create encoders, decoders, classifiers based on configuration
@@ -156,7 +156,7 @@ network, variables = SSVAEFactory.create_network(
 
 **Purpose:** Centralized configuration with type safety and defaults.
 
-**Location:** `src/ssvae/config.py`
+**Location:** `src/model/ssvae/config.py`
 
 **Design Rationale:**
 - Dataclass provides free validation, serialization, equality
@@ -168,7 +168,7 @@ network, variables = SSVAEFactory.create_network(
 
 **Purpose:** Handle model state persistence and restoration.
 
-**Location:** `src/ssvae/checkpoint_manager.py`
+**Location:** `src/model/ssvae/checkpoint.py`
 
 **Responsibilities:**
 - Save model parameters to disk
@@ -185,7 +185,7 @@ network, variables = SSVAEFactory.create_network(
 
 **Purpose:** Collect and organize training metrics.
 
-**Location:** `src/ssvae/diagnostics.py`
+**Location:** `src/model/ssvae/diagnostics.py`
 
 **Responsibilities:**
 - Compute mixture prior diagnostics (usage, entropy, π values)
@@ -203,7 +203,7 @@ network, variables = SSVAEFactory.create_network(
 
 ### Encoders
 
-**Location:** `src/ssvae/components/encoders/`
+**Location:** `src/model/ssvae/components/encoders/`
 
 **Types:**
 - `DenseEncoder`: Fully connected layers
@@ -228,7 +228,7 @@ class Encoder(nn.Module):
 
 ### Decoders
 
-**Location:** `src/ssvae/components/decoders/`
+**Location:** `src/model/ssvae/components/decoders/`
 
 **Types:**
 - `DenseDecoder`: Fully connected layers
@@ -252,7 +252,7 @@ class Decoder(nn.Module):
 
 ### Classifiers
 
-**Location:** `src/ssvae/components/classifiers/`
+**Location:** `src/model/ssvae/components/classifiers/`
 
 **Current Implementation:**
 - `DenseClassifier`: Simple MLP with softmax output
@@ -272,7 +272,7 @@ class Classifier(nn.Module):
 
 ### Priors
 
-**Location:** `src/ssvae/components/priors/`
+**Location:** `src/model/ssvae/components/priors/`
 
 **Implementations:**
 
@@ -353,7 +353,7 @@ Reconstruction  Predictions + Certainty
 
 ### Trainer
 
-**Location:** `src/training/trainer.py`
+**Location:** `src/model/training/trainer.py`
 
 **Responsibilities:**
 - Batch iteration and gradient updates
@@ -373,7 +373,7 @@ Reconstruction  Predictions + Certainty
 
 ### Losses
 
-**Location:** `src/training/losses.py`
+**Location:** `src/model/training/losses.py`
 
 **Components:**
 - **Reconstruction loss:** BCE or MSE
@@ -388,7 +388,7 @@ Reconstruction  Predictions + Certainty
 
 ### Callbacks
 
-**Location:** `src/callbacks/`
+**Location:** `src/model/callbacks/`
 
 **Types:**
 - `LoggingCallback`: Console and CSV logging

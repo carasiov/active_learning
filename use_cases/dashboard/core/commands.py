@@ -707,7 +707,7 @@ class CreateModelCommand(Command):
         from use_cases.dashboard.core.state_models import ModelMetadata, SSVAEConfig
         from datetime import datetime
         from use_cases.dashboard.core import state as dashboard_state
-        from ssvae import SSVAE
+        from model.ssvae import SSVAE
         import re
         
         # Use the provided name as model_id (sanitized)
@@ -805,8 +805,8 @@ class LoadModelCommand(Command):
         )
         from use_cases.dashboard.utils.visualization import _build_hover_metadata
         from data.mnist.mnist import load_train_images_for_ssvae, load_mnist_splits
-        from ssvae import SSVAE, SSVAEConfig
-        from training.interactive_trainer import InteractiveTrainer
+        from model.ssvae import SSVAE, SSVAEConfig
+        from model.training.interactive_trainer import InteractiveTrainer
         import pandas as pd
         import numpy as np
         

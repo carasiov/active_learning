@@ -8,40 +8,31 @@
 
 ```
 src/
-├── ssvae/              # Core SSVAE model
-│   ├── models.py       # Public API (SSVAE class)
-│   ├── network.py      # Neural network architecture
-│   ├── config.py       # Configuration dataclass
-│   ├── factory.py      # Component creation
-│   ├── checkpoint.py   # State persistence
-│   ├── diagnostics.py  # Metrics collection
-│   ├── components/     # Neural network components
-│   │   ├── encoders.py
-│   │   ├── decoders.py
-│   │   ├── classifier.py
-│   │   └── factory.py
-│   └── priors/         # Prior distributions
-│       ├── base.py     # PriorMode protocol
-│       ├── standard.py
-│       └── mixture.py
+├── model/                  # Core model layer
+│   ├── ssvae/              # SSVAE architecture & priors
+│   │   ├── models.py       # Public API (SSVAE class)
+│   │   ├── network.py      # Neural network architecture
+│   │   ├── config.py       # Configuration dataclass
+│   │   ├── factory.py      # Component creation
+│   │   ├── checkpoint.py   # State persistence helpers
+│   │   ├── diagnostics.py  # Diagnostics and analysis helpers
+│   │   ├── components/     # Encoders, decoders, tau classifier, factories
+│   │   └── priors/         # Prior distributions (standard, mixture, vamp, etc.)
+│   ├── training/           # Training loops, losses, state management
+│   ├── callbacks/          # Training observability hooks
+│   └── utils/              # JAX device helpers
 │
-├── training/           # Training infrastructure
-│   ├── trainer.py      # Main training loop
-│   ├── losses.py       # Loss functions
-│   └── train_state.py  # Training state management
-│
-├── callbacks/          # Training observability
-│   ├── base_callback.py
-│   ├── logging.py
-│   └── plotting.py
-│
-└── utils/              # Utilities
-    └── device.py       # JAX device selection
+└── infrastructure/         # Shared infrastructure for experiments & dashboard
+    ├── logging/            # Structured logging setup
+    ├── metrics/            # Metric registry + default providers
+    ├── visualization/      # Plot registry + concrete plotters
+    ├── runpaths/           # Experiment run directory schema helpers
+    └── utils/              # (Future) shared infrastructure utilities
 ```
 
 ---
 
-## Core Model (`src/ssvae/`)
+## Core Model (`src/model/ssvae/`)
 
 ### `models.py` - Public API
 
@@ -86,7 +77,7 @@ self.variables: FrozenDict        # JAX parameters
 
 **Usage Example:**
 ```python
-from ssvae import SSVAE, SSVAEConfig
+from model.ssvae import SSVAE, SSVAEConfig
 
 config = SSVAEConfig(latent_dim=2, prior_type="mixture")
 model = SSVAE(input_dim=(28, 28), config=config)
@@ -390,7 +381,7 @@ print(f"Active components: {(diagnostics['component_usage'] > 0.01).sum()}")
 
 ---
 
-## Network Components (`src/ssvae/components/`)
+## Network Components (`src/model/ssvae/components/`)
 
 ### `encoders.py`
 
@@ -481,7 +472,7 @@ Similar to top-level `factory.py` but focused on individual components. Handles:
 
 ---
 
-## Prior Distributions (`src/ssvae/priors/`)
+## Prior Distributions (`src/model/ssvae/priors/`)
 
 ### `base.py` - PriorMode Protocol
 
@@ -628,7 +619,7 @@ kl_c = jnp.sum(q_c * (jnp.log(q_c) - jnp.log(pi)), axis=-1)
 
 ---
 
-## Training Infrastructure (`src/training/`)
+## Training Infrastructure (`src/model/training/`)
 
 ### `trainer.py`
 
@@ -743,7 +734,7 @@ return state, shuffle_rng, history
 
 **Usage Pattern:**
 ```python
-from ssvae import SSVAE
+from model.ssvae import SSVAE
 from training.interactive_trainer import InteractiveTrainer
 
 # Create model and trainer
@@ -904,7 +895,7 @@ new_state = state.replace(
 
 ---
 
-## Callbacks (`src/callbacks/`)
+## Callbacks (`src/model/callbacks/`)
 
 ### `base_callback.py`
 
@@ -953,7 +944,7 @@ Epoch 10/100 | Train Loss: 125.3 | Val Loss: 130.2 | Recon: 100.1 | KL: 25.2
 
 ---
 
-## Utilities (`src/utils/`)
+## Utilities (`src/model/utils/`)
 
 ### `device.py`
 
@@ -977,7 +968,7 @@ Epoch 10/100 | Train Loss: 125.3 | Val Loss: 130.2 | Recon: 100.1 | KL: 25.2
 
 **Creating a model:**
 ```python
-from ssvae import SSVAE, SSVAEConfig
+from model.ssvae import SSVAE, SSVAEConfig
 
 config = SSVAEConfig(latent_dim=2, prior_type="mixture")
 model = SSVAE(input_dim=(28, 28), config=config)

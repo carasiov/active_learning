@@ -262,7 +262,7 @@ def create_app() -> Dash:
         """Route to appropriate page."""
         import re
         import dataclasses
-        from ssvae import SSVAEConfig
+        from model.ssvae import SSVAEConfig
         
         logger.info(f"DISPLAY_PAGE CALLED: pathname={pathname}")
         

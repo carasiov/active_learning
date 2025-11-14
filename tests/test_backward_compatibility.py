@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 
-from ssvae import SSVAE, SSVAEConfig
+from model.ssvae import SSVAE, SSVAEConfig
 
 
 def test_default_config_unchanged():

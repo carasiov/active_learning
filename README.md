@@ -8,19 +8,17 @@
 ```
 active_learning_showcase/
 │
-├── src/ssvae/                   # 🧠 Core Model (JAX/Flax)
-│   ├── models.py                #    SSVAE class (public API)
-│   ├── config.py                #    SSVAEConfig (50+ hyperparameters)
-│   └── components/              #    Encoder, decoder, classifier (factory pattern)
+├── src/model/                   # 🧠 Core Model Layer
+│   ├── ssvae/                   #    SSVAE architecture & priors
+│   ├── training/                #    Training loops, losses, state
+│   ├── callbacks/               #    Training-time observability hooks
+│   └── utils/                   #    Device helpers (JAX runtime setup)
 │
-├── src/training/                # 🔄 Training Infrastructure
-│   ├── trainer.py               #    Training loop with early stopping
-│   ├── losses.py                #    Loss functions (reconstruction, KL, classification)
-│   └── interactive_trainer.py  #    Incremental training for active learning
-│
-├── src/callbacks/               # 📊 Training Observability
-│   ├── logging.py               #    Console & CSV logging
-│   └── plotting.py              #    Loss curve visualization
+├── src/infrastructure/          # ♻️ Shared Infrastructure (dashboard + experiments)
+│   ├── logging/                 #    Structured logging setup
+│   ├── metrics/                 #    Registry + default metric providers
+│   ├── visualization/           #    Plotting registry & implementations
+│   └── runpaths/                #    Experiment run directory schema helpers
 │
 ├── use_cases/
 │   ├── experiments/             # 🔬 Experimentation Workflow
@@ -45,7 +43,7 @@ active_learning_showcase/
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                      SSVAE Model Core                       │
-│  (src/ssvae/ + src/training/ + src/callbacks/)              │
+│  (src/model/ssvae/ + src/model/training/ + src/model/callbacks/) │
 │                                                              │
 │  • Configuration-driven architecture                         │
 │  • Factory pattern for components                            │

@@ -64,7 +64,7 @@ README.md (entry point)
 **These explain mechanics** - How to extend, where files live, how to run experiments.
 
 ### Grounded Details (Source of Truth)
-- **Configuration parameters**: `src/ssvae/config.py::SSVAEConfig` (inline docstrings)
+- **Configuration parameters**: `src/model/ssvae/config.py::SSVAEConfig` (inline docstrings)
 - **Example experiments**: `use_cases/experiments/configs/*.yaml` (real configurations)
 - **Test patterns**: `tests/` (usage examples and edge cases)
 
@@ -78,7 +78,7 @@ README.md (entry point)
 
 **Linking patterns:**
 - Theory docs use **conceptual references**: "See §How-We-Classify"
-- Implementation docs use **file paths**: "`src/ssvae/priors/mixture.py`"
+- Implementation docs use **file paths**: "`src/model/ssvae/priors/mixture.py`"
 - Both link bidirectionally: theory ↔ implementation
 
 **Cross-references indicate relationships:**
@@ -123,7 +123,7 @@ README.md (entry point)
 - Use case: τ-classifier updates Python-side state after each batch
 
 **Registry-driven experiment toolkit**:
-- Source: `use_cases/experiments/src/metrics/registry.py`, `use_cases/experiments/src/visualization/registry.py`
+- Source: `use_cases/experiments/src/infrastructure/metrics/registry.py`, `use_cases/experiments/src/infrastructure/visualization/registry.py`
 - Why: Keeps CLI thin and lets agents add metrics/plots by registering new providers
 - Gotcha: Outputs are routed through `io/structure.py`, so follow that schema when emitting artifacts
 
@@ -215,13 +215,13 @@ Where to learn about them:
 - Status: `roadmap.md` §τ-Classifier-Completed
 - Implementation: `implementation.md` §tau_classifier.py
 - Tutorial: `extending.md` §Tutorial-3
-- Code: `src/ssvae/components/tau_classifier.py`
+- Code: `src/model/ssvae/components/tau_classifier.py`
 
 **Protocol-based priors**:
 - Design: `architecture.md` §Core-Abstractions §PriorMode-Protocol
 - Math: `mathematical_specification.md` §3.1
 - Tutorial: `extending.md` §Tutorial-1 (VampPrior)
-- Example: `src/ssvae/priors/mixture.py`
+- Example: `src/model/ssvae/priors/mixture.py`
 
 
 
@@ -296,13 +296,13 @@ pytest tests/
 ```
 
 ### Critical Files for Reference
-- Configuration: `src/ssvae/config.py::SSVAEConfig`
-- Loss computation: `src/training/losses.py::compute_loss_and_metrics_v2()`
-- Training loop: `src/training/trainer.py::Trainer`
+- Configuration: `src/model/ssvae/config.py::SSVAEConfig`
+- Loss computation: `src/model/training/losses.py::compute_loss_and_metrics_v2()`
+- Training loop: `src/model/training/trainer.py::Trainer`
 - Example configs: `use_cases/experiments/configs/*.yaml`
 - Experiment pipeline: `use_cases/experiments/src/pipeline/train.py`
-- Metrics registry: `use_cases/experiments/src/metrics/registry.py`
-- Visualization registry: `use_cases/experiments/src/visualization/registry.py`
+- Metrics registry: `use_cases/experiments/src/infrastructure/metrics/registry.py`
+- Visualization registry: `use_cases/experiments/src/infrastructure/visualization/registry.py`
 
 ---
 

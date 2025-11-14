@@ -7,8 +7,8 @@ import warnings
 
 import pytest
 
-from ssvae.config import SSVAEConfig
-from use_cases.experiments.src.core.validation import (
+from model.ssvae.config import SSVAEConfig
+from use_cases.experiments.src.validation import (
     ConfigValidationError,
     validate_config,
     validate_hyperparameters,

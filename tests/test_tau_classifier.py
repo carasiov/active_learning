@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from ssvae.components.tau_classifier import TauClassifier
+from model.ssvae.components.tau_classifier import TauClassifier
 
 
 class TestTauClassifierInitialization:

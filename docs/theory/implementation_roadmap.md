@@ -10,12 +10,12 @@
 
 | Pillar | Status | Key files / notes |
 |--------|--------|-------------------|
-| Mixture prior with entropy + Dirichlet controls | ✅ shipping | `src/ssvae/priors/mixture.py`, `src/training/losses.py` (usage penalty + Dirichlet) |
-| Component-aware decoder (dense/conv, heteroscedastic variants) | ✅ shipping | `src/ssvae/components/decoders.py` |
-| τ-classifier latent workflow (responsibility-based) | ✅ shipping | `src/ssvae/components/tau_classifier.py`, now enabled for **all** mixture-based priors |
-| Heteroscedastic decoder + weighted loss | ✅ needs tuning knobs only | `src/ssvae/components/decoders.py`, `src/training/losses.py` |
-| VampPrior (pseudo-input learning, MC-KL) | ✅ shipping | `src/ssvae/priors/vamp.py`, network now caches pseudo stats & supports pseudo-LR scaling |
-| Geometric MoG (diagnostic/curriculum prior) | ✅ shipping | `src/ssvae/priors/geometric_mog.py` |
+| Mixture prior with entropy + Dirichlet controls | ✅ shipping | `src/model/ssvae/priors/mixture.py`, `src/model/training/losses.py` (usage penalty + Dirichlet) |
+| Component-aware decoder (dense/conv, heteroscedastic variants) | ✅ shipping | `src/model/ssvae/components/decoders.py` |
+| τ-classifier latent workflow (responsibility-based) | ✅ shipping | `src/model/ssvae/components/tau_classifier.py`, now enabled for **all** mixture-based priors |
+| Heteroscedastic decoder + weighted loss | ✅ needs tuning knobs only | `src/model/ssvae/components/decoders.py`, `src/model/training/losses.py` |
+| VampPrior (pseudo-input learning, MC-KL) | ✅ shipping | `src/model/ssvae/priors/vamp.py`, network now caches pseudo stats & supports pseudo-LR scaling |
+| Geometric MoG (diagnostic/curriculum prior) | ✅ shipping | `src/model/ssvae/priors/geometric_mog.py` |
 | OOD scoring via `r × τ` | 📋 ready once experiment wiring added |
 | Dynamic label addition / active learning loop | 📋 design ready; needs workflow + UX |
 
@@ -39,7 +39,7 @@ Legend: ✅ production-ready · ⚠️ needs tuning · 📋 planned/ready-to-wir
 ### τ-Classifier & Latent Workflow
 - **What**: responsibility-based classifier substitutes the head: accumulates soft counts → τ-map → `p(y|x)=Σ_c q(c|x)τ_{c,y}`.  
 - **New in this revision**: any **mixture-based prior** (`mixture`, `vamp`, `geometric_mog`) gets τ hooks automatically (`SSVAE.config.is_mixture_based_prior()`), so VampPrior experiments can stay latent-only.  
-- **Files**: `src/ssvae/components/tau_classifier.py`, trainer hooks in `ssvae/models.py` and `training/trainer.py`.
+- **Files**: `src/model/ssvae/components/tau_classifier.py`, trainer hooks in `ssvae/models.py` and `training/trainer.py`.
 
 ### Heteroscedastic Decoder
 - **What**: decoder predicts `(mean, σ)`; losses handle either per-sample (standard) or per-component (mixture) heteroscedasticity.  
@@ -86,13 +86,13 @@ Legend: ✅ production-ready · ⚠️ needs tuning · 📋 planned/ready-to-wir
 
 ## File Reference
 
-- **Config / validation** — `src/ssvae/config.py`
-- **Network + prior parameters** — `src/ssvae/network.py`
-- **Priors** — `src/ssvae/priors/{standard,mixture,vamp,geometric_mog}.py`
-- **Losses** — `src/training/losses.py`
-- **Trainer / hooks** — `src/training/trainer.py`
-- **Tau classifier** — `src/ssvae/components/tau_classifier.py`
-- **Diagnostics** — `src/ssvae/diagnostics.py`
+- **Config / validation** — `src/model/ssvae/config.py`
+- **Network + prior parameters** — `src/model/ssvae/network.py`
+- **Priors** — `src/model/ssvae/priors/{standard,mixture,vamp,geometric_mog}.py`
+- **Losses** — `src/model/training/losses.py`
+- **Trainer / hooks** — `src/model/training/trainer.py`
+- **Tau classifier** — `src/model/ssvae/components/tau_classifier.py`
+- **Diagnostics** — `src/model/ssvae/diagnostics.py`
 - **Experiments** — `use_cases/experiments/…`
 
 Use this roadmap with the architecture + implementation guides to stay aligned with the project’s invariants while iterating.

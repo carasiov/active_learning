@@ -24,7 +24,7 @@ CLI usage (use_cases/scripts/train.py)
 - Train dense: `python use_cases/scripts/train.py --encoder-type dense --decoder-type dense`
 
 Programmatic usage
-- from ssvae import SSVAE
+- from model.ssvae import SSVAE
   config = SSVAEConfig(encoder_type="conv", decoder_type="conv", latent_dim=2)
   vae = SSVAE(input_dim=(28, 28), config=config)
   vae.fit(x, labels, weights_path)
