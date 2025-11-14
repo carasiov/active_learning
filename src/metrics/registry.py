@@ -141,5 +141,3 @@ def _deep_merge(base: MutableMapping[str, Any], update: MutableMapping[str, Any]
             base[key] = value
 
 
-# Ensure default metrics are registered on import
-from . import defaults as _defaults  # noqa: F401,E402

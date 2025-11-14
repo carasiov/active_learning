@@ -9,6 +9,10 @@ packages = [
     { include = "callbacks", from = "src" },
     { include = "training", from = "src" },
     { include = "utils", from = "src" },
+    { include = "common", from = "src" },
+    { include = "metrics", from = "src" },
+    { include = "visualization", from = "src" },
+    { include = "runpaths", from = "src" },
 ]
 
 [tool.poetry.dependencies]
