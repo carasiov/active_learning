@@ -1,5 +1,13 @@
 # Visualization Module Refactoring Summary
 
+## Module Location
+
+**Current Location**: `src/visualization/` (repository root)
+**Previous Location**: `use_cases/experiments/src/visualization/`
+**Migration Date**: 2025-11-14
+
+The visualization module has been moved to the repository root (`src/visualization/`) to establish it as core infrastructure that can be reused across multiple projects (experiments, dashboard, future tools). A backward compatibility wrapper remains at the old location for existing code.
+
 ## Objective
 Refactor monolithic `plotters.py` (1,643 lines) into maintainable, domain-organized modules.
 

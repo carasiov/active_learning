@@ -11,7 +11,7 @@ from ssvae import SSVAE, SSVAEConfig
 
 from ..io import RunPaths
 from ..metrics import MetricContext, collect_metrics
-from ..visualization import VisualizationContext, render_all_plots
+from visualization import VisualizationContext, render_all_plots
 
 
 def _maybe_tuple_hidden_dims(model_config: Dict[str, Any]) -> Dict[str, Any]:

@@ -15,7 +15,7 @@ components based on model configuration.
 from __future__ import annotations
 
 from .registry import VisualizationContext, register_plotter
-from ..metrics.status import ComponentResult
+from common.status import ComponentResult
 
 # Import plotting functions from domain modules
 from .core_plots import (
