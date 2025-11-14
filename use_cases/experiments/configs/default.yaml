@@ -62,8 +62,8 @@ model:
   num_classes: 10                   # Output classes (10 for MNIST digits)
   latent_dim: 2                     # Latent space dimensions (2D for visualization)
   
-  encoder_type: "conv"              # "conv" for images, "dense" for tabular
-  decoder_type: "conv"              # Should match encoder_type
+  encoder_type: "dense"              # "conv" for images, "dense" for tabular
+  decoder_type: "dense"              # Should match encoder_type
   classifier_type: "dense"          # Classifier architecture (currently only "dense")
   
   hidden_dims: [256, 128, 64]       # Layer sizes for dense encoder/decoder

@@ -474,7 +474,7 @@ def plot_channel_latent_responsibility(
                 linewidths=0,
                 edgecolors="none",
             )
-            ax.set_title(f"Channel {channel_idx}: latent space with label colors and responsibility alpha", fontsize=8)
+            ax.set_title(f"Channel {channel_idx}", fontsize=9)
             ax.set_xlim(*x_lim)
             ax.set_ylim(*y_lim)
             ax.set_xticks([])
@@ -505,10 +505,11 @@ def plot_channel_latent_responsibility(
                 frameon=False,
             )
 
+        fig.suptitle("Per-channel latent space with label colors and responsibility alpha", fontsize=14, y=0.995)
         grid_filename = "channel_latents_grid.png" if len(channel_viz_models) == 1 else f"{safe_name}_channel_latents_grid.png"
         grid_path = channel_dir / grid_filename
-        bottom_margin = 0.14 if legend_present else 0.02
-        fig.tight_layout(rect=(0, bottom_margin, 1, 1))
+        bottom_margin = 0.18 if legend_present else 0.06
+        fig.tight_layout(rect=(0, bottom_margin, 1, 0.94))
         fig.savefig(grid_path, dpi=150, bbox_inches="tight")
         plt.close(fig)
 
@@ -516,6 +517,7 @@ def plot_channel_latent_responsibility(
         for channel_idx in range(channel_count):
             fig_single, ax_single = plt.subplots(figsize=(4, 4))
             _draw_channel(ax_single, channel_idx)
+            fig_single.suptitle("Latent space with label colors and responsibility alpha", fontsize=12, y=0.98)
             single_path = channel_dir / f"channel_{channel_idx:02d}.png"
             fig_single.tight_layout()
             fig_single.savefig(single_path, dpi=150, bbox_inches="tight")

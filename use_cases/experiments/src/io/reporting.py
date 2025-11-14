@@ -159,6 +159,20 @@ def write_report(
             handle.write("**By Component Assignment:**\n\n")
             handle.write("![Latent by Component](figures/mixture/latent_by_component.png)\n\n")
 
+        channel_latent_root = run_paths.figures / "mixture" / "channel_latents"
+        if channel_latent_root.exists():
+            grid_paths = sorted(channel_latent_root.rglob("*channel_latents_grid.png"))
+            if grid_paths:
+                handle.write("**Channel-wise responsibility (color = label, alpha = q(c|x))**\n\n")
+                multi_grid = len(grid_paths) > 1
+                for grid_path in grid_paths:
+                    rel = figures_rel / grid_path.relative_to(run_paths.figures)
+                    if multi_grid:
+                        model_label = grid_path.stem.replace("_channel_latents_grid", "")
+                        model_label = model_label.replace("_", " ").title() or "Model"
+                        handle.write(f"*{model_label}*\n\n")
+                    handle.write(f"![Channel Latent Grid]({rel.as_posix()})\n\n")
+
         if (run_paths.figures / "mixture" / "responsibility_histogram.png").exists():
             handle.write("### Responsibility Confidence\n\n")
             handle.write("Distribution of max_c q(c|x):\n\n")
