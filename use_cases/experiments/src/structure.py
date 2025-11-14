@@ -17,7 +17,7 @@ from typing import Tuple
 from runpaths import RunPaths, sanitize_name
 
 # Experiment-specific constants
-EXPERIMENTS_ROOT = Path(__file__).resolve().parents[2]
+EXPERIMENTS_ROOT = Path(__file__).resolve().parents[1]
 RESULTS_DIR = EXPERIMENTS_ROOT / "results"
 
 
