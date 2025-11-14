@@ -11,7 +11,9 @@ import numpy as np
 
 from ssvae.diagnostics import DiagnosticsCollector
 
-from .registry import MetricContext, register_metric
+# Import infrastructure from top-level (registry moved to src/metrics/)
+from metrics import MetricContext, register_metric
+# Import status wrapper (re-exports from common.status)
 from .status import ComponentResult
 
 
