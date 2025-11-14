@@ -16,7 +16,7 @@ continue execution, while others (VampPrior invalid init, non-square grid) are
 hard errors. This reflects whether the system can gracefully handle the misconfiguration.
 
 Usage:
-    from src.core.validation import validate_config
+    from use_cases.experiments.src.validation import validate_config
 
     try:
         validate_config(config)

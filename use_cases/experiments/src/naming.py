@@ -18,7 +18,7 @@ Adding a new feature:
 4. Update tests in tests/test_naming.py
 
 Example:
-    from src.core.naming import generate_architecture_code
+    from use_cases.experiments.src.naming import generate_architecture_code
 
     code = generate_architecture_code(config)
     # → "mix10-dir_tau_ca-het" for mixture prior with τ-classifier
