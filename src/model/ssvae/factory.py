@@ -15,13 +15,13 @@ from flax import linen as nn, traverse_util
 from flax.core import freeze, FrozenDict
 from jax import random
 
-from ssvae.config import SSVAEConfig
-from ssvae.components.factory import build_classifier, build_decoder, build_encoder, get_architecture_dims
-from ssvae.network import SSVAENetwork, _make_weight_decay_mask
-from ssvae.priors import get_prior
-from ssvae.priors.base import PriorMode
-from training.losses import compute_loss_and_metrics_v2
-from training.train_state import SSVAETrainState
+from model.ssvae.config import SSVAEConfig
+from model.ssvae.components.factory import build_classifier, build_decoder, build_encoder, get_architecture_dims
+from model.ssvae.network import SSVAENetwork, _make_weight_decay_mask
+from model.ssvae.priors import get_prior
+from model.ssvae.priors.base import PriorMode
+from model.training.losses import compute_loss_and_metrics_v2
+from model.training.train_state import SSVAETrainState
 
 
 class SSVAEFactory:

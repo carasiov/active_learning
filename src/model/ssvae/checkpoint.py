@@ -9,7 +9,7 @@ from pathlib import Path
 
 from flax.serialization import from_bytes, to_bytes
 
-from training.train_state import SSVAETrainState
+from model.training.train_state import SSVAETrainState
 
 
 class CheckpointManager:

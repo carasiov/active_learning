@@ -13,11 +13,11 @@ Available priors:
 """
 from __future__ import annotations
 
-from ssvae.priors.base import EncoderOutput, PriorMode
-from ssvae.priors.standard import StandardGaussianPrior
-from ssvae.priors.mixture import MixtureGaussianPrior
-from ssvae.priors.vamp import VampPrior
-from ssvae.priors.geometric_mog import GeometricMixtureOfGaussiansPrior
+from model.ssvae.priors.base import EncoderOutput, PriorMode
+from model.ssvae.priors.standard import StandardGaussianPrior
+from model.ssvae.priors.mixture import MixtureGaussianPrior
+from model.ssvae.priors.vamp import VampPrior
+from model.ssvae.priors.geometric_mog import GeometricMixtureOfGaussiansPrior
 
 # Prior registry for factory pattern
 PRIOR_REGISTRY = {

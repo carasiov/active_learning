@@ -6,7 +6,7 @@ import jax
 import jax.numpy as jnp
 import optax
 
-from ssvae.config import SSVAEConfig
+from model.ssvae.config import SSVAEConfig
 
 
 EPS = 1e-8

@@ -9,8 +9,8 @@ from typing import Dict
 
 import jax.numpy as jnp
 
-from ssvae.priors.base import EncoderOutput
-from training.losses import (
+from model.ssvae.priors.base import EncoderOutput
+from model.training.losses import (
     kl_divergence,
     reconstruction_loss_bce,
     reconstruction_loss_mse,

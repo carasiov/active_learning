@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Dict
 import jax.numpy as jnp
 import numpy as np
 
-from callbacks.base_callback import TrainingCallback
+from model.callbacks.base_callback import TrainingCallback
 
 if TYPE_CHECKING:
     from training.trainer import Trainer

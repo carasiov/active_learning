@@ -26,8 +26,8 @@ from typing import Dict
 
 import jax.numpy as jnp
 
-from ssvae.priors.base import EncoderOutput
-from training.losses import (
+from model.ssvae.priors.base import EncoderOutput
+from model.training.losses import (
     categorical_kl,
     dirichlet_map_penalty,
     usage_sparsity_penalty,

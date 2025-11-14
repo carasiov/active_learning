@@ -11,7 +11,7 @@ from typing import Callable, Dict, List
 import jax.numpy as jnp
 import numpy as np
 
-from ssvae.config import SSVAEConfig
+from model.ssvae.config import SSVAEConfig
 
 COMPONENT_PRIORS = {"mixture", "geometric_mog", "vamp"}
 
