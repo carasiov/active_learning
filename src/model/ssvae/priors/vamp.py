@@ -365,7 +365,7 @@ class VampPrior:
             separation from learned pseudo-inputs is sufficient.
         """
         # Standard reconstruction (VampPrior never uses weighted reconstruction)
-        from training.losses import (
+        from model.training.losses import (
             reconstruction_loss_mse,
             reconstruction_loss_bce,
             heteroscedastic_reconstruction_loss,

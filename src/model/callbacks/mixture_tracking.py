@@ -10,7 +10,7 @@ import numpy as np
 from model.callbacks.base_callback import TrainingCallback
 
 if TYPE_CHECKING:
-    from training.trainer import Trainer
+    from model.training.trainer import Trainer
 
     HistoryDict = Dict[str, list]
     MetricsDict = Dict[str, float]

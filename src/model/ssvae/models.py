@@ -110,7 +110,7 @@ class SSVAE:
         # Initialize τ-classifier for mixture prior with latent-only classification
         self._tau_classifier = None
         if self.config.is_mixture_based_prior() and self.config.use_tau_classifier:
-            from ssvae.components.tau_classifier import TauClassifier
+            from model.ssvae.components.tau_classifier import TauClassifier
             self._tau_classifier = TauClassifier(
                 num_components=self.config.num_components,
                 num_classes=self.config.num_classes,
@@ -144,7 +144,7 @@ class SSVAE:
         Raises:
             ValueError: If not using VampPrior or method is invalid
         """
-        from ssvae.priors.vamp import VampPrior
+        from model.ssvae.priors.vamp import VampPrior
 
         if not isinstance(self.prior, VampPrior):
             raise ValueError(

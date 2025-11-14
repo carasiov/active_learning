@@ -365,7 +365,7 @@ def compute_loss_and_metrics_v2(
     Returns:
         Tuple of (total_loss, metrics_dict)
     """
-    from ssvae.priors.base import EncoderOutput
+    from model.ssvae.priors.base import EncoderOutput
 
     # Forward pass
     use_key = rng if training else None

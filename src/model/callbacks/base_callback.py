@@ -7,7 +7,7 @@ from typing import Dict, List, TYPE_CHECKING
 import jax.numpy as jnp
 
 if TYPE_CHECKING:  # pragma: no cover
-    from training.trainer import Trainer
+    from model.training.trainer import Trainer
 
 MetricsDict = Dict[str, jnp.ndarray]
 HistoryDict = Dict[str, List[float]]
