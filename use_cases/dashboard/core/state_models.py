@@ -24,6 +24,8 @@ class ModelMetadata:
     total_epochs: int
     labeled_count: int
     latest_loss: Optional[float]
+    dataset_total_samples: int = 256
+    dataset_seed: int = 42
     
     @classmethod
     def from_dict(cls, data: dict) -> ModelMetadata:
@@ -38,8 +40,18 @@ class ModelMetadata:
             data["model_id"] = data.pop("id")
         
         # Remove any fields that don't exist in current ModelMetadata
-        valid_fields = {'model_id', 'name', 'created_at', 'last_modified', 'dataset', 
-                       'total_epochs', 'labeled_count', 'latest_loss'}
+        valid_fields = {
+            'model_id',
+            'name',
+            'created_at',
+            'last_modified',
+            'dataset',
+            'total_epochs',
+            'labeled_count',
+            'latest_loss',
+            'dataset_total_samples',
+            'dataset_seed',
+        }
         data = {k: v for k, v in data.items() if k in valid_fields}
         
         # Ensure required fields have defaults for old metadata
@@ -51,6 +63,8 @@ class ModelMetadata:
         data.setdefault('total_epochs', 0)
         data.setdefault('labeled_count', 0)
         data.setdefault('latest_loss', None)
+        data.setdefault('dataset_total_samples', 256)
+        data.setdefault('dataset_seed', 42)
         
         return cls(**data)
     
@@ -65,6 +79,8 @@ class ModelMetadata:
             "total_epochs": self.total_epochs,
             "labeled_count": self.labeled_count,
             "latest_loss": self.latest_loss,
+            "dataset_total_samples": self.dataset_total_samples,
+            "dataset_seed": self.dataset_seed,
         }
 
 

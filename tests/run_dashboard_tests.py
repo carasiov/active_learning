@@ -99,7 +99,7 @@ def test_create_model_with_simple_name(temp_models_dir):
     """Test creating a model with a simple alphanumeric name."""
     dashboard_state.initialize_app_state()
     
-    cmd = CreateModelCommand(name="test_model", config_preset="default")
+    cmd = CreateModelCommand(name="test_model", num_samples=128, num_labeled=16, seed=0)
     success, model_id = dashboard_state.dispatcher.execute(cmd)
     
     assert success, "Model creation should succeed"
@@ -114,7 +114,7 @@ def test_create_model_with_spaces_and_special_chars(temp_models_dir):
     """Test that model names are properly sanitized."""
     dashboard_state.initialize_app_state()
     
-    cmd = CreateModelCommand(name="My Test Model #1!", config_preset="default")
+    cmd = CreateModelCommand(name="My Test Model #1!", num_samples=96, num_labeled=24, seed=1)
     success, model_id = dashboard_state.dispatcher.execute(cmd)
     
     assert success
@@ -128,12 +128,11 @@ def test_create_model_with_duplicate_name(temp_models_dir):
     """Test that duplicate names get unique IDs."""
     dashboard_state.initialize_app_state()
     
-    cmd1 = CreateModelCommand(name="duplicate", config_preset="default")
+    cmd1 = CreateModelCommand(name="duplicate", num_samples=64, num_labeled=8, seed=2)
     success1, model_id1 = dashboard_state.dispatcher.execute(cmd1)
     
-    cmd2 = CreateModelCommand(name="duplicate", config_preset="default")
+    cmd2 = CreateModelCommand(name="duplicate", num_samples=64, num_labeled=8, seed=3)
     success2, model_id2 = dashboard_state.dispatcher.execute(cmd2)
-    
     assert success1 and success2
     assert model_id1 == "duplicate"
     assert model_id2 == "duplicate_1", f"Expected 'duplicate_1', got '{model_id2}'"
@@ -148,13 +147,13 @@ def test_delete_specific_model(temp_models_dir):
     
     # Create three models
     _, id_a = dashboard_state.dispatcher.execute(
-        CreateModelCommand(name="model_a", config_preset="default")
+        CreateModelCommand(name="model_a", num_samples=64, num_labeled=8, seed=4)
     )
     _, id_b = dashboard_state.dispatcher.execute(
-        CreateModelCommand(name="model_b", config_preset="default")
+        CreateModelCommand(name="model_b", num_samples=64, num_labeled=8, seed=5)
     )
     _, id_c = dashboard_state.dispatcher.execute(
-        CreateModelCommand(name="model_c", config_preset="default")
+        CreateModelCommand(name="model_c", num_samples=64, num_labeled=8, seed=6)
     )
     
     # Verify all exist
@@ -178,8 +177,8 @@ def test_delete_first_model_in_list(temp_models_dir):
     """REGRESSION TEST: delete first model should not delete wrong one."""
     dashboard_state.initialize_app_state()
     
-    cmd1 = CreateModelCommand(name="mnist_baseline", config_preset="default")
-    cmd2 = CreateModelCommand(name="experiment_001", config_preset="default")
+    cmd1 = CreateModelCommand(name="mnist_baseline", num_samples=64, num_labeled=8, seed=7)
+    cmd2 = CreateModelCommand(name="experiment_001", num_samples=64, num_labeled=8, seed=8)
     
     _, id1 = dashboard_state.dispatcher.execute(cmd1)
     _, id2 = dashboard_state.dispatcher.execute(cmd2)
@@ -201,7 +200,7 @@ def test_cannot_delete_active_model(temp_models_dir):
     """Test that active model cannot be deleted."""
     dashboard_state.initialize_app_state()
     
-    create_cmd = CreateModelCommand(name="active_model", config_preset="default")
+    create_cmd = CreateModelCommand(name="active_model", num_samples=64, num_labeled=8, seed=9)
     _, model_id = dashboard_state.dispatcher.execute(create_cmd)
     
     load_cmd = LoadModelCommand(model_id=model_id)
@@ -219,7 +218,7 @@ def test_load_model_basic(temp_models_dir):
     """Test basic model loading."""
     dashboard_state.initialize_app_state()
     
-    create_cmd = CreateModelCommand(name="test_load", config_preset="default")
+    create_cmd = CreateModelCommand(name="test_load", num_samples=64, num_labeled=8, seed=10)
     _, model_id = dashboard_state.dispatcher.execute(create_cmd)
     
     load_cmd = LoadModelCommand(model_id=model_id)
@@ -237,10 +236,10 @@ def test_state_matches_filesystem(temp_models_dir):
     dashboard_state.initialize_app_state()
     
     _, id1 = dashboard_state.dispatcher.execute(
-        CreateModelCommand(name="fs_test_1", config_preset="default")
+        CreateModelCommand(name="fs_test_1", num_samples=64, num_labeled=8, seed=11)
     )
     _, id2 = dashboard_state.dispatcher.execute(
-        CreateModelCommand(name="fs_test_2", config_preset="default")
+        CreateModelCommand(name="fs_test_2", num_samples=64, num_labeled=8, seed=12)
     )
     
     with dashboard_state.state_lock:

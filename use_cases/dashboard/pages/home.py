@@ -11,22 +11,20 @@ from use_cases.dashboard.core import state as dashboard_state
 def build_home_layout() -> html.Div:
     """Build the home page with model cards."""
     dashboard_state.initialize_app_state()
-    
+
     with dashboard_state.state_lock:
         models = dashboard_state.app_state.models if dashboard_state.app_state else {}
-    
-    # Empty state
+
     if not models:
         return _build_empty_state()
-    
-    # Model cards
-    model_cards = []
-    for metadata in sorted(models.values(), key=lambda m: m.last_modified, reverse=True):
-        model_cards.append(_build_model_card(metadata))
-    
+
+    model_cards = [
+        _build_model_card(metadata)
+        for metadata in sorted(models.values(), key=lambda m: m.last_modified, reverse=True)
+    ]
+
     return html.Div(
         [
-            # Header
             html.Div(
                 [
                     html.Div(
@@ -41,30 +39,31 @@ def build_home_layout() -> html.Div:
                     ),
                     html.Div(
                         [
-                            html.H1("SSVAE Research Hub", style={
-                                "fontSize": "28px",
-                                "fontWeight": "700",
-                                "margin": "0",
-                                "color": "#000000",
-                                "fontFamily": "'Open Sans', Verdana, sans-serif",
-                            }),
-                            html.Div("Manage your semi-supervised learning experiments", style={
-                                "fontSize": "15px",
-                                "color": "#6F6F6F",
-                                "fontFamily": "'Open Sans', Verdana, sans-serif",
-                            }),
+                            html.H1(
+                                "SSVAE Research Hub",
+                                style={
+                                    "fontSize": "28px",
+                                    "fontWeight": "700",
+                                    "margin": "0",
+                                    "color": "#000000",
+                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                },
+                            ),
+                            html.Div(
+                                "Manage your semi-supervised learning experiments",
+                                style={
+                                    "fontSize": "15px",
+                                    "color": "#6F6F6F",
+                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                },
+                            ),
                         ],
                         style={"display": "inline-block", "verticalAlign": "middle"},
                     ),
                 ],
-                style={
-                    "padding": "24px 48px",
-                    "backgroundColor": "#ffffff",
-                },
+                style={"padding": "24px 48px", "backgroundColor": "#ffffff"},
             ),
             html.Div(style={"height": "4px", "backgroundColor": "#C10A27"}),
-            
-            # Action bar
             html.Div(
                 [
                     dbc.Button(
@@ -85,17 +84,10 @@ def build_home_layout() -> html.Div:
                 ],
                 style={"padding": "24px 48px", "backgroundColor": "#f5f5f5"},
             ),
-            
-            # Delete feedback placeholder
             html.Div(
                 id="home-delete-feedback",
-                style={
-                    "padding": "0 48px",
-                    "backgroundColor": "#fafafa",
-                },
+                style={"padding": "0 48px", "backgroundColor": "#fafafa"},
             ),
-            
-            # Model grid
             html.Div(
                 model_cards,
                 style={
@@ -106,8 +98,6 @@ def build_home_layout() -> html.Div:
                     "backgroundColor": "#fafafa",
                 },
             ),
-            
-            # Create model modal
             _build_create_modal(),
         ],
         style={
@@ -268,7 +258,7 @@ def _build_model_card(metadata) -> html.Div:
                         },
                     ),
                     html.Div(
-                        f"{metadata.dataset.upper()} • {metadata.labeled_count} labels • {metadata.total_epochs} epochs",
+                        f"{metadata.dataset.upper()} • {metadata.labeled_count}/{metadata.dataset_total_samples} labeled • {metadata.total_epochs} epochs",
                         style={
                             "fontSize": "13px",
                             "color": "#6F6F6F",
@@ -377,22 +367,112 @@ def _build_create_modal() -> dbc.Modal:
                     ),
                     html.Div(
                         [
-                            html.Label("Configuration Preset", style={
+                            html.Label("Total Samples", style={
                                 "fontSize": "14px",
                                 "fontWeight": "600",
-                                "marginBottom": "12px",
+                                "marginBottom": "6px",
                                 "display": "block",
                                 "fontFamily": "'Open Sans', Verdana, sans-serif",
                             }),
-                            dbc.RadioItems(
-                                id="home-config-preset",
-                                options=[
-                                    {"label": "Default MNIST (balanced)", "value": "default"},
-                                    {"label": "High Reconstruction (recon=5000)", "value": "high_recon"},
-                                    {"label": "Classification Focus (label_weight=10)", "value": "classification"},
-                                ],
-                                value="default",
-                                style={"fontSize": "14px", "fontFamily": "'Open Sans', Verdana, sans-serif"},
+                            dcc.Input(
+                                id="home-num-samples-input",
+                                type="number",
+                                min=32,
+                                max=70000,
+                                step=32,
+                                value=1024,
+                                placeholder="e.g., 1024",
+                                style={
+                                    "width": "100%",
+                                    "padding": "10px 12px",
+                                    "fontSize": "14px",
+                                    "border": "1px solid #C6C6C6",
+                                    "borderRadius": "6px",
+                                    "fontFamily": "ui-monospace, monospace",
+                                },
+                            ),
+                            html.Div(
+                                "Choose how many MNIST samples to include in this model's dataset.",
+                                style={
+                                    "fontSize": "12px",
+                                    "color": "#6F6F6F",
+                                    "marginTop": "6px",
+                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                },
+                            ),
+                        ],
+                        style={"marginBottom": "20px"},
+                    ),
+                    html.Div(
+                        [
+                            html.Label("Labeled Samples", style={
+                                "fontSize": "14px",
+                                "fontWeight": "600",
+                                "marginBottom": "6px",
+                                "display": "block",
+                                "fontFamily": "'Open Sans', Verdana, sans-serif",
+                            }),
+                            dcc.Input(
+                                id="home-num-labeled-input",
+                                type="number",
+                                min=0,
+                                max=70000,
+                                step=1,
+                                value=128,
+                                placeholder="e.g., 128",
+                                style={
+                                    "width": "100%",
+                                    "padding": "10px 12px",
+                                    "fontSize": "14px",
+                                    "border": "1px solid #C6C6C6",
+                                    "borderRadius": "6px",
+                                    "fontFamily": "ui-monospace, monospace",
+                                },
+                            ),
+                            html.Div(
+                                id="home-unlabeled-preview",
+                                style={
+                                    "fontSize": "12px",
+                                    "color": "#6F6F6F",
+                                    "marginTop": "6px",
+                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                },
+                            ),
+                        ],
+                        style={"marginBottom": "20px"},
+                    ),
+                    html.Div(
+                        [
+                            html.Label("Sampling Seed", style={
+                                "fontSize": "14px",
+                                "fontWeight": "600",
+                                "marginBottom": "6px",
+                                "display": "block",
+                                "fontFamily": "'Open Sans', Verdana, sans-serif",
+                            }),
+                            dcc.Input(
+                                id="home-seed-input",
+                                type="number",
+                                step=1,
+                                value=0,
+                                placeholder="e.g., 42",
+                                style={
+                                    "width": "100%",
+                                    "padding": "10px 12px",
+                                    "fontSize": "14px",
+                                    "border": "1px solid #C6C6C6",
+                                    "borderRadius": "6px",
+                                    "fontFamily": "ui-monospace, monospace",
+                                },
+                            ),
+                            html.Div(
+                                "Use a fixed seed to reproduce dataset sampling across creations.",
+                                style={
+                                    "fontSize": "12px",
+                                    "color": "#6F6F6F",
+                                    "marginTop": "6px",
+                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                },
                             ),
                         ],
                         style={"marginBottom": "20px"},

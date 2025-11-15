@@ -123,6 +123,11 @@ class ModelManager:
     def config_path(model_id: str) -> Path:
         """Get configuration file path for model."""
         return ModelManager.model_dir(model_id) / "config.json"
+
+    @staticmethod
+    def dataset_config_path(model_id: str) -> Path:
+        """Get dataset configuration file path for model."""
+        return ModelManager.model_dir(model_id) / "dataset.json"
     
     @staticmethod
     def save_config(model_id: str, config: SSVAEConfig) -> None:
@@ -134,6 +139,13 @@ class ModelManager:
             data["hidden_dims"] = list(data["hidden_dims"])
         with open(path, "w") as f:
             json.dump(data, f, indent=2)
+
+    @staticmethod
+    def save_dataset_config(model_id: str, dataset_config: Dict[str, Any]) -> None:
+        """Persist dataset configuration metadata."""
+        path = ModelManager.dataset_config_path(model_id)
+        with open(path, "w") as f:
+            json.dump(dataset_config, f, indent=2)
     
     @staticmethod
     def load_config(model_id: str) -> Optional[SSVAEConfig]:
@@ -148,6 +160,15 @@ class ModelManager:
         if hidden_dims is not None and not isinstance(hidden_dims, tuple):
             data["hidden_dims"] = tuple(int(dim) for dim in hidden_dims)
         return SSVAEConfig(**data)
+
+    @staticmethod
+    def load_dataset_config(model_id: str) -> Optional[Dict[str, Any]]:
+        """Load dataset configuration metadata if present."""
+        path = ModelManager.dataset_config_path(model_id)
+        if not path.exists():
+            return None
+        with open(path, "r") as f:
+            return json.load(f)
     
     @staticmethod
     def list_all_models() -> Dict[str, ModelMetadata]:

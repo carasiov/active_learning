@@ -246,23 +246,14 @@ def create_app() -> Dash:
     '''
     
     # Multi-page layout with routing
-    app.layout = html.Div([
-        dcc.Location(id='url', refresh=False),
-        dcc.Store(id='training-config-store'),
-        html.Div(id='page-content', style={'height': '100%', 'overflow': 'auto'}),
-        html.Div(
-            id="preloaded-training-controls",
-            children=build_training_config_page(model_id=None),
-            style={"display": "none"},
-        ),
-        html.Div(id="start-training-button", style={"display": "none"}),
-        html.Div(id="recon-weight-slider", style={"display": "none"}),
-        html.Div(id="kl-weight-slider", style={"display": "none"}),
-        html.Div(id="learning-rate-slider", style={"display": "none"}),
-        html.Div(id="num-epochs-input", style={"display": "none"}),
-        html.Div(id="training-status", style={"display": "none"}),
-        html.Div(id="training-poll", style={"display": "none"}),
-    ], style={'height': '100vh', 'overflow': 'hidden'})
+    app.layout = html.Div(
+        [
+            dcc.Location(id='url', refresh=False),
+            dcc.Store(id='training-config-store'),
+            html.Div(id='page-content', style={'height': '100%', 'overflow': 'auto'}),
+        ],
+        style={'height': '100vh', 'overflow': 'hidden'}
+    )
     
     # Page router callback
     @app.callback(

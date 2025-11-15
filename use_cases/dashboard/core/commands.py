@@ -695,60 +695,105 @@ import pandas as pd
 class CreateModelCommand(Command):
     """Create a new model with fresh state."""
     name: Optional[str] = None  # User-friendly name (optional)
-    config_preset: str = "default"  # "default", "high_recon", "classification"
+    num_samples: int = 1024
+    num_labeled: int = 128
+    seed: Optional[int] = None
     
     def validate(self, state: AppState) -> Optional[str]:
-        """Validate preset exists."""
-        valid_presets = {"default", "high_recon", "classification"}
-        if self.config_preset not in valid_presets:
-            return f"Invalid preset: {self.config_preset}. Must be one of {valid_presets}"
+        """Validate dataset sizing inputs."""
+        errors: List[str] = []
+        total = self.num_samples
+        labeled = self.num_labeled
+        if total <= 0:
+            errors.append("Total samples must be greater than zero")
+        if labeled < 0:
+            errors.append("Labeled samples must be non-negative")
+        if total > 70000:
+            errors.append("Total samples must be at most 70000 for MNIST")
+        if labeled > total:
+            errors.append("Labeled samples cannot exceed total samples")
+        if errors:
+            return "; ".join(errors)
         return None
     
     def execute(self, state: AppState) -> Tuple[AppState, str]:
-        """Create new model directory and metadata."""
+        """Create new model directory, dataset snapshot, and metadata."""
         from use_cases.dashboard.core.model_manager import ModelManager
-        from use_cases.dashboard.core.state_models import ModelMetadata
+        from use_cases.dashboard.core.state_models import ModelMetadata, TrainingHistory
         from datetime import datetime
-        from use_cases.dashboard.core import state as dashboard_state
-        from rcmvae.application.model_api import SSVAE
         from rcmvae.domain.config import SSVAEConfig
+        from use_cases.experiments.data.mnist.mnist import load_mnist_scaled
+        import numpy as np
+        import pandas as pd
         import re
         
         # Use the provided name as model_id (sanitized)
-        # If no name provided, generate a default one
         if self.name and self.name.strip():
-            # Sanitize name: lowercase, replace spaces/special chars with underscores
             sanitized = re.sub(r'[^a-z0-9_-]', '_', self.name.strip().lower())
-            # Remove consecutive underscores
             sanitized = re.sub(r'_+', '_', sanitized)
-            # Remove leading/trailing underscores
-            model_id = sanitized.strip('_')
-            
-            # Ensure unique (append number if exists)
+            model_id = sanitized.strip('_') or "model"
             base_id = model_id
             counter = 1
-            while (ModelManager.model_dir(model_id)).exists():
+            while ModelManager.model_dir(model_id).exists():
                 model_id = f"{base_id}_{counter}"
                 counter += 1
         else:
-            # Generate sequential ID
             model_id = ModelManager.generate_model_id()
         
         display_name = self.name.strip() if self.name and self.name.strip() else model_id
-        
-        # Create directory
         ModelManager.create_model_directory(model_id)
         
-        # Create config based on preset
+        # Base configuration (default SSVAE config for dashboard usage)
         config = SSVAEConfig()
-        if self.config_preset == "high_recon":
-            config.recon_weight = 5000.0
-            config.kl_weight = 0.01
-        elif self.config_preset == "classification":
-            config.label_weight = 10.0
-            config.recon_weight = 500.0
         
-        # Create metadata
+        # Snapshot dataset configuration
+        total_samples = int(self.num_samples)
+        labeled_samples = int(self.num_labeled)
+        rng_seed = int(self.seed if self.seed is not None else 0)
+        rng = np.random.default_rng(rng_seed)
+        
+        x_full, y_full, _, _, source = load_mnist_scaled(
+            reshape=True,
+            hw=(28, 28),
+            dtype=np.float32,
+        )
+        max_available = x_full.shape[0]
+        if total_samples > max_available:
+            total_samples = max_available
+        selected_indices = rng.choice(max_available, size=total_samples, replace=False)
+        selected_indices = selected_indices.tolist()
+        labeled_count = min(labeled_samples, total_samples)
+        if labeled_count > 0:
+            labeled_positions = sorted(rng.choice(total_samples, size=labeled_count, replace=False).tolist())
+        else:
+            labeled_positions = []
+        
+        # Persist dataset config for reproducible loading
+        dataset_config = {
+            "dataset": "mnist",
+            "source": source,
+            "indices": selected_indices,
+            "labeled_positions": labeled_positions,
+            "seed": rng_seed,
+            "total_samples": total_samples,
+            "labeled_samples": labeled_count,
+        }
+        ModelManager.save_dataset_config(model_id, dataset_config)
+        
+        # Pre-populate labels.csv with labeled subset
+        labels_path = ModelManager.labels_path(model_id)
+        if labeled_positions:
+            selected_labels = y_full[selected_indices]
+            rows = [
+                {"Serial": int(pos), "label": int(selected_labels[pos])}
+                for pos in labeled_positions
+            ]
+            df = pd.DataFrame(rows, columns=["Serial", "label"])
+        else:
+            df = pd.DataFrame(columns=["Serial", "label"])
+        df.to_csv(labels_path, index=False)
+        
+        # Save metadata and auxiliary files
         now = datetime.utcnow().isoformat()
         metadata = ModelMetadata(
             model_id=model_id,
@@ -757,30 +802,19 @@ class CreateModelCommand(Command):
             last_modified=now,
             dataset="mnist",
             total_epochs=0,
-            labeled_count=0,
-            latest_loss=None
+            labeled_count=labeled_count,
+            latest_loss=None,
+            dataset_total_samples=total_samples,
+            dataset_seed=rng_seed,
         )
-        
-        # Save files
         ModelManager.save_metadata(metadata)
-        from use_cases.dashboard.core.state_models import TrainingHistory
         ModelManager.save_history(model_id, TrainingHistory.empty())
         ModelManager.save_config(model_id, config)
         
-        # Note: Don't save model weights yet - they'll be saved after first training
-        # The model directory and metadata are created, that's enough for now
-        
-        # Create empty labels.csv
-        labels_path = ModelManager.labels_path(model_id)
-        pd.DataFrame(columns=["Serial", "label"]).to_csv(labels_path, index=False)
-        
-        # Update registry
+        # Update registry with new metadata
         new_state = state.with_model_metadata(metadata)
         
-        # Note: Callback should call LoadModelCommand after this succeeds
-        # to actually load the model as active
-        
-        return new_state, model_id  # Return model_id so callback can load it
+        return new_state, model_id
 
 
 @dataclass
@@ -813,11 +847,13 @@ class LoadModelCommand(Command):
         )
         from use_cases.dashboard.utils.visualization import _build_hover_metadata
         from data.mnist.mnist import load_train_images_for_ssvae, load_mnist_splits
+        from use_cases.experiments.data.mnist.mnist import load_mnist_scaled
         from rcmvae.application.model_api import SSVAE
         from rcmvae.domain.config import SSVAEConfig
         from rcmvae.application.runtime.interactive import InteractiveTrainer
         import pandas as pd
         import numpy as np
+        from dataclasses import replace as dc_replace
         
         # Load metadata
         metadata = ModelManager.load_metadata(self.model_id)
@@ -836,20 +872,37 @@ class LoadModelCommand(Command):
         
         trainer = InteractiveTrainer(model)
         
-        # Load data
-        if FAST_DASHBOARD_MODE:
-            preview_n = min(PREVIEW_SAMPLE_LIMIT, 256)
-            rng = np.random.default_rng(0)
-            x_train = rng.random((preview_n, 28, 28), dtype=np.float32)
-            true_labels = np.zeros(preview_n, dtype=np.int32)
-        else:
-            x_train = load_train_images_for_ssvae(dtype=np.float32)
-            (_, true_labels), _ = load_mnist_splits(normalize=True, reshape=False, dtype=np.float32)
-            true_labels = np.asarray(true_labels, dtype=np.int32)
+        dataset_config = ModelManager.load_dataset_config(self.model_id)
 
-            preview_n = min(PREVIEW_SAMPLE_LIMIT, x_train.shape[0])
-            x_train = x_train[:preview_n]
-            true_labels = true_labels[:preview_n]
+        if dataset_config:
+            indices = np.asarray(dataset_config.get("indices", []), dtype=np.int64)
+            if indices.size == 0:
+                raise ValueError("Dataset configuration has no indices")
+            x_full, y_full, _, _, _ = load_mnist_scaled(
+                reshape=True,
+                hw=(28, 28),
+                dtype=np.float32,
+            )
+            max_available = x_full.shape[0]
+            if np.any(indices >= max_available):
+                raise ValueError("Dataset indices exceed available MNIST samples")
+            x_train = x_full[indices]
+            true_labels = y_full[indices].astype(np.int32)
+        else:
+            # Backward compatibility: fall back to preview dataset
+            if FAST_DASHBOARD_MODE:
+                preview_n = min(PREVIEW_SAMPLE_LIMIT, 256)
+                rng = np.random.default_rng(0)
+                x_train = rng.random((preview_n, 28, 28), dtype=np.float32)
+                true_labels = np.zeros(preview_n, dtype=np.int32)
+            else:
+                x_train = load_train_images_for_ssvae(dtype=np.float32)
+                (_, true_labels), _ = load_mnist_splits(normalize=True, reshape=False, dtype=np.float32)
+                true_labels = np.asarray(true_labels, dtype=np.int32)
+
+                preview_n = min(PREVIEW_SAMPLE_LIMIT, x_train.shape[0])
+                x_train = x_train[:preview_n]
+                true_labels = true_labels[:preview_n]
         
         # Load history
         history = ModelManager.load_history(self.model_id)
@@ -868,9 +921,18 @@ class LoadModelCommand(Command):
                 label_values = stored_labels["label"].astype(int).to_numpy()
                 valid_mask = (serials >= 0) & (serials < x_train.shape[0])
                 labels_array[serials[valid_mask]] = label_values[valid_mask].astype(float)
+
+        labeled_count = int(np.sum(~np.isnan(labels_array)))
+        metadata = dc_replace(
+            metadata,
+            labeled_count=labeled_count,
+            dataset_total_samples=x_train.shape[0],
+        )
         
         # Get predictions
-        if FAST_DASHBOARD_MODE:
+        if dataset_config:
+            latent, recon, pred_classes, pred_certainty = model.predict(x_train)
+        elif FAST_DASHBOARD_MODE:
             latent = np.zeros((preview_n, model.config.latent_dim), dtype=np.float32)
             recon = np.zeros_like(x_train)
             pred_classes = np.zeros(preview_n, dtype=np.int32)

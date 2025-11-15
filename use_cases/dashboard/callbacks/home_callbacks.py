@@ -18,7 +18,9 @@ def register_home_callbacks(app: Dash) -> None:
     @app.callback(
         Output("home-create-modal", "is_open"),
         Output("home-model-name-input", "value"),
-        Output("home-config-preset", "value"),
+        Output("home-num-samples-input", "value"),
+        Output("home-num-labeled-input", "value"),
+        Output("home-seed-input", "value"),
         Input("home-new-model-btn", "n_clicks"),
         Input("home-confirm-create", "n_clicks"),
         Input("home-cancel-create", "n_clicks"),
@@ -36,14 +38,14 @@ def register_home_callbacks(app: Dash) -> None:
         
         if triggered_id == "home-new-model-btn":
             # Open modal and reset inputs
-            return True, "", "default"
+            return True, "", 1024, 128, 0
         elif triggered_id == "home-cancel-create":
             # Explicit cancel closes modal
-            return False, "", "default"
+            return False, "", 1024, 128, 0
         elif triggered_id == "home-confirm-create":
             # Keep modal open; create callback will navigate on success
             # or show feedback on failure
-            return is_open, "", "default"
+            return is_open, "", 1024, 128, 0
         
         raise PreventUpdate
     
@@ -52,18 +54,21 @@ def register_home_callbacks(app: Dash) -> None:
         Output("home-create-feedback", "children"),
         Input("home-confirm-create", "n_clicks"),
         State("home-model-name-input", "value"),
-        State("home-config-preset", "value"),
+        State("home-num-samples-input", "value"),
+        State("home-num-labeled-input", "value"),
+        State("home-seed-input", "value"),
         prevent_initial_call=True,
     )
-    def create_model(n_clicks, model_name, preset):
+    def create_model(n_clicks, model_name, num_samples, num_labeled, seed):
         """Create new model and navigate to it."""
         if not n_clicks:
             raise PreventUpdate
-        
-        # Create model
+
         command = CreateModelCommand(
             name=model_name if model_name else None,
-            config_preset=preset
+            num_samples=int(num_samples) if num_samples is not None else 1024,
+            num_labeled=int(num_labeled) if num_labeled is not None else 128,
+            seed=int(seed) if seed is not None else 0,
         )
         success, model_id_or_error = dashboard_state.dispatcher.execute(command)
         
@@ -82,6 +87,30 @@ def register_home_callbacks(app: Dash) -> None:
         
         # Navigate to model
         return f"/model/{model_id}", ""
+
+    @app.callback(
+        Output("home-unlabeled-preview", "children"),
+        Input("home-num-samples-input", "value"),
+        Input("home-num-labeled-input", "value"),
+        prevent_initial_call=False,
+    )
+    def update_unlabeled_preview(total_value, labeled_value):
+        """Display derived unlabeled sample count in the modal."""
+        try:
+            total = int(total_value) if total_value is not None else 0
+            labeled = int(labeled_value) if labeled_value is not None else 0
+        except (TypeError, ValueError):
+            return ""
+
+        if total <= 0:
+            return "Specify a positive total sample count."
+        if labeled < 0:
+            return "Labeled samples cannot be negative."
+        if labeled > total:
+            return "Labeled samples exceed total; adjust the values."
+
+        unlabeled = total - labeled
+        return f"Unlabeled samples: {unlabeled:,}"
     
     @app.callback(
         Output("url", "pathname", allow_duplicate=True),
