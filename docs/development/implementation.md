@@ -4,26 +4,55 @@
 
 ---
 
+## Table of Contents
+
+- [Developer Workflow (at a glance)](#developer-workflow-at-a-glance)
+- [Module Organization](#module-organization)
+- [Core Model (`src/rcmvae/`)](#core-model-srcrcmvae)
+- [Network Components (`src/rcmvae/domain/components/`)](#network-components-srcrcmvaedomaincomponents)
+- [Prior Distributions (`src/rcmvae/domain/priors/`)](#prior-distributions-srcrcmvaedomainpriors)
+- [Training Infrastructure (`src/rcmvae/application/services/training_service.py`)](#training-infrastructure-srcrcmvaeapplicationservicestraining_servicepy)
+- [Callbacks (`src/rcmvae/application/callbacks/`)](#callbacks-srcrcmvaeapplicationcallbacks)
+- [Utilities (`src/rcmvae/utils/`)](#utilities-srcrcmvaeutils)
+- [Working with the Code](#working-with-the-code)
+- [Testing](#testing)
+- [Related Documentation](#related-documentation)
+
+---
+
+## Developer Workflow (at a glance)
+
+When making changes or additions, a typical flow is:
+
+1. **Orient** – skim `AGENTS.md` and `docs/development/architecture.md` to confirm the design intent.
+2. **Locate modules** – use the Module Organization below to find the relevant package under `src/rcmvae` or `src/infrastructure`.
+3. **Cross-check usage** – see how experiments or the dashboard call into your target module via `use_cases/experiments` or `use_cases/dashboard`.
+4. **Implement & wire** – make changes in `domain/` or `application/`, wire them through `ModelFactoryService` and `SSVAEConfig`.
+5. **Validate** – run targeted tests (e.g. mixture/τ suites) and a small `run_experiment.py` config to observe behavior and visualizations.
+
+---
+
 ## Module Organization
 
 ```
 src/
-├── rcmvae/                 # Core model layer
-│   ├── domain/             # Configuration, components, priors, losses, network
-│   ├── application/        # Factory/trainer/checkpoint/diagnostics services + public API
-│   └── adapters/           # Integration points for CLI/dashboard (future home)
+├── rcmvae/                     # Core model layer
+│   ├── domain/                 # Configuration, components, priors, network math
+│   ├── application/            # Public API, runtime/, services/ (factory/trainer/diagnostics)
+│   ├── adapters/               # Bridges into CLI/dashboard tooling
+│   └── utils/                  # Device helpers (JAX runtime setup)
 │
-├── model/                  # Shared helpers that remain under legacy namespace
-│   ├── callbacks/          # Training observability hooks
-│   └── utils/              # JAX device helpers
-│
-└── infrastructure/         # Shared infrastructure for experiments & dashboard
-    ├── logging/            # Structured logging setup
-    ├── metrics/            # Metric registry + default providers
-    ├── visualization/      # Plot registry + concrete plotters
-    ├── runpaths/           # Experiment run directory schema helpers
-    └── utils/              # (Future) shared infrastructure utilities
+└── infrastructure/             # Shared infrastructure for experiments & dashboard
+    ├── logging/                # Structured logging setup
+    ├── metrics/                # Metric registry + default providers
+    ├── visualization/          # Plot registry + concrete plotters
+    ├── runpaths/               # Experiment run directory schema helpers
+    └── utils/                  # (Future) shared infrastructure utilities
 ```
+
+Experiment entrypoints and the dashboard live under `use_cases/` and are documented in:
+- `use_cases/experiments/README.md` – experiment pipeline and CLI usage
+- `use_cases/dashboard/README.md` – interactive app and development notes
 
 ---
 
@@ -276,7 +305,9 @@ config = SSVAEConfig(
 
 ---
 
-### `factory.py` - Component Creation
+### `factory_service.py` - Component Creation
+
+**Location:** `src/rcmvae/application/services/factory_service.py`
 
 **Purpose:** Centralized factory for creating and validating model components.
 
@@ -289,7 +320,7 @@ config = SSVAEConfig(
 - Validates configuration consistency before returning
 - Handles VampPrior pseudo-input initialization when `init_data` provided
 
-Lower-level component builders (encoders/decoders/classifiers) now live under `src/rcmvae/domain/components/factory.py`. They remain importable for advanced extensions, but the preferred workflow is to request a ready-to-train runtime from `ModelFactoryService`.
+Lower-level component builders (encoders/decoders/classifiers) live under `src/rcmvae/domain/components/factory.py`. They remain importable for advanced extensions, but the preferred workflow is to request a ready-to-train runtime from `ModelFactoryService`.
 
 **Design Pattern:**
 ```python
@@ -304,66 +335,30 @@ train_step = runtime.train_step_fn
 
 ---
 
-### `checkpoint.py` - State Persistence
+### `checkpoint_service.py` - State Persistence
 
-**Purpose:** Save and load model state.
+**Location:** `src/rcmvae/application/services/checkpoint_service.py`
+
+**Purpose:** Save and load model training state.
 
 **Key Class: `CheckpointManager`**
 
-**Methods:**
-
-**`save_checkpoint(variables, config, path)`**
-- Saves model parameters and configuration
-- Uses pickle for serialization
-- Stores metadata (timestamp, version)
-
-**`load_checkpoint(path)`**
-- Loads model state from disk
-- Returns: `(variables, config)`
-- Handles version compatibility
-
-**File Format:**
-```python
-{
-    'variables': FrozenDict,  # JAX parameters
-    'config': SSVAEConfig,    # Model configuration
-    'metadata': {
-        'timestamp': str,
-        'version': str
-    }
-}
-```
+- `save(state, path)` – serializes `SSVAETrainState` (params, opt_state, step) to disk.
+- `load(state_template, path)` – restores a state tree matching the given template.
+- `checkpoint_exists(path)` / `get_checkpoint_info(path)` – lightweight existence and metadata checks.
 
 ---
 
-### `diagnostics.py` - Metrics Collection
+### `diagnostics_service.py` - Metrics Collection
 
-**Purpose:** Collect and organize training metrics, especially for mixture priors.
+**Location:** `src/rcmvae/application/services/diagnostics_service.py`
+
+**Purpose:** Collect and organize training diagnostics, especially for mixture priors.
 
 **Key Class: `DiagnosticsCollector`**
 
-**Methods:**
-
-**`collect_mixture_diagnostics(variables, data, network, config)`**
-- Computes mixture prior metrics
-- Returns: Dict with usage, entropy, π values
-
-**Collected Metrics:**
-- `component_usage`: Empirical usage $\hat{p}(c)$
-- `component_entropy`: Responsibility entropy
-- `pi`: Mixture weights (softmax of logits)
-- `pi_entropy`: Entropy of π distribution
-
-**Usage:**
-```python
-diagnostics = DiagnosticsCollector.collect_mixture_diagnostics(
-    variables=model.variables,
-    data=validation_data,
-    network=model.network,
-    config=model.config
-)
-print(f"Active components: {(diagnostics['component_usage'] > 0.01).sum()}")
-```
+- `collect_mixture_diagnostics(...)` – computes component usage, entropies, and saves statistics (including latent dumps for 2D latents) into a diagnostics directory.
+- `last_output_dir` / `load_component_usage` / `load_latent_data` – helpers for downstream visualization modules.
 
 ---
 
@@ -449,9 +444,11 @@ logits = classifier(z)  # Shape: (batch_size, num_classes)
 
 ### `components/factory.py`
 
+**Location:** `src/rcmvae/domain/components/factory.py`
+
 **Purpose:** Create network components from configuration.
 
-Similar to top-level `factory.py` but focused on individual components. Handles:
+Handles:
 - Component initialization
 - Weight initialization
 - Shape validation
@@ -701,7 +698,9 @@ return state, shuffle_rng, history
 
 ---
 
-### `interactive_trainer.py`
+### `runtime/interactive.py` – Interactive Trainer
+
+**Location:** `src/rcmvae/application/runtime/interactive.py`
 
 **Purpose:** Stateful trainer for incremental/interactive training sessions.
 
@@ -741,9 +740,8 @@ return state, shuffle_rng, history
 **Usage Pattern:**
 ```python
 from rcmvae.application.model_api import SSVAE
-from training.interactive_trainer import InteractiveTrainer
+from rcmvae.application.runtime.interactive import InteractiveTrainer
 
-# Create model and trainer
 model = SSVAE(input_dim=(28, 28), config=config)
 trainer = InteractiveTrainer(model)
 
@@ -992,18 +990,20 @@ See [Extending the System](extending.md) for step-by-step tutorials on:
 # All tests
 pytest tests/
 
-# Specific test file
-pytest tests/test_network_components.py
-
-# With coverage
-pytest --cov=src tests/
+# Example: focus on mixture + τ behavior
+pytest tests/test_mixture_encoder.py tests/test_mixture_losses.py \
+       tests/test_tau_classifier.py tests/test_tau_integration.py
 ```
 
-### Test Organization
+### Test Organization (selected examples)
 
-- `tests/test_network_components.py` - Component unit tests
-- `tests/test_integration_workflows.py` - End-to-end tests
-- `tests/test_mixture_prior_regression.py` - Prior behavior tests
+- Mixture & priors: `tests/test_mixture_encoder.py`, `tests/test_mixture_losses.py`,
+  `tests/test_prior_abstraction.py`, `tests/test_vamp_prior.py`, `tests/test_geometric_mog_prior.py`
+- τ-classifier: `tests/test_tau_classifier.py`, `tests/test_tau_integration.py`, `tests/test_tau_validations.py`
+- System/regression: `tests/test_phase1.py`, `tests/test_refactor_safety.py`, `tests/test_refactor_safety_v2.py`,
+  `tests/test_backward_compatibility.py`, `tests/test_legacy_checkpoint.py`
+- Experiments & infra: `tests/test_experiment_naming.py`, `tests/test_experiment_validation.py`,
+  `tests/test_logging_setup.py`
 
 ---
 

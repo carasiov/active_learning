@@ -1,13 +1,11 @@
-"""
-Refactored SSVAE - Cleaner architecture using focused components.
+"""SSVAE public API and orchestration layer.
 
-This is the new implementation that delegates to:
-- ModelFactoryService: Model creation
-- CheckpointManager: Save/load
-- DiagnosticsCollector: Diagnostics generation
-- Trainer: Training loop
-
-Once validated, this will replace the original models.py.
+This module exposes the user-facing `SSVAE` class and delegates core
+responsibilities to focused services:
+- ``ModelFactoryService`` – model creation and initialization
+- ``CheckpointManager`` – saving and loading training state
+- ``DiagnosticsCollector`` – mixture and latent-space diagnostics
+- ``Trainer`` – JAX training loop with early stopping and callbacks
 """
 from __future__ import annotations
 

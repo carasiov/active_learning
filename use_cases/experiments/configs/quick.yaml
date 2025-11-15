@@ -63,8 +63,8 @@ model:
   num_classes: 10                   # Output classes (10 for MNIST digits)
   latent_dim: 2                     # Latent space dimensions (2D for visualization)
   
-  encoder_type: "dense"              # "conv" for images, "dense" for tabular
-  decoder_type: "dense"              # Should match encoder_type
+  encoder_type: "conv"              # "conv" for images, "dense" for tabular
+  decoder_type: "conv"              # Should match encoder_type
   classifier_type: "dense"          # Classifier architecture (currently only "dense")
   
   hidden_dims: [128, 64]       # Layer sizes for dense encoder/decoder
@@ -167,7 +167,7 @@ model:
   # 1. τ-classifier: Latent-only via responsibilities (mixture/vamp only)
   # 2. Standard: Separate classifier head on latent z
   
-  use_tau_classifier: true          # Use τ-based latent-only classification
+  use_tau_classifier: false          # Use τ-based latent-only classification
                                     # Requires: num_components >= num_classes
                                     # Works with: mixture, vamp priors
   tau_smoothing_alpha: 1.0          # Laplace smoothing for τ counts (prevents zeros)

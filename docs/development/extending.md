@@ -2,6 +2,16 @@
 
 > **Purpose** — hands-on guidance for evolving the refactored SSVAE. Read this alongside the [Architecture Guide](architecture.md) and [Implementation Guide](implementation.md) so changes stay consistent with the project’s invariants (see `AGENTS.md` for the knowledge-graph navigation model).
 
+---
+
+## Table of Contents
+
+- [Tutorial 1 · Adding a New Prior](#tutorial-1--adding-a-new-prior)
+- [Tutorial 2 · Component-Aware Decoder Variants](#tutorial-2--component-aware-decoder-variants)
+- [Tutorial 3 · τ-Classifier & Trainer Hooks](#tutorial-3--τ-classifier--trainer-hooks)
+- [Tutorial 4 · Adding Custom Loss Terms](#tutorial-4--adding-custom-loss-terms)
+- [General Extension Checklist](#general-extension-checklist)
+
 The codebase relies on three pillars:
 
 1. **Protocols and registries** (`PriorMode`, decoder builders, Trainer hooks)
