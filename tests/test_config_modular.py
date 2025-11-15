@@ -4,7 +4,7 @@ Tests cover:
 - Base configs (NetworkConfig, TrainingConfig, LossConfig, DecoderFeatures)
 - Prior configs (Standard, Mixture, Vamp, GeometricMoG)
 - ExperimentConfig composition
-- Converters (dict ↔ ExperimentConfig, SSVAEConfig ↔ ExperimentConfig)
+- Converters (dict ↔ ExperimentConfig)
 """
 
 import pytest
@@ -21,10 +21,7 @@ from rcmvae.config import (
     TrainingConfig,
     VampPriorConfig,
     experiment_config_from_dict,
-    experiment_config_to_ssvae_config,
-    ssvae_config_to_experiment_config,
 )
-from rcmvae.domain.config import SSVAEConfig
 
 
 # ============================================================================
@@ -485,87 +482,3 @@ def test_experiment_config_from_dict_all_prior_types():
 # ============================================================================
 
 
-def test_experiment_config_to_ssvae_config():
-    """Test converting ExperimentConfig to SSVAEConfig."""
-    exp_config = ExperimentConfig(
-        network=NetworkConfig(latent_dim=10, encoder_type="conv"),
-        training=TrainingConfig(batch_size=256),
-        loss=LossConfig(recon_weight=1000.0),
-        prior=MixturePriorConfig(num_components=20),
-    )
-
-    ssvae_config = experiment_config_to_ssvae_config(exp_config)
-
-    assert isinstance(ssvae_config, SSVAEConfig)
-    assert ssvae_config.latent_dim == 10
-    assert ssvae_config.encoder_type == "conv"
-    assert ssvae_config.batch_size == 256
-    assert ssvae_config.recon_weight == 1000.0
-    assert ssvae_config.prior_type == "mixture"
-    assert ssvae_config.num_components == 20
-
-
-def test_ssvae_config_to_experiment_config():
-    """Test converting SSVAEConfig to ExperimentConfig."""
-    ssvae_config = SSVAEConfig(
-        latent_dim=10,
-        encoder_type="conv",
-        batch_size=256,
-        recon_weight=1000.0,
-        prior_type="mixture",
-        num_components=20,
-    )
-
-    exp_config = ssvae_config_to_experiment_config(ssvae_config)
-
-    assert isinstance(exp_config, ExperimentConfig)
-    assert exp_config.network.latent_dim == 10
-    assert exp_config.network.encoder_type == "conv"
-    assert exp_config.training.batch_size == 256
-    assert exp_config.loss.recon_weight == 1000.0
-    assert isinstance(exp_config.prior, MixturePriorConfig)
-    assert exp_config.prior.num_components == 20
-
-
-def test_bidirectional_conversion_roundtrip():
-    """Test that ExperimentConfig → SSVAEConfig → ExperimentConfig preserves values."""
-    original = ExperimentConfig(
-        network=NetworkConfig(latent_dim=10, encoder_type="conv"),
-        training=TrainingConfig(batch_size=256, learning_rate=1e-4),
-        loss=LossConfig(recon_weight=1000.0, kl_weight=10.0),
-        decoder=DecoderFeatures(
-            use_heteroscedastic_decoder=True,
-            component_embedding_dim=16,
-        ),
-        prior=VampPriorConfig(
-            num_components=20,
-            vamp_num_samples_kl=5,
-            vamp_pseudo_init_method="kmeans",
-        ),
-    )
-
-    # Round-trip conversion
-    ssvae_config = experiment_config_to_ssvae_config(original)
-    recovered = ssvae_config_to_experiment_config(ssvae_config)
-
-    # Verify network
-    assert recovered.network.latent_dim == original.network.latent_dim
-    assert recovered.network.encoder_type == original.network.encoder_type
-
-    # Verify training
-    assert recovered.training.batch_size == original.training.batch_size
-    assert recovered.training.learning_rate == original.training.learning_rate
-
-    # Verify loss
-    assert recovered.loss.recon_weight == original.loss.recon_weight
-    assert recovered.loss.kl_weight == original.loss.kl_weight
-
-    # Verify decoder
-    assert recovered.decoder.use_heteroscedastic_decoder == original.decoder.use_heteroscedastic_decoder
-    assert recovered.decoder.component_embedding_dim == original.decoder.component_embedding_dim
-
-    # Verify prior
-    assert isinstance(recovered.prior, VampPriorConfig)
-    assert recovered.prior.num_components == original.prior.num_components
-    assert recovered.prior.vamp_num_samples_kl == original.prior.vamp_num_samples_kl
-    assert recovered.prior.vamp_pseudo_init_method == original.prior.vamp_pseudo_init_method
