@@ -82,7 +82,7 @@ model:
   # Training Configuration
   # ──────────────────────────────────────────────────────────────────────────
   learning_rate: 0.001              # Adam optimizer learning rate
-  batch_size: 256                   # Samples per batch
+  batch_size: 128                   # Samples per batch
   max_epochs: 100                    # Maximum training epochs
   patience: 20                      # Early stopping patience (epochs without improvement)
   val_split: 0.1                    # Validation set fraction
@@ -167,7 +167,7 @@ model:
   # 1. τ-classifier: Latent-only via responsibilities (mixture/vamp only)
   # 2. Standard: Separate classifier head on latent z
   
-  use_tau_classifier: false          # Use τ-based latent-only classification
+  use_tau_classifier: true          # Use τ-based latent-only classification
                                     # Requires: num_components >= num_classes
                                     # Works with: mixture, vamp priors
   tau_smoothing_alpha: 1.0          # Laplace smoothing for τ counts (prevents zeros)
