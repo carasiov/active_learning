@@ -15,7 +15,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from rcmvae.utils import get_device_info  # noqa: E402
-from rcmvae.domain.config import SSVAEConfig  # noqa: E402
+from rcmvae.config import experiment_config_from_dict, experiment_config_to_ssvae_config  # noqa: E402
 from use_cases.experiments.src.config import (  # noqa: E402
     add_repo_paths,
     augment_config_metadata,
@@ -138,11 +138,13 @@ def run_with_config(config_path: Path, *, validate_only: bool) -> int:
 
     exp_meta = experiment_config.get("experiment", {})
     data_config = experiment_config.get("data", {})
-    model_config = _normalize_model_config(experiment_config.get("model", {}))
+    model_dict = _normalize_model_config(experiment_config.get("model", {}))
 
     with warnings.catch_warnings(record=True) as caught_warnings:
         warnings.simplefilter("always", UserWarning)
-        ssvae_config = SSVAEConfig(**model_config)
+        # Load as ExperimentConfig, then convert to SSVAEConfig for backward compat
+        exp_config = experiment_config_from_dict(model_dict)
+        ssvae_config = experiment_config_to_ssvae_config(exp_config)
         architecture_code = generate_architecture_code(ssvae_config)
 
     try:
@@ -176,7 +178,7 @@ def run_with_config(config_path: Path, *, validate_only: bool) -> int:
     warnings.filterwarnings("ignore", category=UserWarning)
     x_train, y_semi, y_true, dataset_label = prepare_data(data_config)
 
-    val_split = model_config.get("val_split", 0.1)
+    val_split = model_dict.get("val_split", 0.1)
     train_size = int(len(x_train) * (1 - val_split))
     val_size = len(x_train) - train_size
     labeled_count = int((~np.isnan(y_semi)).sum())
@@ -203,7 +205,7 @@ def run_with_config(config_path: Path, *, validate_only: bool) -> int:
     print(format_training_section_header())
 
     model, history, summary, viz_meta = run_training_pipeline(
-        model_config,
+        model_dict,
         x_train,
         y_semi,
         y_true,

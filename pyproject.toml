@@ -5,7 +5,6 @@ description = "Semi-Supervised Variational Autoencoder for Active Learning"
 authors = ["Andreas Carasiov"]
 readme = "README.md"
 packages = [
-    { include = "model", from = "src" },
     { include = "infrastructure", from = "src" },
     { include = "rcmvae", from = "src" },
 ]
