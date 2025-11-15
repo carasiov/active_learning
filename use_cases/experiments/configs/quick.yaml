@@ -38,9 +38,10 @@ experiment:
 # ============================================================================
 data:
   dataset: "mnist"                  # Currently only MNIST is supported
-  num_samples: 1000                # Total samples from dataset
+  num_samples: 1000               # Total samples from dataset
   num_labeled: 100                  # Labeled samples (rest are unlabeled)
   seed: 42                          # Random seed for data sampling
+  dataset_variant: "mnist"          # "mnist" (default) or "digits" to force fallback
 
 
 
@@ -62,8 +63,8 @@ model:
   num_classes: 10                   # Output classes (10 for MNIST digits)
   latent_dim: 2                     # Latent space dimensions (2D for visualization)
   
-  encoder_type: "dense"              # "conv" for images, "dense" for tabular
-  decoder_type: "dense"              # Should match encoder_type
+  encoder_type: "conv"              # "conv" for images, "dense" for tabular
+  decoder_type: "conv"              # Should match encoder_type
   classifier_type: "dense"          # Classifier architecture (currently only "dense")
   
   hidden_dims: [128, 64]       # Layer sizes for dense encoder/decoder
@@ -81,8 +82,8 @@ model:
   # Training Configuration
   # ──────────────────────────────────────────────────────────────────────────
   learning_rate: 0.001              # Adam optimizer learning rate
-  batch_size: 256                   # Samples per batch
-  max_epochs: 10                    # Maximum training epochs
+  batch_size: 128                   # Samples per batch
+  max_epochs: 100                    # Maximum training epochs
   patience: 20                      # Early stopping patience (epochs without improvement)
   val_split: 0.1                    # Validation set fraction
   

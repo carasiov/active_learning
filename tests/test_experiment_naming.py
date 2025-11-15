@@ -5,7 +5,7 @@ experiment directory names from SSVAE configurations.
 """
 import pytest
 
-from model.ssvae.config import SSVAEConfig
+from rcmvae.domain.config import SSVAEConfig
 from use_cases.experiments.src.naming import (
     generate_architecture_code,
     generate_naming_legend,
@@ -101,13 +101,12 @@ class TestPriorEncoding:
 
     def test_geometric_mog_invalid_arrangement(self):
         """Geometric MoG with invalid arrangement raises error."""
-        config = SSVAEConfig(
-            prior_type="geometric_mog",
-            num_components=9,
-            geometric_arrangement="invalid"
-        )
         with pytest.raises(ValueError, match="Geometric MoG requires"):
-            _encode_prior(config)
+            SSVAEConfig(
+                prior_type="geometric_mog",
+                num_components=9,
+                geometric_arrangement="invalid"
+            )
 
     def test_unknown_prior_type(self):
         """Unknown prior type raises error."""

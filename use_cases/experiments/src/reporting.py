@@ -147,16 +147,27 @@ def write_report(
                 handle.write(f"![{label}]({rel.as_posix()})\n\n")
 
         # Core plots 
-        _embed_if_exists("Loss Comparison", "core/loss_comparison.png")
+        if (run_paths.figures / "core" / "loss_comparison.png").exists():
+            handle.write("### Loss Comparison\n\n")
+            handle.write(
+                "Training and validation loss curves for each objective term. \n\n"
+            )
+            handle.write("![Loss Comparison](figures/core/loss_comparison.png)\n\n")
 
         handle.write("### Latent Space\n\n")
         if (run_paths.figures / "core" / "latent_spaces.png").exists():
             handle.write("**By Class Label:**\n\n")
+            handle.write(
+                "Two-dimensional latent means colored by ground-truth label. \n\n"
+            )
             handle.write("![Latent Spaces](figures/core/latent_spaces.png)\n\n")
 
         # Mixture plots 
         if (run_paths.figures / "mixture" / "latent_by_component.png").exists():
             handle.write("**By Component Assignment:**\n\n")
+            handle.write(
+                "Latent projection colored by most likely mixture component. \n\n"
+            )
             handle.write("![Latent by Component](figures/mixture/latent_by_component.png)\n\n")
 
         channel_latent_root = run_paths.figures / "mixture" / "channel_latents"
@@ -164,6 +175,9 @@ def write_report(
             grid_paths = sorted(channel_latent_root.rglob("*channel_latents_grid.png"))
             if grid_paths:
                 handle.write("**Channel-wise responsibility (color = label, alpha = q(c|x))**\n\n")
+                handle.write(
+                    "Panels show fixed latent coordinates with color=label and alpha=respective responsibility for a single component. \n\n"
+                )
                 multi_grid = len(grid_paths) > 1
                 for grid_path in grid_paths:
                     rel = figures_rel / grid_path.relative_to(run_paths.figures)
@@ -175,11 +189,16 @@ def write_report(
 
         if (run_paths.figures / "mixture" / "responsibility_histogram.png").exists():
             handle.write("### Responsibility Confidence\n\n")
-            handle.write("Distribution of max_c q(c|x):\n\n")
+            handle.write(
+                "Histogram of max_c q(c|x) to summarize responsibility confidence. \n\n"
+            )
             handle.write("![Responsibility Histogram](figures/mixture/responsibility_histogram.png)\n\n")
 
         if recon_paths:
             handle.write("### Reconstructions\n\n")
+            handle.write(
+                "Sample inputs alongside their reconstructions. \n\n"
+            )
             for model_name, filename in recon_paths.items():
                 # filename already includes subdirectory prefix
                 rel = figures_rel / filename
@@ -191,6 +210,9 @@ def write_report(
             evolution_plots = sorted(mixture_dir.glob("*_evolution.png"))
             if evolution_plots:
                 handle.write("### Mixture Evolution\n\n")
+                handle.write(
+                    "Mixture weights (π) and empirical component usage over epochs. \n\n"
+                )
                 for plot_path in evolution_plots:
                     rel = figures_rel / "mixture" / plot_path.name
                     handle.write(f"![Mixture Evolution]({rel.as_posix()})\n\n")
@@ -198,6 +220,9 @@ def write_report(
         # More mixture plots 
         if (run_paths.figures / "mixture" / "component_embedding_divergence.png").exists():
             handle.write("### Component Embedding Divergence\n\n")
+            handle.write(
+                "Heatmap of pairwise distances between component embeddings. \n\n"
+            )
             handle.write("![Component Embedding Divergence](figures/mixture/component_embedding_divergence.png)\n\n")
 
         mixture_dir = run_paths.figures / "mixture"
@@ -205,6 +230,9 @@ def write_report(
             recon_by_component = sorted(mixture_dir.glob("*_reconstruction_by_component.png"))
             if recon_by_component:
                 handle.write("### Reconstruction by Component\n\n")
+                handle.write(
+                    "Original sample, per-component reconstructions, and responsibility-weighted blend. \n\n"
+                )
                 for plot_path in recon_by_component:
                     rel = figures_rel / "mixture" / plot_path.name
                     handle.write(f"![Reconstruction by Component]({rel.as_posix()})\n\n")
@@ -212,14 +240,23 @@ def write_report(
         # Tau plots 
         if (run_paths.figures / "tau" / "tau_matrix_heatmap.png").exists():
             handle.write("### τ Matrix (Component → Label Mapping)\n\n")
+            handle.write(
+                "Heatmap of τ_{c,y} = P(label=y | component=c). \n\n"
+            )
             handle.write("![τ Matrix Heatmap](figures/tau/tau_matrix_heatmap.png)\n\n")
 
         if (run_paths.figures / "tau" / "tau_per_class_accuracy.png").exists():
             handle.write("### Per-Class Accuracy\n\n")
+            handle.write(
+                "Bar plot of per-class accuracy (overall accuracy shown as dashed line). \n\n"
+            )
             handle.write("![Per-Class Accuracy](figures/tau/tau_per_class_accuracy.png)\n\n")
 
         if (run_paths.figures / "tau" / "tau_certainty_analysis.png").exists():
             handle.write("### Certainty Calibration\n\n")
+            handle.write(
+                "Binned accuracy vs certainty with point size proportional to sample count and y=x reference. \n\n"
+            )
             handle.write("![Certainty Analysis](figures/tau/tau_certainty_analysis.png)\n\n")
 
     print(f"  Saved report: {report_path}")

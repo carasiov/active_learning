@@ -1,0 +1,1 @@
+"""Adapters for CLIs / dashboards."""

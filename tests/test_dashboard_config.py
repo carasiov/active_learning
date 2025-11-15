@@ -22,7 +22,7 @@ def test_config_page_imports():
 def test_config_serialization():
     """Test that SSVAEConfig can be serialized to dict."""
     import dataclasses
-    from src.ssvae.config import SSVAEConfig
+    from rcmvae.domain.config import SSVAEConfig
     
     config = SSVAEConfig(batch_size=512, encoder_type='conv', latent_dim=10)
     config_dict = dataclasses.asdict(config)

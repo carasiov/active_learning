@@ -8,7 +8,7 @@ from typing import Optional, Dict, Any
 import json
 
 from use_cases.dashboard.core.state_models import ModelMetadata, TrainingHistory
-from model.ssvae import SSVAEConfig
+from rcmvae.domain.config import SSVAEConfig
 
 MODELS_DIR = Path(__file__).resolve().parents[2] / "artifacts" / "models"
 

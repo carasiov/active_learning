@@ -15,7 +15,8 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from model.ssvae import SSVAE, SSVAEConfig
+from rcmvae.application.model_api import SSVAE
+from rcmvae.domain.config import SSVAEConfig
 
 
 @pytest.fixture
@@ -220,7 +221,7 @@ class TestComponentFactoryContracts:
 
     def test_build_encoder_returns_valid_module(self):
         """Encoder factory should return valid Flax modules."""
-        from model.ssvae.components.factory import build_encoder
+        from rcmvae.domain.components.factory import build_encoder
 
         config_dense = SSVAEConfig(encoder_type="dense", latent_dim=8)
         encoder_dense = build_encoder(config_dense, input_hw=(28, 28))
@@ -244,7 +245,7 @@ class TestComponentFactoryContracts:
 
     def test_build_decoder_returns_valid_module(self):
         """Decoder factory should return valid Flax modules."""
-        from model.ssvae.components.factory import build_decoder
+        from rcmvae.domain.components.factory import build_decoder
 
         config_dense = SSVAEConfig(decoder_type="dense", latent_dim=8)
         decoder = build_decoder(config_dense, input_hw=(28, 28))
@@ -257,8 +258,8 @@ class TestComponentFactoryContracts:
 
     def test_mixture_with_conv_returns_mixture_conv_encoder(self):
         """Mixture prior + conv encoder should build the new convolutional mixture module."""
-        from model.ssvae.components.encoders import MixtureConvEncoder
-        from model.ssvae.components.factory import build_encoder
+        from rcmvae.domain.components.encoders import MixtureConvEncoder
+        from rcmvae.domain.components.factory import build_encoder
 
         config = SSVAEConfig(
             encoder_type="conv",
@@ -277,7 +278,7 @@ class TestLossFunctionInvariants:
 
     def test_kl_divergence_nonnegative(self):
         """KL divergence should always be non-negative."""
-        from model.training.losses import kl_divergence
+        from rcmvae.application.services.loss_pipeline import kl_divergence
 
         # Standard Gaussian (KL should be ~0)
         z_mean = jnp.zeros((10, 2))
@@ -294,7 +295,7 @@ class TestLossFunctionInvariants:
 
     def test_reconstruction_loss_nonnegative(self):
         """Reconstruction loss should always be non-negative."""
-        from model.training.losses import reconstruction_loss_mse, reconstruction_loss_bce
+        from rcmvae.application.services.loss_pipeline import reconstruction_loss_mse, reconstruction_loss_bce
 
         x = jnp.array(np.random.rand(10, 28, 28).astype(np.float32))
         recon = jnp.array(np.random.rand(10, 28, 28).astype(np.float32))
@@ -309,7 +310,7 @@ class TestLossFunctionInvariants:
 
     def test_categorical_kl_zero_when_equal(self):
         """KL(q||p) = 0 when q == p."""
-        from model.training.losses import categorical_kl
+        from rcmvae.application.services.loss_pipeline import categorical_kl
 
         # Uniform distributions
         q = jnp.ones((10, 5)) / 5.0
@@ -319,7 +320,7 @@ class TestLossFunctionInvariants:
 
     def test_usage_sparsity_encourages_concentration(self):
         """Usage sparsity penalty should be lower for concentrated distributions."""
-        from model.training.losses import usage_sparsity_penalty
+        from rcmvae.application.services.loss_pipeline import usage_sparsity_penalty
 
         # Uniform distribution (high entropy)
         uniform_resp = jnp.ones((100, 10)) / 10.0

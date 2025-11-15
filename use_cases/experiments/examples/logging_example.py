@@ -19,7 +19,7 @@ Output:
 from pathlib import Path
 import tempfile
 
-from model.ssvae.config import SSVAEConfig
+from rcmvae.domain.config import SSVAEConfig
 from use_cases.experiments.src.naming import generate_architecture_code
 from infrastructure.logging import (
     setup_experiment_logging,

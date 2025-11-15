@@ -18,13 +18,13 @@ from .registry import VisualizationContext, register_plotter
 from infrastructure import ComponentResult
 
 # Import plotting functions from domain modules
-from .core_plots import (
+from .core import (
     plot_loss_comparison,
     plot_latent_spaces,
     plot_reconstructions,
     generate_report,
 )
-from .mixture_plots import (
+from .mixture import (
     plot_latent_by_component,
     plot_channel_latent_responsibility,
     plot_responsibility_histogram,
@@ -32,7 +32,7 @@ from .mixture_plots import (
     plot_component_embedding_divergence,
     plot_reconstruction_by_component,
 )
-from .tau_plots import (
+from .tau import (
     plot_tau_matrix_heatmap,
     plot_tau_per_class_accuracy,
     plot_tau_certainty_analysis,

@@ -9,7 +9,7 @@ from typing import Dict, Optional
 
 import numpy as np
 
-from model.ssvae.diagnostics import DiagnosticsCollector
+from rcmvae.application.services.diagnostics_service import DiagnosticsCollector
 
 # Import infrastructure from metrics registry
 from infrastructure.metrics import MetricContext, register_metric

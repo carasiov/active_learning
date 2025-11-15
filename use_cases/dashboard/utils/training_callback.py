@@ -13,7 +13,7 @@ from typing import Dict, Optional
 
 import numpy as np
 
-from callbacks import TrainingCallback
+from rcmvae.application.callbacks import TrainingCallback
 
 
 # Custom exception for user-initiated stop

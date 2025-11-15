@@ -3,7 +3,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from model.ssvae import SSVAE, SSVAEConfig
+from rcmvae.application.model_api import SSVAE
+from rcmvae.domain.config import SSVAEConfig
 
 
 def test_mixture_model_trains_without_error():

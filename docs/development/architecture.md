@@ -4,6 +4,47 @@
 
 ---
 
+## Table of Contents
+
+- [Context & Intended Use](#context--intended-use)
+- [Overview](#overview)
+  - [Design Principles](#design-principles)
+- [System Components](#system-components)
+  - [High-Level Structure](#high-level-structure)
+- [Core Abstractions](#core-abstractions)
+- [Component Structure](#component-structure)
+- [Data Flow](#data-flow)
+- [Training Infrastructure](#training-infrastructure)
+- [Extension Points](#extension-points)
+- [Testing Strategy](#testing-strategy)
+- [Design Patterns Summary](#design-patterns-summary)
+- [Related Documentation](#related-documentation)
+
+---
+
+## Context & Intended Use
+
+This architecture exists to support fast, controlled experimentation with semi-supervised VAEs and mixture-structured latent spaces. The primary use cases are:
+
+- iterating on priors (standard, mixture, Vamp, geometric) and decoder variants,
+- studying component specialization and τ-based classification behavior,
+- running repeatable experiments that can later be driven from an interactive dashboard.
+
+The design assumes:
+
+- a single maintainer or small research team,
+- JAX/Flax-style functional code (immutable state, explicit RNG),
+- experiments launched from a CLI today and from a web UI later, both talking to the same application services.
+
+In practice:
+
+- the **domain layer** holds the math: networks, priors, losses, τ-related logic,
+- the **application layer** orchestrates training, checkpoints, diagnostics, and experiments (`ModelRuntime` + services),
+- the **adapters** layer exposes these services to the outside world (CLI, experiment scripts, future dashboard).
+
+The rest of this document explains how those pieces fit together and where to extend them.
+
+
 ## Overview
 
 The system implements a semi-supervised variational autoencoder (SSVAE) with a modular, protocol-based architecture designed for extensibility and experimentation. The core philosophy is **configuration-driven components** with **pluggable abstractions** for priors, encoders, and decoders.
@@ -25,7 +66,7 @@ The system implements a semi-supervised variational autoencoder (SSVAE) with a m
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    SSVAE Model (Public API)                  │
-│                     src/model/ssvae/models.py                      │
+│                     src/rcmvae/application/model_api.py                      │
 │                                                               │
 │  • fit(data, labels) → train model                           │
 │  • predict(data) → latent, recon, predictions, certainty     │
@@ -73,7 +114,7 @@ The system implements a semi-supervised variational autoencoder (SSVAE) with a m
 
 **Purpose:** Enable pluggable prior distributions without modifying core model code.
 
-**Location:** `src/model/ssvae/priors/base.py`
+**Location:** `src/rcmvae/domain/priors/base.py`
 
 **Interface:**
 ```python
@@ -125,11 +166,11 @@ class PriorMode(Protocol):
 - **VampPrior:** When spatial visualization is critical (2D latent plots)
 - **Geometric MoG:** Debugging, curriculum learning, quick visualization (NOT production)
 
-### 2. SSVAEFactory
+### 2. ModelFactoryService
 
 **Purpose:** Centralized component creation with validation and consistency checks.
 
-**Location:** `src/model/ssvae/factory.py`
+**Location:** `src/rcmvae/application/services/factory_service.py`
 
 **Responsibilities:**
 - Create encoders, decoders, classifiers based on configuration
@@ -139,10 +180,10 @@ class PriorMode(Protocol):
 
 **Example:**
 ```python
-network, variables = SSVAEFactory.create_network(
+runtime = ModelFactoryService.build_runtime(
+    input_dim=(28, 28),
     config=config,
-    input_shape=(28, 28),
-    key=jax.random.PRNGKey(42)
+    random_seed=42,
 )
 ```
 
@@ -156,7 +197,7 @@ network, variables = SSVAEFactory.create_network(
 
 **Purpose:** Centralized configuration with type safety and defaults.
 
-**Location:** `src/model/ssvae/config.py`
+**Location:** `src/rcmvae/domain/config.py`
 
 **Design Rationale:**
 - Dataclass provides free validation, serialization, equality
@@ -168,7 +209,7 @@ network, variables = SSVAEFactory.create_network(
 
 **Purpose:** Handle model state persistence and restoration.
 
-**Location:** `src/model/ssvae/checkpoint.py`
+**Location:** `src/rcmvae/application/services/checkpoint_service.py`
 
 **Responsibilities:**
 - Save model parameters to disk
@@ -185,7 +226,7 @@ network, variables = SSVAEFactory.create_network(
 
 **Purpose:** Collect and organize training metrics.
 
-**Location:** `src/model/ssvae/diagnostics.py`
+**Location:** `src/rcmvae/application/services/diagnostics_service.py`
 
 **Responsibilities:**
 - Compute mixture prior diagnostics (usage, entropy, π values)
@@ -203,7 +244,7 @@ network, variables = SSVAEFactory.create_network(
 
 ### Encoders
 
-**Location:** `src/model/ssvae/components/encoders/`
+**Location:** `src/rcmvae/domain/components/encoders/`
 
 **Types:**
 - `DenseEncoder`: Fully connected layers
@@ -228,7 +269,7 @@ class Encoder(nn.Module):
 
 ### Decoders
 
-**Location:** `src/model/ssvae/components/decoders/`
+**Location:** `src/rcmvae/domain/components/decoders/`
 
 **Types:**
 - `DenseDecoder`: Fully connected layers
@@ -252,7 +293,7 @@ class Decoder(nn.Module):
 
 ### Classifiers
 
-**Location:** `src/model/ssvae/components/classifiers/`
+**Location:** `src/rcmvae/domain/components/classifiers/`
 
 **Current Implementation:**
 - `DenseClassifier`: Simple MLP with softmax output
@@ -272,7 +313,7 @@ class Classifier(nn.Module):
 
 ### Priors
 
-**Location:** `src/model/ssvae/components/priors/`
+**Location:** `src/rcmvae/domain/priors/`
 
 **Implementations:**
 
@@ -353,7 +394,7 @@ Reconstruction  Predictions + Certainty
 
 ### Trainer
 
-**Location:** `src/model/training/trainer.py`
+**Location:** `src/rcmvae/application/services/training_service.py`
 
 **Responsibilities:**
 - Batch iteration and gradient updates
@@ -373,7 +414,7 @@ Reconstruction  Predictions + Certainty
 
 ### Losses
 
-**Location:** `src/model/training/losses.py`
+**Location:** `src/rcmvae/application/services/loss_pipeline.py`
 
 **Components:**
 - **Reconstruction loss:** BCE or MSE
@@ -388,7 +429,7 @@ Reconstruction  Predictions + Certainty
 
 ### Callbacks
 
-**Location:** `src/model/callbacks/`
+**Location:** `src/rcmvae/application/callbacks/`
 
 **Types:**
 - `LoggingCallback`: Console and CSV logging
@@ -403,83 +444,31 @@ Reconstruction  Predictions + Certainty
 
 ## Extension Points
 
-### Adding a New Prior
+At the architectural level, extension points follow three principles:
+- **Protocols** define behavior (`PriorMode`, τ-classifier helpers, trainer hooks).
+- **Registries/factories** map config identifiers to concrete implementations.
+- **Configuration** (`SSVAEConfig`) is the single source of truth for enabling features.
 
-1. **Implement PriorMode protocol:**
-```python
-class VampPrior:
-    def kl_divergence(self, z_mean, z_logvar, component_logits=None):
-        # Your VampPrior KL computation
-        ...
-
-    def sample(self, key, latent_dim, num_samples=1):
-        # Sample from learned pseudo-inputs
-        ...
-```
-
-2. **Register in factory:**
-```python
-# In factory.py
-if config.prior_type == "vamp":
-    prior = VampPrior(...)
-```
-
-3. **No changes to SSVAE class required!**
-
-### Adding a New Encoder
-
-1. **Create encoder module:**
-```python
-class TransformerEncoder(nn.Module):
-    def __call__(self, x, deterministic=True):
-        # Your architecture
-        return z_mean, z_logvar
-```
-
-2. **Register in factory:**
-```python
-if config.encoder_type == "transformer":
-    encoder = TransformerEncoder(...)
-```
-
-### Adding Component-Aware Features
-
-1. **Extend decoder to accept channel:**
-```python
-class ComponentAwareDecoder(nn.Module):
-    def __call__(self, z, channel_embedding, deterministic=True):
-        combined = jnp.concatenate([z, channel_embedding], axis=-1)
-        # Decode combined representation
-        ...
-```
-
-2. **Update factory and SSVAE to pass channel info**
+For concrete tutorials on adding priors, encoders/decoders, τ-classifier variants, or
+custom loss terms, see `docs/development/extending.md`.
 
 ---
 
 ## Testing Strategy
 
-### Test Organization
+Tests are organized by concern rather than by layer name:
+- Mixture/prior behavior (`tests/test_mixture_encoder.py`, `tests/test_mixture_losses.py`,
+  `tests/test_prior_abstraction.py`, `tests/test_vamp_prior.py`, `tests/test_geometric_mog_prior.py`)
+- τ-classifier and semi-supervised training (`tests/test_tau_classifier.py`,
+  `tests/test_tau_integration.py`, `tests/test_tau_validations.py`)
+- Integration/regression (`tests/test_phase1.py`, `tests/test_refactor_safety_v2.py`,
+  `tests/test_backward_compatibility.py`, `tests/test_legacy_checkpoint.py`)
+- Experiments/dashboard/infrastructure (`tests/test_experiment_naming.py`,
+  `tests/test_experiment_validation.py`, `tests/test_dashboard_integration.py`,
+  `tests/test_logging_setup.py`).
 
-- **Unit tests** (`tests/test_network_components.py`): Individual components in isolation
-- **Integration tests** (`tests/test_integration_workflows.py`): End-to-end workflows
-- **Regression tests** (`tests/test_mixture_prior_regression.py`): Prior behavior validation
-
-### Key Tests
-
-**Component validation:**
-- Output shapes correct
-- Deterministic vs stochastic modes
-- Gradient flow
-
-**Integration validation:**
-- Full training loop works
-- Checkpoint save/load
-- Configuration changes
-
-**Regression validation:**
-- Mixture prior metrics stable
-- Loss values in expected ranges
+The intent is to validate both local invariants (e.g., shapes, KL terms) and
+end-to-end workflows (training loops, checkpoints, experiment runner, dashboard).
 
 ---
 
@@ -487,11 +476,11 @@ class ComponentAwareDecoder(nn.Module):
 
 | Pattern | Purpose | Location | Benefit |
 |---------|---------|----------|---------|
-| **Protocol** | Pluggable priors | `priors/protocol.py` | Add priors without modifying core code |
-| **Factory** | Component creation | `factory.py` | Centralized validation and consistency |
-| **Dataclass Config** | Type-safe configuration | `config.py` | Early error detection, serialization |
-| **Dependency Injection** | Pass components to SSVAE | `models.py` | Testability, flexibility |
-| **Callback Pattern** | Training observability | `callbacks/` | Extensible logging/plotting |
+| **Protocol** | Pluggable priors | `src/rcmvae/domain/priors/base.py` | Add priors without modifying core code |
+| **Factory** | Component creation | `src/rcmvae/application/services/factory_service.py` | Centralized validation and consistency |
+| **Dataclass Config** | Type-safe configuration | `src/rcmvae/domain/config.py` | Early error detection, serialization |
+| **Dependency Injection** | Pass components to SSVAE | `src/rcmvae/application/model_api.py` | Testability, flexibility |
+| **Callback Pattern** | Training observability | `src/rcmvae/application/callbacks/` | Extensible logging/plotting |
 | **Immutable State** | JAX functional style | Throughout | Reproducibility, parallelization |
 
 ---

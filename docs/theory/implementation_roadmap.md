@@ -10,12 +10,12 @@
 
 | Pillar | Status | Key files / notes |
 |--------|--------|-------------------|
-| Mixture prior with entropy + Dirichlet controls | ✅ shipping | `src/model/ssvae/priors/mixture.py`, `src/model/training/losses.py` (usage penalty + Dirichlet) |
-| Component-aware decoder (dense/conv, heteroscedastic variants) | ✅ shipping | `src/model/ssvae/components/decoders.py` |
-| τ-classifier latent workflow (responsibility-based) | ✅ shipping | `src/model/ssvae/components/tau_classifier.py`, now enabled for **all** mixture-based priors |
-| Heteroscedastic decoder + weighted loss | ✅ needs tuning knobs only | `src/model/ssvae/components/decoders.py`, `src/model/training/losses.py` |
-| VampPrior (pseudo-input learning, MC-KL) | ✅ shipping | `src/model/ssvae/priors/vamp.py`, network now caches pseudo stats & supports pseudo-LR scaling |
-| Geometric MoG (diagnostic/curriculum prior) | ✅ shipping | `src/model/ssvae/priors/geometric_mog.py` |
+| Mixture prior with entropy + Dirichlet controls | ✅ shipping | `src/rcmvae/domain/priors/mixture.py`, `src/rcmvae/application/services/loss_pipeline.py` (usage penalty + Dirichlet) |
+| Component-aware decoder (dense/conv, heteroscedastic variants) | ✅ shipping | `src/rcmvae/domain/components/decoders.py` |
+| τ-classifier latent workflow (responsibility-based) | ✅ shipping | `src/rcmvae/domain/components/tau_classifier.py`, now enabled for **all** mixture-based priors |
+| Heteroscedastic decoder + weighted loss | ✅ needs tuning knobs only | `src/rcmvae/domain/components/decoders.py`, `src/rcmvae/application/services/loss_pipeline.py` |
+| VampPrior (pseudo-input learning, MC-KL) | ✅ shipping | `src/rcmvae/domain/priors/vamp.py`, network now caches pseudo stats & supports pseudo-LR scaling |
+| Geometric MoG (diagnostic/curriculum prior) | ✅ shipping | `src/rcmvae/domain/priors/geometric_mog.py` |
 | OOD scoring via `r × τ` | 📋 ready once experiment wiring added |
 | Dynamic label addition / active learning loop | 📋 design ready; needs workflow + UX |
 
@@ -39,7 +39,7 @@ Legend: ✅ production-ready · ⚠️ needs tuning · 📋 planned/ready-to-wir
 ### τ-Classifier & Latent Workflow
 - **What**: responsibility-based classifier substitutes the head: accumulates soft counts → τ-map → `p(y|x)=Σ_c q(c|x)τ_{c,y}`.  
 - **New in this revision**: any **mixture-based prior** (`mixture`, `vamp`, `geometric_mog`) gets τ hooks automatically (`SSVAE.config.is_mixture_based_prior()`), so VampPrior experiments can stay latent-only.  
-- **Files**: `src/model/ssvae/components/tau_classifier.py`, trainer hooks in `ssvae/models.py` and `training/trainer.py`.
+- **Files**: `src/rcmvae/domain/components/tau_classifier.py`, trainer hooks in `src/rcmvae/application/model_api.py` and `src/rcmvae/application/services/training_service.py`.
 
 ### Heteroscedastic Decoder
 - **What**: decoder predicts `(mean, σ)`; losses handle either per-sample (standard) or per-component (mixture) heteroscedasticity.  
@@ -48,7 +48,7 @@ Legend: ✅ production-ready · ⚠️ needs tuning · 📋 planned/ready-to-wir
 
 ### VampPrior Subsystem
 - **What**: pseudo-input prior with Monte Carlo KL. Network now re-encodes pseudo-inputs every forward pass and caches `pseudo_z_mean`/`pseudo_z_log_var` in `EncoderOutput.extras`, so the prior remains stateless.  
-- **Training hygiene**: `vamp_pseudo_lr_scale` scales gradients for `params['prior']['pseudo_inputs']` inside the JIT train step (see `_scale_vamp_pseudo_gradients()` in `ssvae/factory.py`).  
+- **Training hygiene**: `vamp_pseudo_lr_scale` scales gradients for `params['prior']['pseudo_inputs']` inside the JIT train step (see `_scale_vamp_pseudo_gradients()` in `rcmvae/application/services/factory_service.py`).  
 - **Features**: random or k-means pseudo init, optional multi-sample KL, uniform π for now.  
 - **Status**: production-ready for spatial visualization + component-free decoding.
 
@@ -61,7 +61,7 @@ Legend: ✅ production-ready · ⚠️ needs tuning · 📋 planned/ready-to-wir
 
 ## Tooling & Infrastructure
 
-- **Factory + Prior registry** — `SSVAEFactory` builds networks, optimizers (with gradient masks), and PriorMode instances; new priors just register via `ssvae/priors/__init__.py`.
+- **Factory + Prior registry** — `ModelFactoryService` builds networks, optimizers (with gradient masks), and PriorMode instances; new priors just register via `src/rcmvae/domain/priors/__init__.py`.
 - **Loss pipeline** — `compute_loss_and_metrics_v2` delegates reconstruction + KL to the active prior and merges τ losses, keeping trainer logic agnostic.  
 - **Diagnostics** — `DiagnosticsCollector` + callbacks capture π/usage histories, component entropies, per-component reconstructions, and latent dumps for 2-D runs.  
 - **Experiments** — configs live under `use_cases/experiments/configs/`; runners log to timestamped result dirs, feeding dashboards/plots.
@@ -86,13 +86,13 @@ Legend: ✅ production-ready · ⚠️ needs tuning · 📋 planned/ready-to-wir
 
 ## File Reference
 
-- **Config / validation** — `src/model/ssvae/config.py`
-- **Network + prior parameters** — `src/model/ssvae/network.py`
-- **Priors** — `src/model/ssvae/priors/{standard,mixture,vamp,geometric_mog}.py`
-- **Losses** — `src/model/training/losses.py`
-- **Trainer / hooks** — `src/model/training/trainer.py`
-- **Tau classifier** — `src/model/ssvae/components/tau_classifier.py`
-- **Diagnostics** — `src/model/ssvae/diagnostics.py`
+- **Config / validation** — `src/rcmvae/domain/config.py`
+- **Network + prior parameters** — `src/rcmvae/domain/network.py`
+- **Priors** — `src/rcmvae/domain/priors/{standard,mixture,vamp,geometric_mog}.py`
+- **Losses** — `src/rcmvae/application/services/loss_pipeline.py`
+- **Trainer / hooks** — `src/rcmvae/application/services/training_service.py`
+- **Tau classifier** — `src/rcmvae/domain/components/tau_classifier.py`
+- **Diagnostics** — `src/rcmvae/application/services/diagnostics_service.py`
 - **Experiments** — `use_cases/experiments/…`
 
 Use this roadmap with the architecture + implementation guides to stay aligned with the project’s invariants while iterating.

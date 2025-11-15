@@ -7,11 +7,14 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 import threading
+import os
 
 from use_cases.dashboard.core.state_models import AppState
 from use_cases.dashboard.core.logging_config import get_logger
 
 logger = get_logger('commands')
+PREVIEW_SAMPLE_LIMIT = 2048
+FAST_DASHBOARD_MODE = os.environ.get("DASHBOARD_FAST_MODE", "1").lower() not in {"0", "false", "no"}
 
 
 class Command(ABC):
@@ -704,10 +707,11 @@ class CreateModelCommand(Command):
     def execute(self, state: AppState) -> Tuple[AppState, str]:
         """Create new model directory and metadata."""
         from use_cases.dashboard.core.model_manager import ModelManager
-        from use_cases.dashboard.core.state_models import ModelMetadata, SSVAEConfig
+        from use_cases.dashboard.core.state_models import ModelMetadata
         from datetime import datetime
         from use_cases.dashboard.core import state as dashboard_state
-        from model.ssvae import SSVAE
+        from rcmvae.application.model_api import SSVAE
+        from rcmvae.domain.config import SSVAEConfig
         import re
         
         # Use the provided name as model_id (sanitized)
@@ -801,12 +805,17 @@ class LoadModelCommand(Command):
         # Load model components (we're already inside state_lock from dispatcher)
         from use_cases.dashboard.core.model_manager import ModelManager
         from use_cases.dashboard.core.state_models import (
-            ModelState, DataState, TrainingStatus, TrainingState, UIState, SSVAEConfig
+            ModelState,
+            DataState,
+            TrainingStatus,
+            TrainingState,
+            UIState,
         )
         from use_cases.dashboard.utils.visualization import _build_hover_metadata
         from data.mnist.mnist import load_train_images_for_ssvae, load_mnist_splits
-        from model.ssvae import SSVAE, SSVAEConfig
-        from model.training.interactive_trainer import InteractiveTrainer
+        from rcmvae.application.model_api import SSVAE
+        from rcmvae.domain.config import SSVAEConfig
+        from rcmvae.application.runtime.interactive import InteractiveTrainer
         import pandas as pd
         import numpy as np
         
@@ -828,9 +837,19 @@ class LoadModelCommand(Command):
         trainer = InteractiveTrainer(model)
         
         # Load data
-        x_train = load_train_images_for_ssvae(dtype=np.float32)
-        (_, true_labels), _ = load_mnist_splits(normalize=True, reshape=False, dtype=np.float32)
-        true_labels = np.asarray(true_labels, dtype=np.int32)
+        if FAST_DASHBOARD_MODE:
+            preview_n = min(PREVIEW_SAMPLE_LIMIT, 256)
+            rng = np.random.default_rng(0)
+            x_train = rng.random((preview_n, 28, 28), dtype=np.float32)
+            true_labels = np.zeros(preview_n, dtype=np.int32)
+        else:
+            x_train = load_train_images_for_ssvae(dtype=np.float32)
+            (_, true_labels), _ = load_mnist_splits(normalize=True, reshape=False, dtype=np.float32)
+            true_labels = np.asarray(true_labels, dtype=np.int32)
+
+            preview_n = min(PREVIEW_SAMPLE_LIMIT, x_train.shape[0])
+            x_train = x_train[:preview_n]
+            true_labels = true_labels[:preview_n]
         
         # Load history
         history = ModelManager.load_history(self.model_id)
@@ -851,7 +870,14 @@ class LoadModelCommand(Command):
                 labels_array[serials[valid_mask]] = label_values[valid_mask].astype(float)
         
         # Get predictions
-        latent, recon, pred_classes, pred_certainty = model.predict(x_train)
+        if FAST_DASHBOARD_MODE:
+            latent = np.zeros((preview_n, model.config.latent_dim), dtype=np.float32)
+            recon = np.zeros_like(x_train)
+            pred_classes = np.zeros(preview_n, dtype=np.int32)
+            pred_certainty = np.zeros(preview_n, dtype=np.float32)
+        else:
+            latent, recon, pred_classes, pred_certainty = model.predict(x_train)
+
         hover_metadata = _build_hover_metadata(pred_classes, pred_certainty, labels_array, true_labels)
         
         # Build ModelState
@@ -915,10 +941,16 @@ class DeleteModelCommand(Command):
         """Delete model files and remove from registry."""
         from use_cases.dashboard.core.model_manager import ModelManager
         from dataclasses import replace
-        
+        from use_cases.dashboard.core import state as dashboard_state
+
         logger.info(f"DELETING MODEL: model_id={self.model_id}")
         logger.debug(f"Available models before delete: {list(state.models.keys())}")
-        
+
+        # Double-check active model guard in case state changed between validate+execute
+        active = dashboard_state.app_state.active_model if dashboard_state.app_state else None
+        if active and active.model_id == self.model_id:
+            raise ValueError("Cannot delete active model. Switch to another model first.")
+
         # Get name for message
         model_name = state.models[self.model_id].name
         
