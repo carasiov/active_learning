@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from model.ssvae.config import SSVAEConfig
+from rcmvae.domain.config import SSVAEConfig
 from use_cases.experiments.src.logging import setup_experiment_logging
 from use_cases.experiments.src.logging.setup import (
     TrainingLogFilter,

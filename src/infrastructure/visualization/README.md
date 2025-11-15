@@ -9,36 +9,22 @@ The visualization module provides a comprehensive suite of diagnostic plots for 
 The module uses a **registry pattern** for dynamic plot discovery and execution based on model configuration. The implementation is organized into domain-specific modules:
 
 ```
-src/visualization/
+src/infrastructure/visualization/
 ├── __init__.py              # Public API exports
 ├── registry.py              # Orchestration and registry management
 ├── status.py                # Status objects for component results
+├── plotters.py              # Registry bindings / @register_plotter
 │
-├── plotters.py              # Registry bindings (~280 lines)
-│   └─ All @register_plotter decorators
+├── utils/_plot_utils.py     # Shared utilities (color palettes, PlotGrid, save helpers)
 │
-├── plot_utils.py            # Shared utilities (~270 lines)
-│   ├─ Helper functions (sanitize names, color palettes, etc.)
-│   └─ PlotGrid class for subplot management
+├── core/__init__.py         # Core diagnostics package
+│   └── plots.py             # Loss curves, latent spaces, reconstructions, report
 │
-├── core_plots.py            # Basic visualizations (~350 lines)
-│   ├─ Loss curves
-│   ├─ Latent space scatter plots
-│   ├─ Reconstructions
-│   └─ Report generation
+├── mixture/__init__.py      # Mixture prior visualizations
+│   └── plots.py             # Component latents, responsibilities, embeddings, π history
 │
-├── mixture_plots.py         # Mixture-specific plots (~570 lines)
-│   ├─ Latent by component
-│   ├─ Channel responsibility visualization
-│   ├─ Responsibility histograms
-│   ├─ Mixture evolution (π dynamics)
-│   ├─ Component embedding divergence
-│   └─ Reconstruction by component
-│
-└── tau_plots.py             # τ-classifier plots (~280 lines)
-    ├─ τ matrix heatmap
-    ├─ Per-class accuracy
-    └─ Certainty vs accuracy analysis
+└── tau/__init__.py          # τ-classifier visualizations
+    └── plots.py             # τ matrix heatmap, per-class accuracy, certainty analysis
 ```
 
 ## Module Responsibilities
@@ -49,7 +35,7 @@ Entry point for the visualization system. Contains:
 - Wrapper functions (`_single_model_dict`, `_single_history_dict`) for API compatibility
 - Conditional logic for enabling/disabling plots based on model config
 
-### `plot_utils.py` - Shared Utilities
+### `utils/_plot_utils.py` - Shared Utilities
 Common functions used across all plotting modules:
 - `_sanitize_model_name()`: Convert model names to safe filenames
 - `_build_label_palette()`: Generate consistent color palettes for class labels
@@ -60,14 +46,14 @@ Common functions used across all plotting modules:
 - `PlotGrid`: Helper class for creating multi-panel figures
 - `safe_save_plot()`: Error-handling wrapper for saving figures
 
-### `core_plots.py` - Basic Diagnostics
+### `core/plots.py` - Basic Diagnostics
 Fundamental visualizations applicable to all VAE models:
 - **Loss Comparison**: Training/validation curves for all loss components
 - **Latent Spaces**: 2D scatter plots colored by class labels
 - **Reconstructions**: Original vs reconstructed image grids
 - **Report Generation**: Markdown summary with embedded figures
 
-### `mixture_plots.py` - Mixture Prior Analysis
+### `mixture/plots.py` - Mixture Prior Analysis
 Visualizations specific to mixture prior VAEs:
 - **Latent by Component**: Scatter plots colored by component assignment
 - **Channel Latent Responsibility**: Per-component latent space with alpha-blended responsibilities
@@ -76,7 +62,7 @@ Visualizations specific to mixture prior VAEs:
 - **Component Embedding Divergence**: Pairwise distances between component embeddings
 - **Reconstruction by Component**: How each component reconstructs inputs
 
-### `tau_plots.py` - Semi-Supervised Diagnostics
+### `tau/plots.py` - Semi-Supervised Diagnostics
 Visualizations for τ-classifier semi-supervised models:
 - **τ Matrix Heatmap**: Components-to-labels mapping with sparsity metrics
 - **Per-Class Accuracy**: Classification performance breakdown by class
@@ -106,13 +92,13 @@ visualization_meta = render_all_plots(viz_context)
 ### Adding New Plots
 
 1. **Choose the appropriate module** based on plot category:
-   - Basic VAE diagnostic → `core_plots.py`
-   - Mixture prior specific → `mixture_plots.py`
-   - τ-classifier specific → `tau_plots.py`
+   - Basic VAE diagnostic → `core/plots.py`
+   - Mixture prior specific → `mixture/plots.py`
+   - τ-classifier specific → `tau/plots.py`
 
 2. **Implement the plotting function**:
    ```python
-   # In mixture_plots.py
+   # In mixture/plots.py
    def plot_my_new_analysis(
        models: Dict[str, object],
        X_data: np.ndarray,

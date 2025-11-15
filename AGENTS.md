@@ -64,7 +64,7 @@ README.md (entry point)
 **These explain mechanics** - How to extend, where files live, how to run experiments.
 
 ### Grounded Details (Source of Truth)
-- **Configuration parameters**: `src/model/ssvae/config.py::SSVAEConfig` (inline docstrings)
+- **Configuration parameters**: `src/rcmvae/domain/config.py::SSVAEConfig` (inline docstrings)
 - **Example experiments**: `use_cases/experiments/configs/*.yaml` (real configurations)
 - **Test patterns**: `tests/` (usage examples and edge cases)
 
@@ -78,7 +78,7 @@ README.md (entry point)
 
 **Linking patterns:**
 - Theory docs use **conceptual references**: "See §How-We-Classify"
-- Implementation docs use **file paths**: "`src/model/ssvae/priors/mixture.py`"
+- Implementation docs use **file paths**: "`src/rcmvae/domain/priors/mixture.py`"
 - Both link bidirectionally: theory ↔ implementation
 
 **Cross-references indicate relationships:**
@@ -215,13 +215,13 @@ Where to learn about them:
 - Status: `roadmap.md` §τ-Classifier-Completed
 - Implementation: `implementation.md` §tau_classifier.py
 - Tutorial: `extending.md` §Tutorial-3
-- Code: `src/model/ssvae/components/tau_classifier.py`
+- Code: `src/rcmvae/domain/components/tau_classifier.py`
 
 **Protocol-based priors**:
 - Design: `architecture.md` §Core-Abstractions §PriorMode-Protocol
 - Math: `mathematical_specification.md` §3.1
 - Tutorial: `extending.md` §Tutorial-1 (VampPrior)
-- Example: `src/model/ssvae/priors/mixture.py`
+- Example: `src/rcmvae/domain/priors/mixture.py`
 
 
 
@@ -296,9 +296,9 @@ pytest tests/
 ```
 
 ### Critical Files for Reference
-- Configuration: `src/model/ssvae/config.py::SSVAEConfig`
-- Loss computation: `src/model/training/losses.py::compute_loss_and_metrics_v2()`
-- Training loop: `src/model/training/trainer.py::Trainer`
+- Configuration: `src/rcmvae/domain/config.py::SSVAEConfig`
+- Loss computation: `src/rcmvae/application/loss_pipeline.py::compute_loss_and_metrics_v2()`
+- Training loop: `src/rcmvae/application/training_service.py::Trainer`
 - Example configs: `use_cases/experiments/configs/*.yaml`
 - Experiment pipeline: `use_cases/experiments/src/pipeline/train.py`
 - Metrics registry: `use_cases/experiments/src/infrastructure/metrics/registry.py`

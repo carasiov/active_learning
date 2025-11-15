@@ -8,11 +8,11 @@
 ```
 active_learning_showcase/
 │
-├── src/model/                   # 🧠 Core Model Layer
-│   ├── ssvae/                   #    SSVAE architecture & priors
-│   ├── training/                #    Training loops, losses, state
-│   ├── callbacks/               #    Training-time observability hooks
-│   └── utils/                   #    Device helpers (JAX runtime setup)
+├── src/rcmvae/                  # 🧠 Core Model Layer
+│   ├── domain/                  #    Configs, components, priors, network math
+│   ├── application/             #    api/, runtime/, services/ subpackages (factory/trainer/diagnostics)
+│   ├── utils/                   #    Device helpers (JAX runtime setup)
+│   └── adapters/                #    Bridges into CLI/dashboard tooling
 │
 ├── src/infrastructure/          # ♻️ Shared Infrastructure (dashboard + experiments)
 │   ├── logging/                 #    Structured logging setup
@@ -20,7 +20,7 @@ active_learning_showcase/
 │   ├── visualization/           #    Plotting registry & implementations
 │   └── runpaths/                #    Experiment run directory schema helpers
 │
-├── use_cases/
+├── use_cases/                   # Product-facing workflows
 │   ├── experiments/             # 🔬 Experimentation Workflow
 │   │   ├── src/                 #    Implementation (CLI, pipeline, metrics, viz, IO)
 │   │   ├── configs/             #    Experiment configurations
@@ -34,7 +34,7 @@ active_learning_showcase/
 │       ├── pages/               #    Dashboard UI pages
 │       └── docs/                #    Dashboard-specific documentation
 │
-└── docs/                        # 📖 Documentation
+└── docs/                        # 📖 Documentation network (theory → implementation → usage)
     ├── theory/                  #    Conceptual foundations & math
     └── development/             #    Architecture & implementation guides
 ```
@@ -43,7 +43,7 @@ active_learning_showcase/
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                      SSVAE Model Core                       │
-│  (src/model/ssvae/ + src/model/training/ + src/model/callbacks/) │
+│     (src/rcmvae/domain + src/rcmvae/application + utils)    │
 │                                                              │
 │  • Configuration-driven architecture                         │
 │  • Factory pattern for components                            │
@@ -100,3 +100,8 @@ This project has a layered documentation structure (see [AGENTS.md](AGENTS.md) f
 ## Working with This Codebase
 
 For how to navigate the documentation network effectively, understand what to trust when information conflicts, and learn implicit knowledge not obvious from linear reading, see **[AGENTS.md](AGENTS.md)**.
+
+### Dataset Defaults
+- Experiment configs now load the full 70k MNIST dataset by default (downloaded via OpenML and cached locally).
+- To force the lighter sklearn digits fallback (needed only for fully offline CI), set `data.dataset_variant: "digits"` in your config.
+- The experiment runner records which dataset source was used in the run header so reports remain self-describing.

@@ -25,7 +25,7 @@ The system implements a semi-supervised variational autoencoder (SSVAE) with a m
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    SSVAE Model (Public API)                  │
-│                     src/model/ssvae/models.py                      │
+│                     src/rcmvae/application/model_api.py                      │
 │                                                               │
 │  • fit(data, labels) → train model                           │
 │  • predict(data) → latent, recon, predictions, certainty     │
@@ -73,7 +73,7 @@ The system implements a semi-supervised variational autoencoder (SSVAE) with a m
 
 **Purpose:** Enable pluggable prior distributions without modifying core model code.
 
-**Location:** `src/model/ssvae/priors/base.py`
+**Location:** `src/rcmvae/domain/priors/base.py`
 
 **Interface:**
 ```python
@@ -125,11 +125,11 @@ class PriorMode(Protocol):
 - **VampPrior:** When spatial visualization is critical (2D latent plots)
 - **Geometric MoG:** Debugging, curriculum learning, quick visualization (NOT production)
 
-### 2. SSVAEFactory
+### 2. ModelFactoryService
 
 **Purpose:** Centralized component creation with validation and consistency checks.
 
-**Location:** `src/model/ssvae/factory.py`
+**Location:** `src/rcmvae/application/services/factory_service.py`
 
 **Responsibilities:**
 - Create encoders, decoders, classifiers based on configuration
@@ -139,10 +139,10 @@ class PriorMode(Protocol):
 
 **Example:**
 ```python
-network, variables = SSVAEFactory.create_network(
+runtime = ModelFactoryService.build_runtime(
+    input_dim=(28, 28),
     config=config,
-    input_shape=(28, 28),
-    key=jax.random.PRNGKey(42)
+    random_seed=42,
 )
 ```
 
@@ -156,7 +156,7 @@ network, variables = SSVAEFactory.create_network(
 
 **Purpose:** Centralized configuration with type safety and defaults.
 
-**Location:** `src/model/ssvae/config.py`
+**Location:** `src/rcmvae/domain/config.py`
 
 **Design Rationale:**
 - Dataclass provides free validation, serialization, equality
@@ -168,7 +168,7 @@ network, variables = SSVAEFactory.create_network(
 
 **Purpose:** Handle model state persistence and restoration.
 
-**Location:** `src/model/ssvae/checkpoint.py`
+**Location:** `src/rcmvae/application/services/checkpoint_service.py`
 
 **Responsibilities:**
 - Save model parameters to disk
@@ -185,7 +185,7 @@ network, variables = SSVAEFactory.create_network(
 
 **Purpose:** Collect and organize training metrics.
 
-**Location:** `src/model/ssvae/diagnostics.py`
+**Location:** `src/rcmvae/application/services/diagnostics_service.py`
 
 **Responsibilities:**
 - Compute mixture prior diagnostics (usage, entropy, π values)
@@ -203,7 +203,7 @@ network, variables = SSVAEFactory.create_network(
 
 ### Encoders
 
-**Location:** `src/model/ssvae/components/encoders/`
+**Location:** `src/rcmvae/domain/components/encoders/`
 
 **Types:**
 - `DenseEncoder`: Fully connected layers
@@ -228,7 +228,7 @@ class Encoder(nn.Module):
 
 ### Decoders
 
-**Location:** `src/model/ssvae/components/decoders/`
+**Location:** `src/rcmvae/domain/components/decoders/`
 
 **Types:**
 - `DenseDecoder`: Fully connected layers
@@ -252,7 +252,7 @@ class Decoder(nn.Module):
 
 ### Classifiers
 
-**Location:** `src/model/ssvae/components/classifiers/`
+**Location:** `src/rcmvae/domain/components/classifiers/`
 
 **Current Implementation:**
 - `DenseClassifier`: Simple MLP with softmax output
@@ -272,7 +272,7 @@ class Classifier(nn.Module):
 
 ### Priors
 
-**Location:** `src/model/ssvae/components/priors/`
+**Location:** `src/rcmvae/domain/components/priors/`
 
 **Implementations:**
 
@@ -353,7 +353,7 @@ Reconstruction  Predictions + Certainty
 
 ### Trainer
 
-**Location:** `src/model/training/trainer.py`
+**Location:** `src/rcmvae/application/services/training_service.py`
 
 **Responsibilities:**
 - Batch iteration and gradient updates
@@ -373,7 +373,7 @@ Reconstruction  Predictions + Certainty
 
 ### Losses
 
-**Location:** `src/model/training/losses.py`
+**Location:** `src/rcmvae/application/services/loss_pipeline.py`
 
 **Components:**
 - **Reconstruction loss:** BCE or MSE
@@ -388,7 +388,7 @@ Reconstruction  Predictions + Certainty
 
 ### Callbacks
 
-**Location:** `src/model/callbacks/`
+**Location:** `src/rcmvae/application/callbacks/`
 
 **Types:**
 - `LoggingCallback`: Console and CSV logging

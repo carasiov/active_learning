@@ -249,7 +249,19 @@ def create_app() -> Dash:
     app.layout = html.Div([
         dcc.Location(id='url', refresh=False),
         dcc.Store(id='training-config-store'),
-        html.Div(id='page-content', style={'height': '100%', 'overflow': 'auto'})
+        html.Div(id='page-content', style={'height': '100%', 'overflow': 'auto'}),
+        html.Div(
+            id="preloaded-training-controls",
+            children=build_training_config_page(model_id=None),
+            style={"display": "none"},
+        ),
+        html.Div(id="start-training-button", style={"display": "none"}),
+        html.Div(id="recon-weight-slider", style={"display": "none"}),
+        html.Div(id="kl-weight-slider", style={"display": "none"}),
+        html.Div(id="learning-rate-slider", style={"display": "none"}),
+        html.Div(id="num-epochs-input", style={"display": "none"}),
+        html.Div(id="training-status", style={"display": "none"}),
+        html.Div(id="training-poll", style={"display": "none"}),
     ], style={'height': '100vh', 'overflow': 'hidden'})
     
     # Page router callback
@@ -262,7 +274,7 @@ def create_app() -> Dash:
         """Route to appropriate page."""
         import re
         import dataclasses
-        from model.ssvae import SSVAEConfig
+        from rcmvae.domain.config import SSVAEConfig
         
         logger.info(f"DISPLAY_PAGE CALLED: pathname={pathname}")
         

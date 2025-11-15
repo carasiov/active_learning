@@ -2,11 +2,11 @@
 
 ## Module Location
 
-**Current Location**: `src/visualization/` (repository root)
+**Current Location**: `src/infrastructure/visualization/`
 **Previous Location**: `use_cases/experiments/src/visualization/`
 **Migration Date**: 2025-11-14
 
-The visualization module has been moved to the repository root (`src/visualization/`) to establish it as core infrastructure that can be reused across multiple projects (experiments, dashboard, future tools). A backward compatibility wrapper remains at the old location for existing code.
+The visualization module now lives in `src/infrastructure/visualization/` so it can serve both experiments and the dashboard without duplication. A backward compatibility wrapper remains at the old location for existing code.
 
 ## Objective
 Refactor monolithic `plotters.py` (1,643 lines) into maintainable, domain-organized modules.
@@ -22,19 +22,24 @@ src/visualization/
 ├── status.py
 └── plotters.py          (1,643 lines - MONOLITHIC)
 
-AFTER:
-src/visualization/
-├── __init__.py          (unchanged)
-├── registry.py          (unchanged)
-├── status.py            (unchanged)
-├── README.md            (new - comprehensive documentation)
-├── REFACTORING_SUMMARY.md (this file)
-│
-├── plotters.py          (285 lines - registry bindings only)
-├── plot_utils.py        (273 lines - shared utilities)
-├── core_plots.py        (435 lines - basic VAE diagnostics)
-├── mixture_plots.py     (721 lines - mixture prior plots)
-└── tau_plots.py         (328 lines - τ-classifier plots)
+AFTER (2025-11-15 update):
+```
+src/infrastructure/visualization/
+├── __init__.py
+├── registry.py
+├── status.py
+├── README.md
+├── REFACTORING_SUMMARY.md
+├── plotters.py                 # registry bindings only
+├── utils/
+│   └── _plot_utils.py          # shared helpers
+├── core/
+│   └── plots.py                # basic diagnostics
+├── mixture/
+│   └── plots.py                # mixture-specific plots
+└── tau/
+    └── plots.py               # τ-classifier plots
+```
 ```
 
 ### Module Breakdown
@@ -46,7 +51,7 @@ src/visualization/
 - Imports implementation from domain modules
 - Maintains 100% backward compatibility
 
-#### `plot_utils.py` (273 lines, NEW)
+#### `utils/_plot_utils.py`
 Extracted shared utilities:
 - `_sanitize_model_name()`: Filename sanitization
 - `_build_label_palette()`: Color palette generation
@@ -57,14 +62,14 @@ Extracted shared utilities:
 - `PlotGrid`: Subplot grid management class
 - `safe_save_plot()`: Error-handling save wrapper
 
-#### `core_plots.py` (435 lines, NEW)
+#### `core/plots.py`
 Basic VAE visualizations:
 - `plot_loss_comparison()`: Training/validation curves
 - `plot_latent_spaces()`: 2D latent scatter plots
 - `plot_reconstructions()`: Original vs reconstructed grids
 - `generate_report()`: Markdown report generation
 
-#### `mixture_plots.py` (721 lines, NEW)
+#### `mixture/plots.py`
 Mixture prior specific:
 - `plot_latent_by_component()`: Component-colored latent space
 - `plot_channel_latent_responsibility()`: Per-component detailed views
@@ -73,7 +78,7 @@ Mixture prior specific:
 - `plot_component_embedding_divergence()`: Component specialization analysis
 - `plot_reconstruction_by_component()`: Per-component reconstruction quality
 
-#### `tau_plots.py` (328 lines, NEW)
+#### `tau/plots.py`
 Semi-supervised τ-classifier:
 - `plot_tau_matrix_heatmap()`: Component-to-label mappings
 - `plot_tau_per_class_accuracy()`: Classification breakdown
@@ -101,7 +106,7 @@ Semi-supervised τ-classifier:
 
 ### Reusability
 - **Before**: Utility functions scattered throughout, some duplicated
-- **After**: Centralized in `plot_utils.py`, shared via imports
+- **After**: Centralized in `utils/_plot_utils.py`, shared via imports
 
 ### Testability
 - **Before**: Monolithic file hard to unit test

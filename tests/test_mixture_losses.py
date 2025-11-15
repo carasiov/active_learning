@@ -4,7 +4,7 @@ from __future__ import annotations
 import jax.numpy as jnp
 import numpy as np
 
-from model.training.losses import (
+from rcmvae.application.services.loss_pipeline import (
     categorical_kl,
     dirichlet_map_penalty,
     reconstruction_loss,

@@ -7,7 +7,7 @@ import warnings
 
 import pytest
 
-from model.ssvae.config import SSVAEConfig
+from rcmvae.domain.config import SSVAEConfig
 from use_cases.experiments.src.validation import (
     ConfigValidationError,
     validate_config,
@@ -169,8 +169,9 @@ class TestVampPriorValidation:
             prior_type="vamp",
             num_components=20,
             vamp_pseudo_init_method="kmeans",
-            vamp_num_samples_kl=0
+            vamp_num_samples_kl=1,
         )
+        config.vamp_num_samples_kl = 0
         with pytest.raises(ConfigValidationError, match="vamp_num_samples_kl must be >= 1"):
             _validate_vamp_prior(config)
 
@@ -194,8 +195,9 @@ class TestVampPriorValidation:
             prior_type="vamp",
             num_components=20,
             vamp_pseudo_init_method="kmeans",
-            vamp_pseudo_lr_scale=1.5
+            vamp_pseudo_lr_scale=0.1,
         )
+        config.vamp_pseudo_lr_scale = 1.5
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             _validate_vamp_prior(config)
@@ -238,8 +240,10 @@ class TestGeometricMoGValidation:
         config = SSVAEConfig(
             prior_type="geometric_mog",
             num_components=9,
-            geometric_arrangement="invalid"
+            geometric_arrangement="circle"
         )
+        # Manually override after construction to bypass dataclass validation.
+        config.geometric_arrangement = "invalid"
         with pytest.raises(ConfigValidationError, match="Geometric MoG requires"):
             _validate_geometric_mog(config)
 

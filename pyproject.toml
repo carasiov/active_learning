@@ -7,6 +7,7 @@ readme = "README.md"
 packages = [
     { include = "model", from = "src" },
     { include = "infrastructure", from = "src" },
+    { include = "rcmvae", from = "src" },
 ]
 
 [tool.poetry.dependencies]

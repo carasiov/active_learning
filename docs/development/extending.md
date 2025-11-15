@@ -6,7 +6,7 @@ The codebase relies on three pillars:
 
 1. **Protocols and registries** (`PriorMode`, decoder builders, Trainer hooks)
 2. **Configuration-first design** (`SSVAEConfig` carries every knob)
-3. **Factory orchestration** (`SSVAEFactory` wires components, optimizers, and loss plumbing)
+3. **Factory orchestration** (`ModelFactoryService` wires components, optimizers, and loss plumbing)
 
 Each tutorial below mirrors that structure: define the abstraction, register it, expose config, then cover testing/documentation.
 
@@ -15,7 +15,7 @@ Each tutorial below mirrors that structure: define the abstraction, register it,
 ## Tutorial 1 · Adding a New Prior
 
 ### 1. Understand the PriorMode contract
-`src/model/ssvae/priors/base.py` defines the protocol:
+`src/rcmvae/domain/priors/base.py` defines the protocol:
 
 ```python
 class PriorMode(Protocol):
@@ -28,8 +28,8 @@ class PriorMode(Protocol):
 `EncoderOutput.extras` is the extensibility surface. Mixture-style priors expect `responsibilities`, π, embeddings, etc. VampPrior adds `pseudo_z_mean` / `pseudo_z_log_var` (see below).
 
 ### 2. Implement the prior
-- Place the class under `src/model/ssvae/priors/`.
-- Use the shared loss helpers from `src/model/training/losses.py` (e.g., `kl_divergence`, `weighted_reconstruction_loss_mse`, `usage_sparsity_penalty`) so monitoring metrics stay consistent.
+- Place the class under `src/rcmvae/domain/priors/`.
+- Use the shared loss helpers from `src/rcmvae/application/services/loss_pipeline.py` (e.g., `kl_divergence`, `weighted_reconstruction_loss_mse`, `usage_sparsity_penalty`) so monitoring metrics stay consistent.
 - Return every metric key requested by `compute_loss_and_metrics_v2` even if the value is zeroed (`kl_z`, `kl_c`, `dirichlet_penalty`, `component_diversity`, diagnostics).
 
 **Example: VampPrior KL core (excerpt)**
@@ -48,15 +48,15 @@ def compute_kl_terms(self, encoder_output, config):
 ```
 
 ### 3. Register & configure
-1. Add the class to `PRIOR_REGISTRY` in `src/model/ssvae/priors/__init__.py`.
-2. Update `SSVAEFactory._create_prior` so the new identifier maps to your constructor.
-3. Introduce any config needed in `src/model/ssvae/config.py` with validation inside `__post_init__()`. Examples already in tree:
+1. Add the class to `PRIOR_REGISTRY` in `src/rcmvae/domain/priors/__init__.py`.
+2. Update `ModelFactoryService._create_prior` so the new identifier maps to your constructor.
+3. Introduce any config needed in `src/rcmvae/domain/config.py` with validation inside `__post_init__()`. Examples already in tree:
    - `vamp_num_samples_kl`, `vamp_pseudo_lr_scale`, `vamp_pseudo_init_method`
    - `geometric_arrangement`, `geometric_radius`
-4. When the prior needs extra tensors (e.g., pseudo-input stats), extend `SSVAEFactory` / `SSVAENetwork` to provide them via `EncoderOutput.extras`. VampPrior re-encodes pseudo-inputs every forward pass and caches the latent stats so the prior stays stateless.
+4. When the prior needs extra tensors (e.g., pseudo-input stats), extend `ModelFactoryService` / `SSVAENetwork` to provide them via `EncoderOutput.extras`. VampPrior re-encodes pseudo-inputs every forward pass and caches the latent stats so the prior stays stateless.
 
 ### 4. Training quirks
-Special learning-rate needs can be handled in `_scale_vamp_pseudo_gradients()` (see `src/model/ssvae/factory.py`). The helper scales `prior/pseudo_inputs` grads before `state.apply_gradients()` so you avoid optimizer forks.
+Special learning-rate needs can be handled in `_scale_vamp_pseudo_gradients()` (see `src/rcmvae/application/services/factory_service.py`). The helper scales `prior/pseudo_inputs` grads before `state.apply_gradients()` so you avoid optimizer forks.
 
 ### 5. Tests & docs
 Add regression coverage under `tests/` (see `tests/test_vamp_prior.py` and `tests/test_prior_abstraction.py` for patterns). Document the new prior in:
@@ -70,8 +70,8 @@ Add regression coverage under `tests/` (see `tests/test_vamp_prior.py` and `test
 
 Component-aware decoding is already implemented for dense + conv stacks (and for heteroscedastic heads). To add or modify a variant:
 
-1. **Decoder module** — extend `src/model/ssvae/components/decoders.py`. Follow the existing `ComponentAwareDenseDecoder` shape: separate `z` and `component_embedding` streams, optional heteroscedastic branch (`mean`, `sigma`), and JAX-friendly reshaping for `[batch, K, ...]` tensors.
-2. **Decoder builder** — update `build_decoder()` in `src/model/ssvae/components/factory.py`. Component awareness is toggled by `config.use_component_aware_decoder`; heteroscedastic support comes from `config.use_heteroscedastic_decoder`.
+1. **Decoder module** — extend `src/rcmvae/domain/components/decoders.py`. Follow the existing `ComponentAwareDenseDecoder` shape: separate `z` and `component_embedding` streams, optional heteroscedastic branch (`mean`, `sigma`), and JAX-friendly reshaping for `[batch, K, ...]` tensors.
+2. **Decoder builder** — update `build_decoder()` in `src/rcmvae/domain/components/factory.py`. Component awareness is toggled by `config.use_component_aware_decoder`; heteroscedastic support comes from `config.use_heteroscedastic_decoder`.
 3. **Config knobs** — common parameters already exist:
    - `component_embedding_dim`
    - `top_m_gating` (0 = use all responsibilities)
@@ -85,7 +85,7 @@ Component-aware decoding is already implemented for dense + conv stacks (and for
 
 The τ-classifier replaces the supervised head whenever `config.is_mixture_based_prior()` and `config.use_tau_classifier` are both true. The integration has three pieces:
 
-1. **Stateful helper** — `src/model/ssvae/components/tau_classifier.py` tracks soft counts `s_{c,y}` and exposes:
+1. **Stateful helper** — `src/rcmvae/domain/components/tau_classifier.py` tracks soft counts `s_{c,y}` and exposes:
    - `update_counts(responsibilities, labels, labeled_mask)`
    - `get_tau()` for use inside the loss
    - `predict()` / `get_certainty()` for inference paths
@@ -101,7 +101,7 @@ When adding a new mixture-like prior, ensure it supplies `responsibilities` in `
 
 ## Tutorial 4 · Adding Custom Loss Terms
 
-Custom regularizers should plug into `compute_loss_and_metrics_v2` (or helper functions in `src/model/training/losses.py`) so they appear in the trainer metrics. Example: channel-embedding repulsion.
+Custom regularizers should plug into `compute_loss_and_metrics_v2` (or helper functions in `src/rcmvae/application/services/loss_pipeline.py`) so they appear in the trainer metrics. Example: channel-embedding repulsion.
 
 ```python
 def channel_repulsion_loss(embeddings: jnp.ndarray, weight: float) -> jnp.ndarray:
@@ -124,7 +124,7 @@ Existing regularizers you can reference: `usage_sparsity_penalty`, `dirichlet_ma
 ## General Extension Checklist
 
 1. **Design first** — confirm the change aligns with the theory/architecture docs (per `AGENTS.md` navigation order).
-2. **Implement in modules** — add code under `src/model/ssvae/**` using the established structure.
+2. **Implement in modules** — add code under `src/rcmvae/domain/**` using the established structure.
 3. **Wire through the factory/config** — no feature should require manual instantiation; everything flows through `SSVAEConfig`.
 4. **Update tests** — add or extend coverage under `tests/` (unit + integration as appropriate).
 5. **Document** — update this guide, the implementation guide, and the roadmap/status tables so the knowledge graph stays accurate.
