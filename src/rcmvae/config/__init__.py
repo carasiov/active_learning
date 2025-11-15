@@ -32,12 +32,8 @@ from .base import (
     NetworkConfig,
     TrainingConfig,
 )
-from .converters import (
-    experiment_config_from_dict,
-    experiment_config_to_ssvae_config,
-    ssvae_config_to_experiment_config,
-)
 from .experiment import ExperimentConfig
+from .loaders import experiment_config_from_dict
 from .priors import (
     GeometricMoGPriorConfig,
     MixturePriorConfig,
@@ -60,8 +56,6 @@ __all__ = [
     "GeometricMoGPriorConfig",
     # Top-level config
     "ExperimentConfig",
-    # Converters
+    # Loaders
     "experiment_config_from_dict",
-    "experiment_config_to_ssvae_config",
-    "ssvae_config_to_experiment_config",
 ]

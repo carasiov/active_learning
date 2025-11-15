@@ -28,10 +28,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from rcmvae.domain.config import SSVAEConfig
+    from rcmvae.config import ExperimentConfig
 
 
-def generate_architecture_code(config: SSVAEConfig) -> str:
+def generate_architecture_code(config: ExperimentConfig) -> str:
     """Auto-generate architecture code from config.
 
     Args:
@@ -44,13 +44,17 @@ def generate_architecture_code(config: SSVAEConfig) -> str:
         ValueError: If config has unknown or invalid architecture choices
 
     Example:
-        >>> config = SSVAEConfig(
-        ...     prior_type="mixture",
-        ...     num_components=10,
-        ...     dirichlet_alpha=5.0,
-        ...     use_tau_classifier=True,
-        ...     use_component_aware_decoder=True,
-        ...     use_heteroscedastic_decoder=True
+        >>> from rcmvae.config import ExperimentConfig, MixturePriorConfig, DecoderFeatures
+        >>> config = ExperimentConfig(
+        ...     prior=MixturePriorConfig(
+        ...         num_components=10,
+        ...         dirichlet_alpha=5.0,
+        ...         use_tau_classifier=True
+        ...     ),
+        ...     decoder=DecoderFeatures(
+        ...         use_component_aware_decoder=True,
+        ...         use_heteroscedastic_decoder=True
+        ...     )
         ... )
         >>> generate_architecture_code(config)
         'mix10-dir_tau_ca-het'
@@ -62,7 +66,7 @@ def generate_architecture_code(config: SSVAEConfig) -> str:
     return f"{prior_code}_{classifier_code}_{decoder_code}"
 
 
-def _encode_prior(config: SSVAEConfig) -> str:
+def _encode_prior(config: ExperimentConfig) -> str:
     """Encode prior type with parameters and modifiers.
 
     Format:
@@ -80,25 +84,30 @@ def _encode_prior(config: SSVAEConfig) -> str:
     Raises:
         ValueError: If prior_type is unknown or configuration is invalid
     """
-    prior_type = config.prior_type
+    from rcmvae.config import MixturePriorConfig, VampPriorConfig, GeometricMoGPriorConfig
+
+    prior = config.prior
+    prior_type = config.get_prior_type()
 
     if prior_type == "standard":
         return "std"
 
     elif prior_type == "mixture":
-        code = f"mix{config.num_components}"
+        assert isinstance(prior, MixturePriorConfig)
+        code = f"mix{prior.num_components}"
 
         # Add Dirichlet modifier if enabled
-        if config.dirichlet_alpha is not None and config.dirichlet_alpha > 0:
+        if prior.dirichlet_alpha is not None and prior.dirichlet_alpha > 0:
             code += "-dir"
 
         return code
 
     elif prior_type == "vamp":
-        code = f"vamp{config.num_components}"
+        assert isinstance(prior, VampPriorConfig)
+        code = f"vamp{prior.num_components}"
 
         # VampPrior requires initialization method
-        init_method = config.vamp_pseudo_init_method
+        init_method = prior.vamp_pseudo_init_method
         if init_method == "kmeans":
             code += "-km"
         elif init_method == "random":
@@ -112,10 +121,11 @@ def _encode_prior(config: SSVAEConfig) -> str:
         return code
 
     elif prior_type == "geometric_mog":
-        code = f"geo{config.num_components}"
+        assert isinstance(prior, GeometricMoGPriorConfig)
+        code = f"geo{prior.num_components}"
 
         # Geometric MoG requires arrangement
-        arrangement = config.geometric_arrangement
+        arrangement = prior.geometric_arrangement
         if arrangement == "circle":
             code += "-circle"
         elif arrangement == "grid":
@@ -132,7 +142,7 @@ def _encode_prior(config: SSVAEConfig) -> str:
         raise ValueError(f"Unknown prior_type: '{prior_type}'")
 
 
-def _encode_classifier(config: SSVAEConfig) -> str:
+def _encode_classifier(config: ExperimentConfig) -> str:
     """Encode classifier type.
 
     Format:
@@ -140,18 +150,23 @@ def _encode_classifier(config: SSVAEConfig) -> str:
     - Standard head: "head"
 
     Args:
-        config: SSVAE configuration
+        config: Experiment configuration
 
     Returns:
         Classifier code string
     """
-    if config.use_tau_classifier:
-        return "tau"
-    else:
-        return "head"
+    from rcmvae.config import MixturePriorConfig, VampPriorConfig, GeometricMoGPriorConfig
+
+    # Check if prior has use_tau_classifier attribute (mixture-based priors)
+    prior = config.prior
+    if isinstance(prior, (MixturePriorConfig, VampPriorConfig, GeometricMoGPriorConfig)):
+        if prior.use_tau_classifier:
+            return "tau"
+
+    return "head"
 
 
-def _encode_decoder(config: SSVAEConfig) -> str:
+def _encode_decoder(config: ExperimentConfig) -> str:
     """Encode decoder features.
 
     Format builds up modifiers:
@@ -166,7 +181,7 @@ def _encode_decoder(config: SSVAEConfig) -> str:
     - Other features: append to list
 
     Args:
-        config: SSVAE configuration
+        config: Experiment configuration
 
     Returns:
         Decoder code string
@@ -174,14 +189,14 @@ def _encode_decoder(config: SSVAEConfig) -> str:
     features = []
 
     # Order matters for consistency (alphabetical for simplicity)
-    if config.use_component_aware_decoder:
+    if config.decoder.use_component_aware_decoder:
         features.append("ca")
 
-    if config.use_heteroscedastic_decoder:
+    if config.decoder.use_heteroscedastic_decoder:
         features.append("het")
 
     # Future: Add contrastive when fully integrated
-    # if config.use_contrastive:
+    # if config.loss.use_contrastive:
     #     features.append("contr")
 
     if not features:

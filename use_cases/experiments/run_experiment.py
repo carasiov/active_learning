@@ -15,7 +15,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from rcmvae.utils import get_device_info  # noqa: E402
-from rcmvae.config import experiment_config_from_dict, experiment_config_to_ssvae_config  # noqa: E402
+from rcmvae.config import experiment_config_from_dict  # noqa: E402
 from use_cases.experiments.src.config import (  # noqa: E402
     add_repo_paths,
     augment_config_metadata,
@@ -142,13 +142,12 @@ def run_with_config(config_path: Path, *, validate_only: bool) -> int:
 
     with warnings.catch_warnings(record=True) as caught_warnings:
         warnings.simplefilter("always", UserWarning)
-        # Load as ExperimentConfig, then convert to SSVAEConfig for backward compat
+        # Load as ExperimentConfig
         exp_config = experiment_config_from_dict(model_dict)
-        ssvae_config = experiment_config_to_ssvae_config(exp_config)
-        architecture_code = generate_architecture_code(ssvae_config)
+        architecture_code = generate_architecture_code(exp_config)
 
     try:
-        validate_config(ssvae_config)
+        validate_config(exp_config)
     except ConfigValidationError as exc:
         print("\n" + "=" * 80)
         print("Configuration Error")
