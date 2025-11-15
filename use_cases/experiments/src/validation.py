@@ -27,10 +27,9 @@ Usage:
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-import warnings
 
 if TYPE_CHECKING:
-    from rcmvae.domain.config import SSVAEConfig
+    from model.ssvae.config import SSVAEConfig
 
 
 class ConfigValidationError(ValueError):
@@ -63,7 +62,7 @@ def validate_config(config: SSVAEConfig) -> None:
     """
     # Run all validation checks
     _validate_tau_classifier(config)
-    _validate_component_aware_decoder(config)
+    # _validate_component_aware_decoder(config)  # Moved to SSVAEConfig (warning, not error)
     _validate_vamp_prior(config)
     _validate_geometric_mog(config)
     _validate_heteroscedastic_decoder(config)
@@ -93,11 +92,10 @@ def _validate_tau_classifier(config: SSVAEConfig) -> None:
 
     # This is already checked in SSVAEConfig.__post_init__, but include for clarity
     if config.num_components < config.num_classes:
-        warnings.warn(
-            f"τ-classifier typically requires num_components >= num_classes "
-            f"(got {config.num_components} vs {config.num_classes}). "
-            "Proceeding, but expect degraded performance.",
-            RuntimeWarning,
+        raise ConfigValidationError(
+            f"τ-classifier requires num_components >= num_classes. "
+            f"Got num_components={config.num_components}, "
+            f"num_classes={config.num_classes}"
         )
 
 
@@ -181,12 +179,6 @@ def _validate_geometric_mog(config: SSVAEConfig) -> None:
     if config.prior_type != "geometric_mog":
         return  # Not geometric MoG, skip validation
 
-    warnings.warn(
-        "Geometric MoG prior induces fixed topology in latent space. "
-        "Use for diagnostics only.",
-        RuntimeWarning,
-    )
-
     # Rule 1: Arrangement specification
     valid_arrangements = {"circle", "grid"}
     if config.geometric_arrangement not in valid_arrangements:
@@ -209,11 +201,13 @@ def _validate_geometric_mog(config: SSVAEConfig) -> None:
     # Rule 3: Reasonable radius
     radius = config.geometric_radius
     if radius < 0.5:
+        import warnings
         warnings.warn(
             f"geometric_radius={radius} is very small. "
             "Components may overlap excessively. Recommended range: 1.5-3.0"
         )
     if radius > 5.0:
+        import warnings
         warnings.warn(
             f"geometric_radius={radius} is very large. "
             "Latent space may be poorly utilized. Recommended range: 1.5-3.0"

@@ -4,7 +4,7 @@
 
 > **New location:** The experimentation toolkit now lives under `use_cases/experiments/` alongside the dashboard so all user-facing workflows share a common root.
 >
-> **Implementation vs. results:** CLI and orchestration code lives under `use_cases/experiments/src/` and `src/rcmvae/adapters/experiments/`, while shared metrics/visualization registries live under `src/infrastructure/`. Generated artifacts for each run land in `use_cases/experiments/results/`.
+> **Implementation vs. results:** All code resides in `src/` (CLI, pipeline, metrics, visualization, IO) while generated artifacts land in `results/` to keep the workspace tidy.
 
 This guide covers the practical workflow: edit config → run experiment → interpret results.
 
@@ -12,7 +12,7 @@ This guide covers the practical workflow: edit config → run experiment → int
 
 ## Run Directory Layout
 
-Each run uses the standardized [RunPaths](src/infrastructure/runpaths/structure.py) schema so downstream tools know where to look:
+Each run now writes to a standardized structure so downstream tools know where to look:
 
 ```
 use_cases/experiments/results/<name>_<timestamp>/
@@ -20,8 +20,10 @@ use_cases/experiments/results/<name>_<timestamp>/
 ├── summary.json               # Structured metrics
 ├── REPORT.md                  # Human-readable report (links into figures/)
 ├── artifacts/                 # Checkpoints + diagnostics
-├── figures/                   # All plots (loss curves, latents, mixture/τ/uncertainty, ...)
-└── logs/                      # Reserved for log files
+├── figures/                   # All plots (loss curves, latent spaces, τ heatmaps…)
+│   └── mixture/               # Mixture evolution panels
+│       └── channel_latents/   # Channel-wise latent scatters (color=label, alpha=responsibility)
+└── logs/                      # CSV histories or future log streams
 ```
 
 The layout lives in `src/infrastructure/runpaths/structure.py`, so any new tooling can reuse the same helper.
@@ -43,10 +45,10 @@ experiment:
   tags: ["baseline", "debug"]     # For organizing results
 
 data:
+  dataset: "mnist"                # Currently only MNIST supported
   num_samples: 10000              # Total dataset size
   num_labeled: 100                # Labeled samples for classification
   seed: 42                        # Random seed for data sampling
-  dataset_variant: "mnist"       # "mnist" (full MNIST) or "digits" (sklearn fallback)
 
 model:
   # ──────────────────────────────────────────────────────────────
@@ -153,42 +155,31 @@ model:
 
 ### Directory Structure
 
-The logical structure mirrors `RunPaths` from `src/infrastructure/runpaths/structure.py`:
-
 ```
 use_cases/experiments/results/<name>_<timestamp>/
-├── config.yaml
-├── summary.json
-├── REPORT.md
+├── config.yaml                              # Snapshot of config used
+├── summary.json                             # All metrics (structured)
+├── REPORT.md                                # Human-readable report
 ├── artifacts/
-│   ├── checkpoints/
-│   │   └── checkpoint.ckpt                  # Trained model weights
-│   └── diagnostics/
-│       ├── latent.npz                       # z_mean, labels, q_c (if mixture)
+│   ├── checkpoint.ckpt                      # Trained model weights
+│   └── diagnostics/checkpoint/              # Model artifacts
+│       ├── latent.npz
 │       ├── pi.npy
 │       ├── component_usage.npy
-│       ├── component_entropy.npy
 │       ├── pi_history.npy
 │       ├── usage_history.npy
 │       └── tracked_epochs.npy
 ├── figures/
-│   ├── core/
-│   │   ├── loss_comparison.png              # Training/validation curves
-│   │   ├── latent_spaces.png                # Latent space by class
-│   │   └── reconstructions.png              # Input/output samples
-│   ├── mixture/
-│   │   ├── latent_by_component.png          # Latent space colored by component
-│   │   ├── responsibility_histogram.png     # max_c q(c|x) distribution
-│   │   ├── *_evolution.png                  # π and usage over time
-│   │   └── channel_latents/
-│   │       ├── channel_latents_grid.png     # All channels in a grid
-│   │       └── channel_XX.png               # Per-channel lens (color=label, alpha=resp)
-│   └── tau/
-│       ├── tau_matrix_heatmap.png
-│       ├── tau_per_class_accuracy.png
-│       └── tau_certainty_analysis.png
-└── logs/
-    └── (reserved for log files / CSV histories)
+│   ├── loss_comparison.png                  # Training curves
+│   ├── latent_spaces.png                    # Latent space by class
+│   ├── latent_by_component.png              # Latent space by component (mixture)
+│   ├── responsibility_histogram.png         # Responsibility confidence (mixture)
+│   ├── model_reconstructions.png            # Input/output samples
+│   ├── component_embedding_divergence.png
+│   ├── tau_matrix_heatmap.png
+│   └── mixture/
+│        └── model_evolution.png             # π and usage over time (mixture)
+└── logs/                                    # CSV histories (future use)
 ```
 
 ### Key Files
@@ -203,16 +194,15 @@ use_cases/experiments/results/<name>_<timestamp>/
 
 ## Module Layout & Extension Points
 
-The experimentation toolkit is thin glue on top of the core model and infrastructure:
+The experimentation toolkit is now split into small packages to keep code paths obvious:
 
 | Module | Purpose | Typical changes |
 |--------|---------|-----------------|
-| `use_cases/experiments/run_experiment.py` | CLI entrypoint: argument parsing, config loading/validation, run directory creation | Add CLI flags, new validation modes, or metadata in the header |
-| `use_cases/experiments/src/config.py` | YAML loading and metadata augmentation | Rarely changed; extend if you add top-level config sections |
-| `use_cases/experiments/src/data.py` | MNIST loading, sub-sampling, semi-supervised label assignment | Change dataset size, labeling regime, or dataset_variant behavior |
-| `src/rcmvae/adapters/experiments/runner.py` | Connects `SSVAEConfig` + `ExperimentService` to metrics and visualization | Change overall training pipeline behavior, add new summary metadata |
-| `src/infrastructure/metrics/` | Metric registry + default providers | Register new providers with `@register_metric` in `providers/defaults.py` |
-| `src/infrastructure/visualization/` | Plot registry + concrete plotters | Register new plotters with `@register_plotter` in `visualization/plotters.py` |
+| `src/cli/` | Entry point + argument parsing | Add new CLI flags or composite workflows |
+| `src/pipeline/` | Config loading, data prep, training orchestration | Swap trainers, add pre/post hooks |
+| `src/metrics/` | Metric registry + default providers | Register new providers with `@register_metric` |
+| `src/visualization/` | Plot registry + helper functions | Register new plotters with `@register_plotter` |
+| `src/io/` | Results-directory schema + reporting helpers | Customize layout or report template |
 
 ### Adding a Metric
 
@@ -267,7 +257,7 @@ poetry run python use_cases/experiments/run_experiment.py --config use_cases/exp
 
 **Solution:** Use CPU mode:
 ```bash
-JAX_PLATFORMS=cpu poetry run python use_cases/experiments/run_experiment.py --config <config>
+JAX_PLATFORMS=cpu poetry run python scripts/run_experiment.py --config <config>
 ```
 
 ---
@@ -330,7 +320,7 @@ model:
 
 ## Related Documentation
 
-- **Theory & Architecture:** `docs/theory/` - Mathematical specification and design vision
-- **Development Docs:** `docs/development/` - Architecture, implementation, and extension guides
-- **Experiment CLI Guide:** `use_cases/experiments/README.md` (this file)
-- **Dashboard:** `use_cases/dashboard/README.md` - Web UI for browsing and steering experiments
+- **Theory & Architecture:** `/docs/theory/` - Mathematical specifications and design vision
+- **Regression Testing:** `VERIFICATION_CHECKLIST.md` - Comprehensive test procedures
+- **Code Internals:** `/docs/development/` - Module-by-module implementation guide
+- **Issues & Bugs:** GitHub Issues - Report problems or request features

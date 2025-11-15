@@ -8,9 +8,8 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from rcmvae.application.runtime.interactive import InteractiveTrainer
-from rcmvae.application.model_api import SSVAE
-from rcmvae.domain.config import SSVAEConfig
+from model.ssvae import SSVAE, SSVAEConfig
+from model.training.interactive_trainer import InteractiveTrainer
 
 
 @dataclass(frozen=True)

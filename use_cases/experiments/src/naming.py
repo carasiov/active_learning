@@ -28,7 +28,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from rcmvae.domain.config import SSVAEConfig
+    from model.ssvae.config import SSVAEConfig
 
 
 def generate_architecture_code(config: SSVAEConfig) -> str:
@@ -385,7 +385,7 @@ Plan carefully and version-bump if necessary.
 
 ## Related Documentation
 
-- **Config reference:** `src/rcmvae/domain/config.py::SSVAEConfig`
+- **Config reference:** `src/model/ssvae/config.py::SSVAEConfig`
 - **Theory:** `docs/theory/conceptual_model.md`
 - **Implementation:** `docs/development/implementation.md`
 - **Experiments:** `use_cases/experiments/README.md`

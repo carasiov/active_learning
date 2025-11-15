@@ -377,8 +377,11 @@ class VampPrior:
 
         """
         responsibilities = None
+        num_components = None
         if encoder_output.extras is not None:
             responsibilities = encoder_output.extras.get("responsibilities")
+            if responsibilities is not None:
+                num_components = responsibilities.shape[-1]
 
         from rcmvae.application.services.loss_pipeline import (
             reconstruction_loss_mse,
@@ -387,26 +390,60 @@ class VampPrior:
         )
 
         if responsibilities is not None:
+            assert num_components is not None
+
+            def _ensure_component_axis(
+                array: jnp.ndarray,
+                *,
+                base_ndim: int | None,
+            ) -> jnp.ndarray:
+                """Ensure array has [batch, num_components, ...] layout."""
+                if base_ndim is not None:
+                    if array.ndim == base_ndim + 1 and array.shape[1] == num_components:
+                        return array
+                else:
+                    if array.ndim >= 2 and array.shape[1] == num_components:
+                        return array
+                expanded = jnp.expand_dims(array, axis=1)
+                target_shape = (array.shape[0], num_components, *array.shape[1:])
+                return jnp.broadcast_to(expanded, target_shape)
+
+            def _prepare_sigma(array: jnp.ndarray) -> jnp.ndarray:
+                """σ outputs are either [batch] or [batch, num_components]."""
+                if array.ndim == 2 and array.shape[1] == num_components:
+                    return array
+                if array.ndim == 1:
+                    return jnp.broadcast_to(array[:, None], (array.shape[0], num_components))
+                raise ValueError(
+                    "Heteroscedastic decoder with VampPrior expects sigma shaped "
+                    "[batch] or [batch, num_components]. "
+                    f"Got {array.shape}."
+                )
+
             if isinstance(x_recon, tuple):
                 mean, sigma = x_recon
+                mean_components = _ensure_component_axis(mean, base_ndim=x_true.ndim)
+                sigma_components = _prepare_sigma(sigma)
                 return weighted_heteroscedastic_reconstruction_loss(
                     x_true,
-                    mean,
-                    sigma,
+                    mean_components,
+                    sigma_components,
                     responsibilities,
                     config.recon_weight,
                 )
             if config.reconstruction_loss == "mse":
+                recon_components = _ensure_component_axis(x_recon, base_ndim=x_true.ndim)
                 return weighted_reconstruction_loss_mse(
                     x_true,
-                    x_recon,
+                    recon_components,
                     responsibilities,
                     config.recon_weight,
                 )
             if config.reconstruction_loss == "bce":
+                recon_components = _ensure_component_axis(x_recon, base_ndim=x_true.ndim)
                 return weighted_reconstruction_loss_bce(
                     x_true,
-                    x_recon,
+                    recon_components,
                     responsibilities,
                     config.recon_weight,
                 )

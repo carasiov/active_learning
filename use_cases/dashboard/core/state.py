@@ -5,7 +5,6 @@ from __future__ import annotations
 import sys
 import threading
 from pathlib import Path
-import os
 from queue import Empty, Queue
 from typing import Dict, Optional, Tuple
 from dataclasses import replace
@@ -23,9 +22,8 @@ if str(SRC_DIR) not in sys.path:
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from rcmvae.application.runtime.interactive import InteractiveTrainer  # noqa: E402
-from rcmvae.application.model_api import SSVAE  # noqa: E402
-from rcmvae.domain.config import SSVAEConfig  # noqa: E402
+from model.ssvae import SSVAE, SSVAEConfig  # noqa: E402
+from model.training.interactive_trainer import InteractiveTrainer  # noqa: E402
 from data.mnist import load_train_images_for_ssvae, load_mnist_splits  # noqa: E402
 
 from use_cases.dashboard.utils.visualization import (  # noqa: E402
@@ -48,8 +46,6 @@ from use_cases.dashboard.core.commands import CommandDispatcher  # noqa: E402
 # Old global paths removed - now model-specific via ModelManager
 COOLWARM_CMAP = colormaps["coolwarm"]
 MAX_STATUS_MESSAGES = 10
-PREVIEW_SAMPLE_LIMIT = 2048  # Limit dataset size when loading models for dashboard
-FAST_DASHBOARD_MODE = os.environ.get("DASHBOARD_FAST_MODE", "1").lower() not in {"0", "false", "no"}
 
 
 # Global state lock - use RLock to allow re-entrant locking
@@ -162,19 +158,9 @@ def load_model(model_id: str) -> None:
         trainer = InteractiveTrainer(model)
         
         # Load data
-        if FAST_DASHBOARD_MODE:
-            preview_n = min(PREVIEW_SAMPLE_LIMIT, 256)
-            rng = np.random.default_rng(0)
-            x_train = rng.random((preview_n, 28, 28), dtype=np.float32)
-            true_labels = np.zeros(preview_n, dtype=np.int32)
-        else:
-            x_train = load_train_images_for_ssvae(dtype=np.float32)
-            (_, true_labels), _ = load_mnist_splits(normalize=True, reshape=False, dtype=np.float32)
-            true_labels = np.asarray(true_labels, dtype=np.int32)
-
-            preview_n = min(PREVIEW_SAMPLE_LIMIT, x_train.shape[0])
-            x_train = x_train[:preview_n]
-            true_labels = true_labels[:preview_n]
+        x_train = load_train_images_for_ssvae(dtype=np.float32)
+        (_, true_labels), _ = load_mnist_splits(normalize=True, reshape=False, dtype=np.float32)
+        true_labels = np.asarray(true_labels, dtype=np.int32)
         
         # Load history
         history = ModelManager.load_history(model_id)
@@ -195,14 +181,7 @@ def load_model(model_id: str) -> None:
                 labels_array[serials[valid_mask]] = label_values[valid_mask].astype(float)
         
         # Get predictions
-        if FAST_DASHBOARD_MODE:
-            latent = np.zeros((preview_n, model.config.latent_dim), dtype=np.float32)
-            recon = np.zeros_like(x_train)
-            pred_classes = np.zeros(preview_n, dtype=np.int32)
-            pred_certainty = np.zeros(preview_n, dtype=np.float32)
-        else:
-            latent, recon, pred_classes, pred_certainty = model.predict(x_train)
-
+        latent, recon, pred_classes, pred_certainty = model.predict(x_train)
         hover_metadata = _build_hover_metadata(pred_classes, pred_certainty, labels_array, true_labels)
         
         # Build ModelState
