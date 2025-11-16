@@ -109,21 +109,21 @@ class CommandDispatcher:
 
         with self._state_lock:
             # Check state is initialized
-            if dashboard_state.app_state is None:
+            if dashboard_state.state_manager.state is None:
                 error_msg = "Application state not initialized"
                 self._log_command(command, success=False, message=error_msg)
                 return False, error_msg
 
             # Validate (with services)
-            error = command.validate(dashboard_state.app_state, self._services)
+            error = command.validate(dashboard_state.state_manager.state, self._services)
             if error:
                 self._log_command(command, success=False, message=error)
                 return False, error
 
             # Execute (with services)
             try:
-                new_state, message = command.execute(dashboard_state.app_state, self._services)
-                dashboard_state.app_state = new_state
+                new_state, message = command.execute(dashboard_state.state_manager.state, self._services)
+                dashboard_state.state_manager.update_state(new_state)
                 self._log_command(command, success=True, message=message)
                 return True, message
 
@@ -753,7 +753,7 @@ class LoadModelCommand(Command):
             return state, f"Model {self.model_id} already active"
 
         from use_cases.dashboard.services.model_service import LoadModelRequest
-        from use_cases.dashboard.core import state as dashboard_state
+        from use_cases.dashboard.core.state import _clear_metrics_queue
 
         # Load model via ModelService
         request = LoadModelRequest(model_id=self.model_id)
@@ -763,7 +763,7 @@ class LoadModelCommand(Command):
             return state, f"Failed to load model: {self.model_id}"
 
         # Reset any leftover training metrics from previous model
-        dashboard_state._clear_metrics_queue()
+        _clear_metrics_queue()
 
         # Update state
         new_state = state.with_active_model(model_state)
