@@ -43,6 +43,7 @@ from use_cases.dashboard.core.state_models import (  # noqa: E402
     TrainingHistory,
 )
 from use_cases.dashboard.core.commands import CommandDispatcher  # noqa: E402
+from use_cases.dashboard.services import ServiceContainer  # noqa: E402
 
 
 # Old global paths removed - now model-specific via ModelManager
@@ -60,8 +61,11 @@ metrics_queue: Queue[Dict[str, float]] = Queue()
 
 app_state: Optional[AppState] = None
 
-# Global command dispatcher (initialized with state_lock)
-dispatcher = CommandDispatcher(state_lock)
+# Phase 2: Initialize service container with all domain services
+services = ServiceContainer.create_default(metrics_queue)
+
+# Global command dispatcher (initialized with state_lock and services)
+dispatcher = CommandDispatcher(state_lock, services)
 
 
 def _append_status_message_locked(message: str) -> None:

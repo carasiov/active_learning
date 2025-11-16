@@ -30,16 +30,17 @@ class Command(ABC):
     Commands encapsulate both validation and execution logic.
     This makes actions testable, auditable, and explicit.
 
-    Phase 2 Update: Commands now receive services for domain operations.
+    Phase 2: Commands receive ServiceContainer for all domain operations.
+    No fallback paths - services are required.
     """
 
     @abstractmethod
-    def validate(self, state: AppState, services: Optional[Any] = None) -> Optional[str]:
+    def validate(self, state: AppState, services: Any) -> Optional[str]:
         """Validate if command can execute on current state.
 
         Args:
             state: Current application state (read-only)
-            services: Optional service container for domain operations
+            services: Service container for domain operations (required)
 
         Returns:
             Error message if invalid, None if valid
@@ -47,12 +48,12 @@ class Command(ABC):
         pass
 
     @abstractmethod
-    def execute(self, state: AppState, services: Optional[Any] = None) -> Tuple[AppState, str]:
+    def execute(self, state: AppState, services: Any) -> Tuple[AppState, str]:
         """Execute command, producing new state.
 
         Args:
             state: Current application state (read-only)
-            services: Optional service container for domain operations
+            services: Service container for domain operations (required)
 
         Returns:
             (new_state, status_message)
@@ -80,15 +81,15 @@ class CommandDispatcher:
     - Validation before execution
     - Command history for debugging
     - Thread-safe access to state
-    - Service injection for domain operations (Phase 2)
+    - Service injection for all domain operations
     """
 
-    def __init__(self, state_lock: threading.Lock | threading.RLock, services: Optional[Any] = None):
-        """Initialize dispatcher with state lock and optional services.
+    def __init__(self, state_lock: threading.Lock | threading.RLock, services: Any):
+        """Initialize dispatcher with state lock and services.
 
         Args:
             state_lock: Lock or RLock protecting app_state access
-            services: Optional service container for dependency injection (Phase 2)
+            services: Service container for dependency injection (required)
         """
         self._state_lock = state_lock
         self._services = services
@@ -186,7 +187,7 @@ class LabelSampleCommand(Command):
     sample_idx: int
     label: Optional[int]  # None = delete label
     
-    def validate(self, state: AppState, services: Optional[Any] = None) -> Optional[str]:
+    def validate(self, state: AppState, services: Any) -> Optional[str]:
         """Validate sample index and label value."""
         if state.active_model is None:
             return "No model loaded"
@@ -204,10 +205,10 @@ class LabelSampleCommand(Command):
         
         return None  # Valid
     
-    def execute(self, state: AppState, services: Optional[Any] = None) -> Tuple[AppState, str]:
+    def execute(self, state: AppState, services: Any) -> Tuple[AppState, str]:
         """Execute label update on ACTIVE model.
 
-        Phase 2: Uses LabelingService when available for persistence.
+        Phase 2: Uses LabelingService for all persistence.
         """
         if state.active_model is None:
             return state, "No model loaded"
@@ -221,26 +222,15 @@ class LabelSampleCommand(Command):
         else:
             labels_array[self.sample_idx] = float(self.label)
 
-        # Persist label via service (if available) or fallback to direct CSV
-        if services is not None and hasattr(services, 'labeling'):
-            try:
-                services.labeling.set_label(
-                    model_id=state.active_model.model_id,
-                    sample_idx=self.sample_idx,
-                    label=self.label,
-                )
-            except ValueError as e:
-                return state, f"Label update failed: {e}"
-        else:
-            # Fallback: direct CSV update (backward compatibility)
-            from use_cases.dashboard.core.state import _load_labels_dataframe, _persist_labels_dataframe
-            df = _load_labels_dataframe()
-            if self.label is None:
-                if self.sample_idx in df.index:
-                    df = df.drop(self.sample_idx)
-            else:
-                df.loc[self.sample_idx, "label"] = int(self.label)
-            _persist_labels_dataframe(df)
+        # Persist label via LabelingService
+        try:
+            services.labeling.set_label(
+                model_id=state.active_model.model_id,
+                sample_idx=self.sample_idx,
+                label=self.label,
+            )
+        except ValueError as e:
+            return state, f"Label update failed: {e}"
 
         # Update hover metadata
         from use_cases.dashboard.utils.visualization import _format_hover_metadata_entry
@@ -257,11 +247,8 @@ class LabelSampleCommand(Command):
         # Update model with label changes
         updated_model = state.active_model.with_label_update(labels_array, hover_metadata)
 
-        # Get labeled count via service (if available) or calculate
-        if services is not None and hasattr(services, 'labeling'):
-            labeled_count = services.labeling.get_labeled_count(state.active_model.model_id)
-        else:
-            labeled_count = int(np.sum(~np.isnan(labels_array)))
+        # Get labeled count via LabelingService
+        labeled_count = services.labeling.get_labeled_count(state.active_model.model_id)
 
         # Update metadata
         updated_model = updated_model.with_updated_metadata(
@@ -299,7 +286,7 @@ class StartTrainingCommand(Command):
     kl_weight: float
     learning_rate: float
     
-    def validate(self, state: AppState, services: Optional[Any] = None) -> Optional[str]:
+    def validate(self, state: AppState, services: Any) -> Optional[str]:
         """Validate training can start."""
         if state.active_model is None:
             return "No model loaded"
@@ -322,7 +309,7 @@ class StartTrainingCommand(Command):
         
         return None  # Valid
     
-    def execute(self, state: AppState, services: Optional[Any] = None) -> Tuple[AppState, str]:
+    def execute(self, state: AppState, services: Any) -> Tuple[AppState, str]:
         """Queue training with updated config."""
         if state.active_model is None:
             return state, "No model loaded"
@@ -388,7 +375,7 @@ class CompleteTrainingCommand(Command):
     epoch_offset: int = 0
     epochs_completed: int = 0
 
-    def validate(self, state: AppState, services: Optional[Any] = None) -> Optional[str]:
+    def validate(self, state: AppState, services: Any) -> Optional[str]:
         """Validate arrays have correct shape."""
         if state.active_model is None:
             return "No model loaded"
@@ -411,7 +398,7 @@ class CompleteTrainingCommand(Command):
 
         return None
 
-    def execute(self, state: AppState, services: Optional[Any] = None) -> Tuple[AppState, str]:
+    def execute(self, state: AppState, services: Any) -> Tuple[AppState, str]:
         """Update state with training results."""
         if state.active_model is None:
             return state, "No model loaded"
@@ -492,7 +479,7 @@ class SelectSampleCommand(Command):
     """Command to select a sample in the UI."""
     sample_idx: int
     
-    def validate(self, state: AppState, services: Optional[Any] = None) -> Optional[str]:
+    def validate(self, state: AppState, services: Any) -> Optional[str]:
         """Validate sample index."""
         if state.active_model is None:
             return "No model loaded"
@@ -500,7 +487,7 @@ class SelectSampleCommand(Command):
             return f"Invalid sample index: {self.sample_idx}"
         return None
     
-    def execute(self, state: AppState, services: Optional[Any] = None) -> Tuple[AppState, str]:
+    def execute(self, state: AppState, services: Any) -> Tuple[AppState, str]:
         """Update selected sample."""
         if state.active_model is None:
             return state, "No model loaded"
@@ -515,7 +502,7 @@ class ChangeColorModeCommand(Command):
     """Command to change visualization color mode."""
     color_mode: str
     
-    def validate(self, state: AppState, services: Optional[Any] = None) -> Optional[str]:
+    def validate(self, state: AppState, services: Any) -> Optional[str]:
         """Validate color mode."""
         if state.active_model is None:
             return "No model loaded"
@@ -524,7 +511,7 @@ class ChangeColorModeCommand(Command):
             return f"Invalid color mode: {self.color_mode}"
         return None
     
-    def execute(self, state: AppState, services: Optional[Any] = None) -> Tuple[AppState, str]:
+    def execute(self, state: AppState, services: Any) -> Tuple[AppState, str]:
         """Update color mode."""
         if state.active_model is None:
             return state, "No model loaded"
@@ -542,7 +529,7 @@ class StopTrainingCommand(Command):
     Training will complete the current epoch and then halt gracefully.
     """
     
-    def validate(self, state: AppState, services: Optional[Any] = None) -> Optional[str]:
+    def validate(self, state: AppState, services: Any) -> Optional[str]:
         """Validate training is actually running."""
         if state.active_model is None:
             return "No model loaded"
@@ -552,7 +539,7 @@ class StopTrainingCommand(Command):
             return "Stop already requested"
         return None
     
-    def execute(self, state: AppState, services: Optional[Any] = None) -> Tuple[AppState, str]:
+    def execute(self, state: AppState, services: Any) -> Tuple[AppState, str]:
         """Set stop_requested flag."""
         if state.active_model is None:
             return state, "No model loaded"
@@ -571,7 +558,7 @@ class UpdateModelConfigCommand(Command):
     updates: Dict[str, Any]
     _new_config: Optional[SSVAEConfig] = field(init=False, default=None)
 
-    def validate(self, state: AppState, services: Optional[Any] = None) -> Optional[str]:
+    def validate(self, state: AppState, services: Any) -> Optional[str]:
         if state.active_model is None:
             return "No model loaded"
         if not self.updates:
@@ -591,7 +578,7 @@ class UpdateModelConfigCommand(Command):
 
         return None
 
-    def execute(self, state: AppState, services: Optional[Any] = None) -> Tuple[AppState, str]:
+    def execute(self, state: AppState, services: Any) -> Tuple[AppState, str]:
         if state.active_model is None:
             return state, "No model loaded"
         if not self.updates:
@@ -668,7 +655,7 @@ class CreateModelCommand(Command):
     num_labeled: int = 128
     seed: Optional[int] = None
     
-    def validate(self, state: AppState, services: Optional[Any] = None) -> Optional[str]:
+    def validate(self, state: AppState, services: Any) -> Optional[str]:
         """Validate dataset sizing inputs."""
         errors: List[str] = []
         total = self.num_samples
@@ -685,7 +672,7 @@ class CreateModelCommand(Command):
             return "; ".join(errors)
         return None
     
-    def execute(self, state: AppState, services: Optional[Any] = None) -> Tuple[AppState, str]:
+    def execute(self, state: AppState, services: Any) -> Tuple[AppState, str]:
         """Create new model directory, dataset snapshot, and metadata."""
         from use_cases.dashboard.core.model_manager import ModelManager
         from use_cases.dashboard.core.state_models import ModelMetadata, TrainingHistory
@@ -791,7 +778,7 @@ class LoadModelCommand(Command):
     """Load a model as active."""
     model_id: str
     
-    def validate(self, state: AppState, services: Optional[Any] = None) -> Optional[str]:
+    def validate(self, state: AppState, services: Any) -> Optional[str]:
         """Check model exists."""
         if self.model_id not in state.models:
             return f"Model not found: {self.model_id}"
@@ -808,7 +795,7 @@ class LoadModelCommand(Command):
         # Allow reloading same model (no-op is fine)
         return None
     
-    def execute(self, state: AppState, services: Optional[Any] = None) -> Tuple[AppState, str]:
+    def execute(self, state: AppState, services: Any) -> Tuple[AppState, str]:
         """Load model into active state."""
         # Check if already loaded
         if state.active_model and state.active_model.model_id == self.model_id:
@@ -973,7 +960,7 @@ class DeleteModelCommand(Command):
     """Delete a model permanently."""
     model_id: str
     
-    def validate(self, state: AppState, services: Optional[Any] = None) -> Optional[str]:
+    def validate(self, state: AppState, services: Any) -> Optional[str]:
         """Check model exists and not active."""
         if self.model_id not in state.models:
             return f"Model not found: {self.model_id}"
@@ -983,7 +970,7 @@ class DeleteModelCommand(Command):
         
         return None
     
-    def execute(self, state: AppState, services: Optional[Any] = None) -> Tuple[AppState, str]:
+    def execute(self, state: AppState, services: Any) -> Tuple[AppState, str]:
         """Delete model files and remove from registry."""
         from use_cases.dashboard.core.model_manager import ModelManager
         from dataclasses import replace
