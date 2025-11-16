@@ -87,9 +87,9 @@ This note captures the current status of the interactive dashboard and its suppo
 - Future: Add date range filtering and run comparison views.
 - Future: Provide artifact downloads for large items.
 
-### 4.4 Cohesive Training History
-- Surface per-model run history in main dashboard (timeline/cards).
-- Link runs to experiment browser entries and label versions.
+### 4.4 Cohesive Training History ✅ **Completed November 2025**
+- ✅ Surface per-model run history in main dashboard (timeline/cards).
+- ✅ Link runs to experiment browser entries and label versions.
 
 ### 4.5 Label Versioning & Provenance
 - Version `labels.csv` or track diffs for each run.
@@ -106,7 +106,7 @@ This note captures the current status of the interactive dashboard and its suppo
 1. ✅ ~~Implement `validation_layout` placeholders (warning cleanup).~~
 2. ✅ ~~Build metadata-driven configuration UI.~~
 3. ✅ ~~Enhance experiment browser with comparisons/filters.~~
-4. **Surface run history within dashboard layout.** ← Next priority
-5. Expose label provenance and statistics.
+4. ✅ ~~Surface run history within dashboard layout.~~
+5. **Expose label provenance and statistics.** ← Next priority
 
 These steps move the dashboard toward being the primary interface for interactive active learning while keeping the CLI experiment pipeline aligned.
