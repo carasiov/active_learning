@@ -16,6 +16,8 @@ from use_cases.dashboard.core.experiment_catalog import (
     FigurePreview,
     load_run_detail,
     serialize_run_list,
+    get_available_models,
+    get_available_tags,
 )
 
 
@@ -23,6 +25,13 @@ def build_experiments_layout() -> html.Div:
     runs = serialize_run_list()
     options = [_run_option(entry) for entry in runs]
     initial_value = options[0]["value"] if options else None
+
+    # Get available filter values
+    available_models = get_available_models()
+    model_options = [{"label": f"Model: {m}", "value": m} for m in available_models]
+
+    available_tags = get_available_tags()
+    tag_options = [{"label": f"Tag: {t}", "value": t} for t in available_tags]
 
     return html.Div(
         [
@@ -85,6 +94,60 @@ def build_experiments_layout() -> html.Div:
             ),
             html.Div(
                 [
+                    # Filter Controls
+                    dbc.Row(
+                        [
+                            dbc.Col(
+                                [
+                                    html.Label(
+                                        "Filter by Model",
+                                        style={"fontWeight": "600", "marginBottom": "6px", "fontSize": "13px"},
+                                    ),
+                                    dcc.Dropdown(
+                                        id="experiments-model-filter",
+                                        options=model_options,
+                                        value=None,
+                                        clearable=True,
+                                        placeholder="All models",
+                                        style={"fontSize": "14px"},
+                                    ),
+                                ],
+                                width=4,
+                            ),
+                            dbc.Col(
+                                [
+                                    html.Label(
+                                        "Filter by Tag",
+                                        style={"fontWeight": "600", "marginBottom": "6px", "fontSize": "13px"},
+                                    ),
+                                    dcc.Dropdown(
+                                        id="experiments-tag-filter",
+                                        options=tag_options,
+                                        value=None,
+                                        clearable=True,
+                                        placeholder="All tags",
+                                        style={"fontSize": "14px"},
+                                    ),
+                                ],
+                                width=4,
+                            ),
+                            dbc.Col(
+                                [
+                                    dbc.Button(
+                                        "Clear Filters",
+                                        id="experiments-clear-filters-btn",
+                                        color="light",
+                                        outline=True,
+                                        style={"marginTop": "24px", "fontWeight": "600", "width": "100%"},
+                                    )
+                                ],
+                                width=4,
+                            ),
+                        ],
+                        class_name="g-2",
+                        style={"marginBottom": "16px", "paddingBottom": "16px", "borderBottom": "1px solid #E5E5E5"},
+                    ),
+                    # Run Selector
                     dbc.Row(
                         [
                             dbc.Col(

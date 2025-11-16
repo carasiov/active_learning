@@ -79,9 +79,13 @@ This note captures the current status of the interactive dashboard and its suppo
 - ✅ Refactored Training Hub quick controls to use metadata (consistent with config page).
 - Future: Persist presets for quick setup.
 
-### 4.3 Experiment Browser Enhancements
-- Add filters (tags, model, date) and comparison views.
-- Provide artifact downloads for large items.
+### 4.3 Experiment Browser Enhancements ✅ **Completed November 2025**
+- ✅ Added model and tag filter dropdowns with clear filters button.
+- ✅ Backend helpers (`get_available_models()`, `get_available_tags()`) in `core/experiment_catalog.py`.
+- ✅ Callbacks support URL-based and dropdown-based filtering.
+- ✅ Dynamic filter indicator shows active filters and result counts.
+- Future: Add date range filtering and run comparison views.
+- Future: Provide artifact downloads for large items.
 
 ### 4.4 Cohesive Training History
 - Surface per-model run history in main dashboard (timeline/cards).
@@ -101,8 +105,8 @@ This note captures the current status of the interactive dashboard and its suppo
 
 1. ✅ ~~Implement `validation_layout` placeholders (warning cleanup).~~
 2. ✅ ~~Build metadata-driven configuration UI.~~
-3. **Enhance experiment browser with comparisons/filters.** ← Next priority
-4. Surface run history within dashboard layout.
+3. ✅ ~~Enhance experiment browser with comparisons/filters.~~
+4. **Surface run history within dashboard layout.** ← Next priority
 5. Expose label provenance and statistics.
 
 These steps move the dashboard toward being the primary interface for interactive active learning while keeping the CLI experiment pipeline aligned.

@@ -130,6 +130,30 @@ def serialize_run_list(limit: Optional[int] = None) -> List[Dict[str, Any]]:
     return [entry.to_dict() for entry in list_runs(limit=limit)]
 
 
+def get_available_models() -> List[str]:
+    """Extract unique model IDs from all experiment runs.
+
+    Returns:
+        Sorted list of model IDs that have at least one associated run.
+    """
+    runs = list_runs()
+    models = {entry.model_id for entry in runs if entry.model_id}
+    return sorted(models)
+
+
+def get_available_tags() -> List[str]:
+    """Extract unique tags from all experiment runs.
+
+    Returns:
+        Sorted list of tags that appear in at least one run.
+    """
+    runs = list_runs()
+    all_tags = set()
+    for entry in runs:
+        all_tags.update(entry.tags)
+    return sorted(all_tags)
+
+
 def _iter_run_dirs(root: Path) -> Iterable[Path]:
     for child in root.iterdir():
         if child.is_dir():
