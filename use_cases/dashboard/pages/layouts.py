@@ -186,7 +186,8 @@ def build_dashboard_layout() -> html.Div:
                                 [
                                     _build_stats_section(),
                                     _build_run_history_section(model_id),
-                                    
+                                    _build_status_section(status_initial),
+
                                     # Training section
                                     html.Div(
                                         [

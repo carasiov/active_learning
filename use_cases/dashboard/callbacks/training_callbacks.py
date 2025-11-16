@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Tuple
 from datetime import datetime
 
 import dash
-from dash import Dash, Input, Output, State, html, no_update
+from dash import Dash, Input, Output, State, dcc, html, no_update
 from dash.exceptions import PreventUpdate
 import numpy as np
 from queue import Empty
