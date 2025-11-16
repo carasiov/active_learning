@@ -13,8 +13,8 @@ def build_home_layout() -> html.Div:
     """Build the home page with model cards."""
     dashboard_state.initialize_app_state()
 
-    with dashboard_state.state_lock:
-        models = dashboard_state.app_state.models if dashboard_state.app_state else {}
+    with dashboard_state.state_manager.state_lock:
+        models = dashboard_state.state_manager.state.models if dashboard_state.state_manager.state else {}
 
     if not models:
         return _build_empty_state()

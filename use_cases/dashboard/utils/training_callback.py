@@ -89,11 +89,11 @@ class DashboardMetricsCallback(TrainingCallback):
         """Check if user requested training to stop."""
         try:
             from use_cases.dashboard import state as dashboard_state
-            
-            with dashboard_state.state_lock:
-                app_state = dashboard_state.app_state
-                if app_state and app_state.active_model:
-                    return app_state.active_model.training.stop_requested
+
+            with dashboard_state.state_manager.state_lock:
+                current_state = dashboard_state.state_manager.state
+                if current_state and current_state.active_model:
+                    return current_state.active_model.training.stop_requested
         except Exception:
             # Don't crash training if check fails
             pass

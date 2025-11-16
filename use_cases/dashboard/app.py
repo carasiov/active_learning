@@ -285,10 +285,10 @@ def create_app() -> Dash:
         initialize_app_state()
         
         # Log current models
-        with dashboard_state.state_lock:
-            if dashboard_state.app_state:
-                model_count = len(dashboard_state.app_state.models)
-                model_ids = list(dashboard_state.app_state.models.keys())
+        with dashboard_state.state_manager.state_lock:
+            if dashboard_state.state_manager.state:
+                model_count = len(dashboard_state.state_manager.state.models)
+                model_ids = list(dashboard_state.state_manager.state.models.keys())
             else:
                 model_count = 0
                 model_ids = []
@@ -316,8 +316,8 @@ def create_app() -> Dash:
             
             # Check if model needs to be loaded
             needs_load = False
-            with dashboard_state.state_lock:
-                active_model = dashboard_state.app_state.active_model if dashboard_state.app_state else None
+            with dashboard_state.state_manager.state_lock:
+                active_model = dashboard_state.state_manager.state.active_model if dashboard_state.state_manager.state else None
                 if not active_model or active_model.model_id != model_id:
                     needs_load = True
             
@@ -326,7 +326,7 @@ def create_app() -> Dash:
                 try:
                     from use_cases.dashboard.core.commands import LoadModelCommand
                     command = LoadModelCommand(model_id=model_id)
-                    success, message = dashboard_state.dispatcher.execute(command)
+                    success, message = dashboard_state.state_manager.dispatcher.execute(command)
                     if not success:
                         # Model not found or load failed, redirect to home
                         return build_home_layout(), {}
@@ -335,8 +335,8 @@ def create_app() -> Dash:
                     return build_home_layout(), {}
             
             # Get config for the page
-            with dashboard_state.state_lock:
-                active_model = dashboard_state.app_state.active_model if dashboard_state.app_state else None
+            with dashboard_state.state_manager.state_lock:
+                active_model = dashboard_state.state_manager.state.active_model if dashboard_state.state_manager.state else None
                 if active_model:
                     config_dict = dataclasses.asdict(active_model.config)
                 else:

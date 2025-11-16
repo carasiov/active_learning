@@ -151,24 +151,24 @@ def register_visualization_callbacks(app: Dash) -> None:
         label_version = int((labels_store or {}).get("version", 0))
 
         # CRITICAL: Hold lock for entire cache check and data copy
-        with dashboard_state.state_lock:
-            if dashboard_state.app_state.active_model is None:
+        with dashboard_state.state_manager.state_lock:
+            if dashboard_state.state_manager.state.active_model is None:
                 return go.Figure()  # No model loaded
             
-            latent = np.array(dashboard_state.app_state.active_model.data.latent, dtype=np.float32)
-            labels = np.array(dashboard_state.app_state.active_model.data.labels, dtype=np.float64)
+            latent = np.array(dashboard_state.state_manager.state.active_model.data.latent, dtype=np.float32)
+            labels = np.array(dashboard_state.state_manager.state.active_model.data.labels, dtype=np.float64)
             true_labels = (
-                np.array(dashboard_state.app_state.active_model.data.true_labels, dtype=np.float64)
-                if dashboard_state.app_state.active_model.data.true_labels is not None
+                np.array(dashboard_state.state_manager.state.active_model.data.true_labels, dtype=np.float64)
+                if dashboard_state.state_manager.state.active_model.data.true_labels is not None
                 else None
             )
-            pred_classes = np.array(dashboard_state.app_state.active_model.data.pred_classes, dtype=np.int32)
-            pred_certainty = np.array(dashboard_state.app_state.active_model.data.pred_certainty, dtype=np.float64)
-            hover_metadata = list(dashboard_state.app_state.active_model.data.hover_metadata)
+            pred_classes = np.array(dashboard_state.state_manager.state.active_model.data.pred_classes, dtype=np.int32)
+            pred_certainty = np.array(dashboard_state.state_manager.state.active_model.data.pred_certainty, dtype=np.float64)
+            hover_metadata = list(dashboard_state.state_manager.state.active_model.data.hover_metadata)
             
             # Get cache references under lock
-            base_figure_cache = dashboard_state.app_state.cache["base_figures"]
-            color_cache = dashboard_state.app_state.cache["colors"]
+            base_figure_cache = dashboard_state.state_manager.state.cache["base_figures"]
+            color_cache = dashboard_state.state_manager.state.cache["colors"]
             
             # Create figure cache key
             figure_cache_key = (latent_version, color_mode, label_version)
@@ -218,12 +218,12 @@ def register_visualization_callbacks(app: Dash) -> None:
         figure._last_selected_idx = selected_idx
         
         # Cache the built figure (need lock again)
-        with dashboard_state.state_lock:
-            dashboard_state.app_state.cache["base_figures"][figure_cache_key] = figure
+        with dashboard_state.state_manager.state_lock:
+            dashboard_state.state_manager.state.cache["base_figures"][figure_cache_key] = figure
             # Limit cache size to prevent memory growth
-            if len(dashboard_state.app_state.cache["base_figures"]) > 20:
-                oldest_key = next(iter(dashboard_state.app_state.cache["base_figures"]))
-                dashboard_state.app_state.cache["base_figures"].pop(oldest_key)
+            if len(dashboard_state.state_manager.state.cache["base_figures"]) > 20:
+                oldest_key = next(iter(dashboard_state.state_manager.state.cache["base_figures"]))
+                dashboard_state.state_manager.state.cache["base_figures"].pop(oldest_key)
         
         return figure
 
@@ -340,7 +340,7 @@ def register_visualization_callbacks(app: Dash) -> None:
         point_index = int(click_data["points"][0]["pointIndex"])
         
         command = SelectSampleCommand(sample_idx=point_index)
-        success, message = dashboard_state.dispatcher.execute(command)
+        success, message = dashboard_state.state_manager.dispatcher.execute(command)
         
         return point_index
 
@@ -351,7 +351,7 @@ def register_visualization_callbacks(app: Dash) -> None:
     def sync_color_mode(color_mode: str) -> str:
 
         command = ChangeColorModeCommand(color_mode=color_mode)
-        dashboard_state.dispatcher.execute(command)
+        dashboard_state.state_manager.dispatcher.execute(command)
         return color_mode
 
     @app.callback(
@@ -360,8 +360,8 @@ def register_visualization_callbacks(app: Dash) -> None:
         Input("loss-smoothing-toggle", "value"),
     )
     def update_loss_curves(_latent_store: dict | None, smoothing_enabled: list):
-        with dashboard_state.state_lock:
-            if dashboard_state.app_state.active_model is None:
+        with dashboard_state.state_manager.state_lock:
+            if dashboard_state.state_manager.state.active_model is None:
                 # Return empty figure if no model loaded
                 figure = go.Figure()
                 figure.update_layout(
@@ -371,7 +371,7 @@ def register_visualization_callbacks(app: Dash) -> None:
                     margin=dict(l=40, r=20, t=30, b=40),
                 )
                 return figure
-            history = dashboard_state.app_state.active_model.history
+            history = dashboard_state.state_manager.state.active_model.history
             epochs = list(history.epochs)
 
         figure = go.Figure()

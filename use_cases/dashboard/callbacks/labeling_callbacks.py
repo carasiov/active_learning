@@ -41,18 +41,18 @@ def register_labeling_callbacks(app: Dash) -> None:
         if selected_idx is None:
             raise PreventUpdate
 
-        with dashboard_state.state_lock:
-            if dashboard_state.app_state.active_model is None:
+        with dashboard_state.state_manager.state_lock:
+            if dashboard_state.state_manager.state.active_model is None:
                 raise PreventUpdate
             idx = int(selected_idx)
-            x_train = np.array(dashboard_state.app_state.active_model.data.x_train)
-            reconstructed = dashboard_state.app_state.active_model.data.reconstructed
-            pred_classes = np.array(dashboard_state.app_state.active_model.data.pred_classes)
-            pred_certainty = np.array(dashboard_state.app_state.active_model.data.pred_certainty)
-            labels = np.array(dashboard_state.app_state.active_model.data.labels)
+            x_train = np.array(dashboard_state.state_manager.state.active_model.data.x_train)
+            reconstructed = dashboard_state.state_manager.state.active_model.data.reconstructed
+            pred_classes = np.array(dashboard_state.state_manager.state.active_model.data.pred_classes)
+            pred_certainty = np.array(dashboard_state.state_manager.state.active_model.data.pred_certainty)
+            labels = np.array(dashboard_state.state_manager.state.active_model.data.labels)
             true_labels = (
-                np.array(dashboard_state.app_state.active_model.data.true_labels, dtype=np.int32)
-                if dashboard_state.app_state.active_model.data.true_labels is not None
+                np.array(dashboard_state.state_manager.state.active_model.data.true_labels, dtype=np.int32)
+                if dashboard_state.state_manager.state.active_model.data.true_labels is not None
                 else None
             )
 
@@ -120,12 +120,12 @@ def register_labeling_callbacks(app: Dash) -> None:
             raise PreventUpdate
         
         # Execute command
-        success, message = dashboard_state.dispatcher.execute(command)
+        success, message = dashboard_state.state_manager.dispatcher.execute(command)
         
         # Return updated version
-        with dashboard_state.state_lock:
-            if dashboard_state.app_state.active_model:
-                version_payload = {"version": dashboard_state.app_state.active_model.data.version}
+        with dashboard_state.state_manager.state_lock:
+            if dashboard_state.state_manager.state.active_model:
+                version_payload = {"version": dashboard_state.state_manager.state.active_model.data.version}
             else:
                 version_payload = {"version": 0}
         
@@ -147,12 +147,12 @@ def register_labeling_callbacks(app: Dash) -> None:
         
         # Execute command
         command = LabelSampleCommand(sample_idx=int(selected_idx), label=int(digit))
-        success, message = dashboard_state.dispatcher.execute(command)
+        success, message = dashboard_state.state_manager.dispatcher.execute(command)
         
         # Return updated version
-        with dashboard_state.state_lock:
-            if dashboard_state.app_state.active_model:
-                version_payload = {"version": dashboard_state.app_state.active_model.data.version}
+        with dashboard_state.state_manager.state_lock:
+            if dashboard_state.state_manager.state.active_model:
+                version_payload = {"version": dashboard_state.state_manager.state.active_model.data.version}
             else:
                 version_payload = {"version": 0}
         
@@ -198,9 +198,9 @@ def register_labeling_callbacks(app: Dash) -> None:
         Input("labels-store", "data"),
     )
     def update_dataset_stats(_labels_store: dict | None):
-        with dashboard_state.state_lock:
-            if dashboard_state.app_state.active_model:
-                labels = np.array(dashboard_state.app_state.active_model.data.labels, dtype=float)
+        with dashboard_state.state_manager.state_lock:
+            if dashboard_state.state_manager.state.active_model:
+                labels = np.array(dashboard_state.state_manager.state.active_model.data.labels, dtype=float)
             else:
                 labels = np.array([], dtype=float)
 
