@@ -52,7 +52,7 @@ def _configure_trainer_callbacks(trainer: InteractiveTrainer, target_epochs: int
                 export_history=False,
             )
         )
-    base_callbacks.append(DashboardMetricsCallback(state_manager.metrics_queue, target_epochs))
+    base_callbacks.append(DashboardMetricsCallback(dashboard_state.state_manager.metrics_queue, target_epochs))
     trainer._callbacks = base_callbacks
 
 
@@ -61,7 +61,7 @@ def train_worker_hub(num_epochs: int) -> None:
     try:
         with dashboard_state.state_manager.state_lock:
             if dashboard_state.state_manager.state.active_model is None:
-                state_manager.metrics_queue.put({"type": "error", "message": "No model loaded."})
+                dashboard_state.state_manager.metrics_queue.put({"type": "error", "message": "No model loaded."})
                 return
             
             trainer: InteractiveTrainer = dashboard_state.state_manager.state.active_model.trainer
@@ -81,7 +81,7 @@ def train_worker_hub(num_epochs: int) -> None:
             _configure_trainer_callbacks(trainer, target_epochs, checkpoint_path)
 
         if x_train_ref is None or labels_ref is None:
-            state_manager.metrics_queue.put({"type": "error", "message": "Training data not initialized."})
+            dashboard_state.state_manager.metrics_queue.put({"type": "error", "message": "Training data not initialized."})
             return
 
         x_train = np.array(x_train_ref)
@@ -129,8 +129,8 @@ def train_worker_hub(num_epochs: int) -> None:
                 latent_version = dashboard_state.state_manager.state.active_model.data.version
             else:
                 latent_version = 0
-        state_manager.metrics_queue.put({"type": "latent_updated", "version": latent_version})
-        state_manager.metrics_queue.put({"type": "training_complete", "history": history})
+        dashboard_state.state_manager.metrics_queue.put({"type": "latent_updated", "version": latent_version})
+        dashboard_state.state_manager.metrics_queue.put({"type": "training_complete", "history": history})
     except Exception as exc:  # pragma: no cover - defensive
         # Check if this is a user-initiated stop
         from use_cases.dashboard.utils.training_callback import TrainingStoppedException
@@ -168,12 +168,12 @@ def train_worker_hub(num_epochs: int) -> None:
                 with dashboard_state.state_manager.state_lock:
                     if dashboard_state.state_manager.state.active_model:
                         latent_version = dashboard_state.state_manager.state.active_model.data.version
-                        state_manager.metrics_queue.put({"type": "latent_updated", "version": latent_version})
+                        dashboard_state.state_manager.metrics_queue.put({"type": "latent_updated", "version": latent_version})
             except Exception:
                 pass  # If update fails after stop, just continue
         else:
             _append_status_message(f"Training error: {exc}")
-            state_manager.metrics_queue.put({"type": "error", "message": str(exc)})
+            dashboard_state.state_manager.metrics_queue.put({"type": "error", "message": str(exc)})
     finally:
         with dashboard_state.state_manager.state_lock:
             if dashboard_state.state_manager.state.active_model:
@@ -681,7 +681,7 @@ def register_training_hub_callbacks(app: Dash) -> None:
         
         while True:
             try:
-                message = state_manager.metrics_queue.get_nowait()
+                message = dashboard_state.state_manager.metrics_queue.get_nowait()
             except Empty:
                 break
             processed_messages = True
@@ -726,7 +726,7 @@ def register_training_hub_callbacks(app: Dash) -> None:
             or controls_disabled != _HUB_LAST_POLL_STATE["controls_disabled"]
         )
 
-        interval_disabled = not active and not processed_messages and state_manager.metrics_queue.empty()
+        interval_disabled = not active and not processed_messages and dashboard_state.state_manager.metrics_queue.empty()
         interval_changed = (
             _HUB_LAST_POLL_STATE["interval_disabled"] is None
             or interval_disabled != _HUB_LAST_POLL_STATE["interval_disabled"]
