@@ -7,24 +7,28 @@ from urllib.parse import parse_qs
 
 from dash import Dash, Input, Output, State, no_update
 
-from use_cases.dashboard.core.experiment_catalog import serialize_run_list
-from use_cases.dashboard.pages.experiments import build_run_list, render_run_detail
+from use_cases.dashboard.core.experiment_catalog import serialize_run_list, get_available_models
+from use_cases.dashboard.pages.experiments import build_model_list, build_run_list, render_run_detail
 
 
 def register_experiments_callbacks(app: Dash) -> None:
     @app.callback(
         Output("experiments-run-data", "data"),
+        Output("experiments-model-list", "data"),
         Input("experiments-refresh-btn", "n_clicks"),
         prevent_initial_call=True,
     )
-    def refresh_runs(_n_clicks: Optional[int]) -> List[Dict[str, Any]]:
-        return serialize_run_list()
+    def refresh_data(_n_clicks: Optional[int]):
+        """Refresh both runs and model list."""
+        runs = serialize_run_list()
+        models = get_available_models()
+        return runs, models
 
-    def _parse_filters(search: Optional[str]) -> tuple[Optional[str], Optional[str], Optional[str]]:
-        """Parse URL search params for filters and run selection.
+    def _parse_url(search: Optional[str]) -> tuple[Optional[str], Optional[str], Optional[str]]:
+        """Parse URL search params for model, tag, and run selection.
 
         Returns:
-            (model_filter, tag_filter, run_prefill)
+            (model_id, tag_filter, run_id)
         """
         if not search:
             return None, None, None
@@ -52,47 +56,39 @@ def register_experiments_callbacks(app: Dash) -> None:
         return filtered
 
     @app.callback(
-        Output("experiments-run-selector", "options"),
-        Output("experiments-run-selector", "value"),
-        Output("experiments-filter-indicator", "children"),
-        Output("experiments-model-filter", "value"),
-        Output("experiments-tag-filter", "value"),
+        Output("experiments-model-list-ui", "children"),
         Input("experiments-run-data", "data"),
+        Input("experiments-model-list", "data"),
         Input("experiments-url", "search"),
-        Input("experiments-model-filter", "value"),
-        Input("experiments-tag-filter", "value"),
-        State("experiments-run-selector", "value"),
         prevent_initial_call=False,
     )
-    def populate_run_selector(
-        data: Optional[List[Dict[str, Any]]],
+    def refresh_model_list(
+        runs_data: Optional[List[Dict[str, Any]]],
+        models: Optional[List[str]],
         search: Optional[str],
-        model_filter_input: Optional[str],
-        tag_filter_input: Optional[str],
-        current_value: Optional[str],
     ):
-        entries = data or []
-        url_model_filter, url_tag_filter, run_prefill = _parse_filters(search)
+        """Render model list with selection state from URL."""
+        selected_model, _, _ = _parse_url(search)
+        return build_model_list(models or [], runs_data or [], selected_model)
 
-        # Use URL filters if present, otherwise use dropdown values
-        model_filter = url_model_filter or model_filter_input
+    @app.callback(
+        Output("experiments-filter-indicator", "children"),
+        Input("experiments-url", "search"),
+        Input("experiments-tag-filter", "value"),
+        State("experiments-run-data", "data"),
+        prevent_initial_call=False,
+    )
+    def update_filter_indicator(
+        search: Optional[str],
+        tag_filter_input: Optional[str],
+        runs_data: Optional[List[Dict[str, Any]]],
+    ):
+        """Update filter indicator to show active filters and run count."""
+        model_filter, url_tag_filter, _ = _parse_url(search)
         tag_filter = url_tag_filter or tag_filter_input
 
-        filtered_entries = _filtered_entries(entries, model_filter, tag_filter)
+        filtered = _filtered_entries(runs_data or [], model_filter, tag_filter)
 
-        options = [_option_from_entry(entry) for entry in filtered_entries]
-        valid_values = {opt["value"] for opt in options}
-
-        if run_prefill and run_prefill in valid_values:
-            selected = run_prefill
-        elif current_value in valid_values:
-            selected = current_value
-        elif options:
-            selected = options[0]["value"]
-        else:
-            selected = None
-
-        # Build filter indicator
         indicator_parts = []
         if model_filter:
             indicator_parts.append(f"Model: {model_filter}")
@@ -100,50 +96,39 @@ def register_experiments_callbacks(app: Dash) -> None:
             indicator_parts.append(f"Tag: {tag_filter}")
 
         if indicator_parts:
-            count = len(filtered_entries)
-            indicator = f"{', '.join(indicator_parts)} ({count} run{'s' if count != 1 else ''})"
-        else:
-            indicator = ""
-
-        return options, selected, indicator, model_filter, tag_filter
+            count = len(filtered)
+            return f"{', '.join(indicator_parts)} ({count} run{'s' if count != 1 else ''})"
+        return ""
 
     @app.callback(
         Output("experiments-run-list", "children"),
+        Output("experiments-run-detail", "children"),
         Input("experiments-run-data", "data"),
-        Input("experiments-run-selector", "value"),
-        Input("experiments-model-filter", "value"),
+        Input("experiments-url", "search"),
         Input("experiments-tag-filter", "value"),
         prevent_initial_call=False,
     )
-    def refresh_run_list(
+    def refresh_runs_and_detail(
         data: Optional[List[Dict[str, Any]]],
-        selected_value: Optional[str],
-        model_filter: Optional[str],
-        tag_filter: Optional[str],
+        search: Optional[str],
+        tag_filter_input: Optional[str],
     ):
+        """Refresh run list and detail based on URL and tag filter."""
+        model_filter, url_tag_filter, run_id = _parse_url(search)
+        tag_filter = url_tag_filter or tag_filter_input
+
         entries = data or []
         filtered_entries = _filtered_entries(entries, model_filter, tag_filter)
-        return build_run_list(filtered_entries, selected_value, model_filter)
 
-    @app.callback(
-        Output("experiments-run-detail", "children"),
-        Input("experiments-run-selector", "value"),
-    )
-    def show_run_detail(run_id: Optional[str]):
-        if not run_id:
-            return render_run_detail(None)
-        return render_run_detail(run_id)
+        # Select first run if no run specified in URL
+        selected_run_id = run_id
+        if not selected_run_id and filtered_entries:
+            selected_run_id = filtered_entries[0].get("run_id")
 
-    @app.callback(
-        Output("experiments-model-filter", "value", allow_duplicate=True),
-        Output("experiments-tag-filter", "value", allow_duplicate=True),
-        Output("experiments-url", "search", allow_duplicate=True),
-        Input("experiments-clear-filters-btn", "n_clicks"),
-        prevent_initial_call=True,
-    )
-    def clear_filters(_n_clicks: Optional[int]):
-        """Clear all experiment filters and reset URL."""
-        return None, None, ""
+        run_list = build_run_list(filtered_entries, selected_run_id, model_filter)
+        run_detail = render_run_detail(selected_run_id)
+
+        return run_list, run_detail
 
 
 def _option_from_entry(entry: Dict[str, Any]) -> Dict[str, str]:

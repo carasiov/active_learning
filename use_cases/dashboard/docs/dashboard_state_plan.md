@@ -79,11 +79,15 @@ This note captures the current status of the interactive dashboard and its suppo
 - ✅ Refactored Training Hub quick controls to use metadata (consistent with config page).
 - Future: Persist presets for quick setup.
 
-### 4.3 Experiment Browser Enhancements ✅ **Completed November 2025**
-- ✅ Added model and tag filter dropdowns with clear filters button.
+### 4.3 Experiment Browser with Model-Centric Organization ✅ **Completed November 2025**
+- ✅ Refactored to three-panel layout: Models | Runs | Detail.
+- ✅ Left panel shows model list with run counts and latest timestamps.
+- ✅ Middle panel shows runs filtered by selected model.
+- ✅ Right panel shows detailed run information (metrics, figures, config).
+- ✅ Tag filtering available as secondary filter within selected model.
 - ✅ Backend helpers (`get_available_models()`, `get_available_tags()`) in `core/experiment_catalog.py`.
-- ✅ Callbacks support URL-based and dropdown-based filtering.
-- ✅ Dynamic filter indicator shows active filters and result counts.
+- ✅ URL-based navigation supports `/experiments?model=<model_id>&run=<run_id>` pattern.
+- ✅ Dynamic filter indicator shows active model and tag with result counts.
 - Future: Add date range filtering and run comparison views.
 - Future: Provide artifact downloads for large items.
 
