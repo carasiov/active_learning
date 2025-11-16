@@ -469,7 +469,9 @@ def register_training_hub_callbacks(app: Dash) -> None:
                 updated_model = dashboard_state.state_manager.state.active_model.with_training(
                     status_messages=[]
                 )
-                dashboard_state.state_manager.state = dashboard_state.state_manager.state.with_active_model(updated_model)
+                dashboard_state.state_manager.update_state(
+                    dashboard_state.state_manager.state.with_active_model(updated_model)
+                )
         
         return [html.Div("Terminal cleared", style={
             "fontFamily": "ui-monospace, 'SF Mono', Monaco, monospace",
