@@ -21,21 +21,29 @@ if str(APP_DIR) in sys.path:
 # Initialize logging FIRST before any other imports
 from use_cases.dashboard.core.logging_config import DashboardLogger  # noqa: E402
 import logging
-DashboardLogger.setup(console_level=logging.INFO)  # Change to DEBUG for verbose output
+import os
+
+_LOG_LEVEL = os.environ.get("DASHBOARD_LOG_LEVEL", "INFO").upper()
+_CONSOLE_LEVEL = getattr(logging, _LOG_LEVEL, logging.INFO)
+DashboardLogger.setup(console_level=_CONSOLE_LEVEL)  # Configure via env var
 logger = DashboardLogger.get_logger('app')
+logger.debug("Dashboard console logging configured at %s", logging.getLevelName(_CONSOLE_LEVEL))
 
 from use_cases.dashboard.pages.layouts import build_dashboard_layout  # noqa: E402
+from use_cases.dashboard.pages.experiments import build_experiments_layout  # noqa: E402
 from use_cases.dashboard.pages.training import build_training_config_page, register_config_page_callbacks  # noqa: E402
 from use_cases.dashboard.pages.training_hub import build_training_hub_layout  # noqa: E402
 from use_cases.dashboard.pages.home import build_home_layout  # noqa: E402
 from use_cases.dashboard.core import state as dashboard_state
 from use_cases.dashboard.core.state import initialize_model_and_data, initialize_app_state  # noqa: E402
+from use_cases.dashboard.core.validation import build_validation_layout  # noqa: E402
 from use_cases.dashboard.callbacks.training_callbacks import register_training_callbacks  # noqa: E402
 from use_cases.dashboard.callbacks.training_hub_callbacks import register_training_hub_callbacks  # noqa: E402
 from use_cases.dashboard.callbacks.visualization_callbacks import register_visualization_callbacks  # noqa: E402
 from use_cases.dashboard.callbacks.labeling_callbacks import register_labeling_callbacks  # noqa: E402
 from use_cases.dashboard.callbacks.config_callbacks import register_config_callbacks  # noqa: E402
 from use_cases.dashboard.callbacks.home_callbacks import register_home_callbacks  # noqa: E402
+from use_cases.dashboard.callbacks.experiments_callbacks import register_experiments_callbacks  # noqa: E402
 
 
 CUSTOM_CSS = """
@@ -254,6 +262,10 @@ def create_app() -> Dash:
         ],
         style={'height': '100vh', 'overflow': 'hidden'}
     )
+    app.validation_layout = html.Div([
+        app.layout,
+        build_validation_layout(),
+    ])
     
     # Page router callback
     @app.callback(
@@ -274,8 +286,12 @@ def create_app() -> Dash:
         
         # Log current models
         with dashboard_state.state_lock:
-            model_count = len(dashboard_state.app_state.models)
-            model_ids = list(dashboard_state.app_state.models.keys())
+            if dashboard_state.app_state:
+                model_count = len(dashboard_state.app_state.models)
+                model_ids = list(dashboard_state.app_state.models.keys())
+            else:
+                model_count = 0
+                model_ids = []
         logger.info(f"Current models in state: {model_ids} ({model_count} total)")
         
         # Home page
@@ -283,6 +299,10 @@ def create_app() -> Dash:
             logger.info("Rendering home page")
             return build_home_layout(), {}
         
+        if pathname == '/experiments':
+            logger.info("Rendering experiment browser")
+            return build_experiments_layout(), {}
+
         # Strip query parameters for routing
         pathname = pathname.split('?')[0] if pathname else pathname
         
@@ -297,8 +317,8 @@ def create_app() -> Dash:
             # Check if model needs to be loaded
             needs_load = False
             with dashboard_state.state_lock:
-                if not dashboard_state.app_state.active_model or \
-                   dashboard_state.app_state.active_model.model_id != model_id:
+                active_model = dashboard_state.app_state.active_model if dashboard_state.app_state else None
+                if not active_model or active_model.model_id != model_id:
                     needs_load = True
             
             # Load model if needed (outside the lock check)
@@ -316,8 +336,9 @@ def create_app() -> Dash:
             
             # Get config for the page
             with dashboard_state.state_lock:
-                if dashboard_state.app_state.active_model:
-                    config_dict = dataclasses.asdict(dashboard_state.app_state.active_model.config)
+                active_model = dashboard_state.app_state.active_model if dashboard_state.app_state else None
+                if active_model:
+                    config_dict = dataclasses.asdict(active_model.config)
                 else:
                     return build_home_layout(), {}
             
@@ -528,6 +549,7 @@ def create_app() -> Dash:
     register_labeling_callbacks(app)
     register_config_callbacks(app)
     register_config_page_callbacks(app)
+    register_experiments_callbacks(app)
     
     return app
 

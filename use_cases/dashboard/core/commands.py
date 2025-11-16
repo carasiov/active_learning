@@ -3,14 +3,21 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import threading
 import os
 
+import numpy as np
+
+from rcmvae.domain.config import SSVAEConfig
+
 from use_cases.dashboard.core.state_models import AppState
 from use_cases.dashboard.core.logging_config import get_logger
+from use_cases.dashboard.core.run_generation import generate_dashboard_run
+from use_cases.dashboard.core.model_runs import append_run_record, load_run_records
 
 logger = get_logger('commands')
 PREVIEW_SAMPLE_LIMIT = 2048
@@ -196,7 +203,6 @@ class LabelSampleCommand(Command):
         
         from use_cases.dashboard.core.state import _load_labels_dataframe, _persist_labels_dataframe
         from use_cases.dashboard.core.model_manager import ModelManager
-        from datetime import datetime
         
         # Copy labels array and update
         labels_array = state.active_model.data.labels.copy()
@@ -340,73 +346,118 @@ class StartTrainingCommand(Command):
         return new_state, message
 
 
-@dataclass  
+@dataclass
 class CompleteTrainingCommand(Command):
-    """Command to mark training as complete with new predictions.
-    
-    This is called by the background training worker when training finishes.
-    """
+    """Command to mark training as complete with new predictions."""
+
     latent: np.ndarray
-    reconstructed: np.ndarray
+    reconstructed: np.ndarray | Tuple[np.ndarray, np.ndarray]
     pred_classes: np.ndarray
     pred_certainty: np.ndarray
     hover_metadata: list
-    
+    responsibilities: Optional[np.ndarray] = None
+    pi_values: Optional[np.ndarray] = None
+    train_time: Optional[float] = None
+    epoch_offset: int = 0
+    epochs_completed: int = 0
+
     def validate(self, state: AppState) -> Optional[str]:
         """Validate arrays have correct shape."""
         if state.active_model is None:
             return "No model loaded"
-        
+
         expected_samples = len(state.active_model.data.x_train)
-        
+
         if len(self.latent) != expected_samples:
             return f"Latent shape mismatch: expected {expected_samples}, got {len(self.latent)}"
-        if len(self.reconstructed) != expected_samples:
-            return f"Reconstruction shape mismatch"
+        if isinstance(self.reconstructed, tuple):
+            if len(self.reconstructed[0]) != expected_samples:
+                return "Reconstruction shape mismatch"
+        elif len(self.reconstructed) != expected_samples:
+            return "Reconstruction shape mismatch"
         if len(self.pred_classes) != expected_samples:
-            return f"Predictions shape mismatch"
-        
+            return "Predictions shape mismatch"
+        if self.responsibilities is not None and len(self.responsibilities) != expected_samples:
+            return "Responsibilities shape mismatch"
+        if self.epoch_offset < 0 or self.epochs_completed < 0:
+            return "Epoch counters must be non-negative"
+
         return None
-    
+
     def execute(self, state: AppState) -> Tuple[AppState, str]:
         """Update state with training results."""
         if state.active_model is None:
             return state, "No model loaded"
-        
+
         from use_cases.dashboard.core.model_manager import ModelManager
         from datetime import datetime
-        
+
+        label_version = int(state.active_model.data.version)
+        start_epoch = self.epoch_offset + 1 if self.epochs_completed > 0 else self.epoch_offset
+        end_epoch = self.epoch_offset + self.epochs_completed
+
         # Update model with predictions
         updated_model = state.active_model.with_training_complete(
             latent=self.latent,
             reconstructed=self.reconstructed,
             pred_classes=self.pred_classes,
             pred_certainty=self.pred_certainty,
-            hover_metadata=self.hover_metadata
+            hover_metadata=self.hover_metadata,
         )
-        
-        # Get latest loss from history
-        if updated_model.history.val_loss:
-            latest_loss = float(updated_model.history.val_loss[-1])
-        else:
-            latest_loss = None
-        
-        # Update metadata
+
         total_epochs = len(updated_model.history.epochs)
-        updated_model = updated_model.with_updated_metadata(
-            total_epochs=total_epochs,
-            latest_loss=latest_loss,
-            last_modified=datetime.utcnow().isoformat()
-        )
-        
-        # Persist
+        latest_val_loss = float(updated_model.history.val_loss[-1]) if updated_model.history.val_loss else None
+        latest_train_loss = float(updated_model.history.train_loss[-1]) if updated_model.history.train_loss else None
+        latest_loss = latest_val_loss if latest_val_loss is not None else latest_train_loss
+        updated_metadata_fields = {
+            "total_epochs": total_epochs,
+            "last_modified": datetime.utcnow().isoformat(),
+        }
+        if latest_loss is not None:
+            updated_metadata_fields["latest_loss"] = latest_loss
+        updated_model = updated_model.with_updated_metadata(**updated_metadata_fields)
+
+        # Persist core model artifacts
         ModelManager.save_metadata(updated_model.metadata)
         ModelManager.save_history(updated_model.model_id, updated_model.history)
-        
-        # Update app state
+
+        # Update app state immediately
         new_state = state.with_active_model(updated_model)
-        
-        return new_state, "Training complete"
+
+        # Persist experiment run bundle (best-effort)
+        artifact_note = ""
+        try:
+            record = generate_dashboard_run(
+                model_state=updated_model,
+                latent=self.latent,
+                reconstructed=self.reconstructed,
+                pred_classes=self.pred_classes,
+                pred_certainty=self.pred_certainty,
+                responsibilities=self.responsibilities,
+                pi_values=self.pi_values,
+                train_time=self.train_time,
+                label_version=label_version,
+                epoch_offset=self.epoch_offset,
+                epochs_completed=self.epochs_completed,
+            )
+            if record and record.get("run_id"):
+                record.setdefault("start_epoch", start_epoch)
+                record.setdefault("end_epoch", end_epoch)
+                record.setdefault("epochs_completed", self.epochs_completed)
+                runs = append_run_record(updated_model.model_id, record)
+                active_model = new_state.active_model
+                if active_model is not None:
+                    new_state = new_state.with_active_model(active_model.with_runs(runs))
+                if self.epochs_completed > 0:
+                    range_desc = f"{start_epoch}→{end_epoch}"
+                else:
+                    range_desc = "no epochs"
+                artifact_note = f"; run captured as {record['run_id']} ({range_desc})"
+        except Exception as exc:  # pragma: no cover - diagnostics only
+            logger.exception("Failed to generate dashboard run artifacts", exc_info=exc)
+            artifact_note = f"; artifacts not captured ({exc})"
+
+        return new_state, f"Training complete{artifact_note}"
 
 
 @dataclass
@@ -489,195 +540,86 @@ class StopTrainingCommand(Command):
 @dataclass
 class UpdateModelConfigCommand(Command):
     """Update model configuration and persist changes to disk."""
-    batch_size: Optional[int]
-    max_epochs: Optional[int]
-    patience: Optional[int]
-    learning_rate: Optional[float]
-    encoder_type: Optional[str]
-    decoder_type: Optional[str]
-    latent_dim: Optional[int]
-    hidden_dims: Optional[str]
-    recon_weight: Optional[float]
-    kl_weight: Optional[float]
-    label_weight: Optional[float]
-    weight_decay: Optional[float]
-    dropout_rate: Optional[float]
-    grad_clip_norm: Optional[float]
-    monitor_metric: Optional[str]
-    use_contrastive: List[object]
-    contrastive_weight: Optional[float]
-    
-    _normalized: Dict[str, object] = field(init=False, default_factory=dict)
-    
+
+    updates: Dict[str, Any]
+    _new_config: Optional[SSVAEConfig] = field(init=False, default=None)
+
     def validate(self, state: AppState) -> Optional[str]:
-        """Validate configuration parameters."""
         if state.active_model is None:
             return "No model loaded"
-        
-        errors: List[str] = []
-        
-        def _int_in_range(value, name: str, minimum: int, maximum: int) -> Optional[int]:
-            try:
-                converted = int(value)
-            except (TypeError, ValueError):
-                errors.append(f"{name} must be between {minimum} and {maximum}")
-                return None
-            if converted < minimum or converted > maximum:
-                errors.append(f"{name} must be between {minimum} and {maximum}")
-                return None
-            return converted
-        
-        def _float_in_range(value, name: str, minimum: float, maximum: float | None = None) -> Optional[float]:
-            try:
-                converted = float(value)
-            except (TypeError, ValueError):
-                errors.append(f"{name} must be a number")
-                return None
-            if converted < minimum or (maximum is not None and converted > maximum):
-                max_clause = f" and at most {maximum}" if maximum is not None else ""
-                errors.append(f"{name} must be at least {minimum}{max_clause}")
-                return None
-            return converted
-        
-        batch_size = _int_in_range(self.batch_size, "Batch size", 32, 2048)
-        max_epochs = _int_in_range(self.max_epochs, "Max epochs", 1, 500)
-        patience = _int_in_range(self.patience, "Patience", 1, 100)
-        latent_dim = _int_in_range(self.latent_dim, "Latent dimension", 2, 512)
-        
-        learning_rate = _float_in_range(self.learning_rate, "Learning rate", 1e-5, 1e-1)
-        recon_weight = _float_in_range(self.recon_weight, "Reconstruction weight", 0.0)
-        kl_weight = _float_in_range(self.kl_weight, "KL weight", 0.0, 10.0)
-        label_weight = _float_in_range(self.label_weight, "Label weight", 0.0)
-        weight_decay = _float_in_range(self.weight_decay, "Weight decay", 0.0)
-        dropout_rate = _float_in_range(self.dropout_rate, "Dropout rate", 0.0, 0.5)
-        contrastive_weight = _float_in_range(self.contrastive_weight, "Contrastive weight", 0.0)
-        
-        if self.encoder_type not in {"dense", "conv"}:
-            errors.append("Encoder type must be 'dense' or 'conv'")
-        if self.decoder_type not in {"dense", "conv"}:
-            errors.append("Decoder type must be 'dense' or 'conv'")
-        if self.monitor_metric not in {"loss", "classification_loss"}:
-            errors.append("Monitor metric must be 'loss' or 'classification_loss'")
-        
-        hidden_dims_tuple: Optional[Tuple[int, ...]] = None
-        hidden_dims_str = self.hidden_dims or ""
-        if not hidden_dims_str.strip():
-            errors.append("Hidden dimensions must be specified")
-        else:
-            try:
-                dims = [int(part.strip()) for part in hidden_dims_str.split(",") if part.strip()]
-            except ValueError:
-                dims = []
-            if not dims or any(dim <= 0 for dim in dims):
-                errors.append("Hidden dimensions must be positive integers (e.g., '256,128,64')")
-            else:
-                hidden_dims_tuple = tuple(dims)
-        
-        grad_clip_norm_value: Optional[float]
-        if self.grad_clip_norm is None:
-            grad_clip_norm_value = None
-        else:
-            norm_value = _float_in_range(self.grad_clip_norm, "Gradient clip norm", 0.0)
-            if norm_value is None:
-                grad_clip_norm_value = None
-            elif norm_value == 0.0:
-                grad_clip_norm_value = None
-            else:
-                grad_clip_norm_value = norm_value
-        
-        use_contrastive_bool = bool(self.use_contrastive)
-        
-        if errors:
-            return "; ".join(errors)
-        
-        self._normalized = {
-            "batch_size": batch_size,
-            "max_epochs": max_epochs,
-            "patience": patience,
-            "learning_rate": learning_rate,
-            "encoder_type": self.encoder_type,
-            "decoder_type": self.decoder_type,
-            "latent_dim": latent_dim,
-            "hidden_dims": hidden_dims_tuple,
-            "recon_weight": recon_weight,
-            "kl_weight": kl_weight,
-            "label_weight": label_weight,
-            "weight_decay": weight_decay,
-            "dropout_rate": dropout_rate,
-            "grad_clip_norm": grad_clip_norm_value,
-            "monitor_metric": self.monitor_metric,
-            "use_contrastive": use_contrastive_bool,
-            "contrastive_weight": contrastive_weight,
+        if not self.updates:
+            return "No configuration changes detected."
+
+        current_config = state.active_model.config
+        config_data = {
+            name: getattr(current_config, name)
+            for name in current_config.__dataclass_fields__.keys()
         }
+        config_data.update(self.updates)
+
+        try:
+            self._new_config = SSVAEConfig(**config_data)
+        except Exception as exc:  # pragma: no cover - relying on config validation
+            return str(exc)
+
         return None
-    
+
     def execute(self, state: AppState) -> Tuple[AppState, str]:
-        """Apply configuration update and persist it."""
         if state.active_model is None:
             return state, "No model loaded"
-        if not self._normalized:
-            # Should not happen if dispatcher calls validate first.
+        if not self.updates:
+            return state, "No configuration changes detected."
+        if self._new_config is None:
             error = self.validate(state)
             if error:
                 return state, error
-        
-        from dataclasses import replace as dc_replace
+
+        assert self._new_config is not None  # for type checkers
+
         from datetime import datetime
         from use_cases.dashboard.core.model_manager import ModelManager
-        
-        normalized = self._normalized
+
         current_model = state.active_model
         current_config = current_model.config
-        
-        new_config = dc_replace(
-            current_config,
-            batch_size=normalized["batch_size"],
-            max_epochs=normalized["max_epochs"],
-            patience=normalized["patience"],
-            learning_rate=normalized["learning_rate"],
-            encoder_type=normalized["encoder_type"],
-            decoder_type=normalized["decoder_type"],
-            latent_dim=normalized["latent_dim"],
-            hidden_dims=normalized["hidden_dims"],
-            recon_weight=normalized["recon_weight"],
-            kl_weight=normalized["kl_weight"],
-            label_weight=normalized["label_weight"],
-            weight_decay=normalized["weight_decay"],
-            dropout_rate=normalized["dropout_rate"],
-            grad_clip_norm=normalized["grad_clip_norm"],
-            monitor_metric=normalized["monitor_metric"],
-            use_contrastive=normalized["use_contrastive"],
-            contrastive_weight=normalized["contrastive_weight"],
+        new_config = self._new_config
+
+        architecture_fields = {
+            "encoder_type",
+            "decoder_type",
+            "latent_dim",
+            "hidden_dims",
+            "prior_type",
+            "num_components",
+            "component_embedding_dim",
+            "use_component_aware_decoder",
+            "use_heteroscedastic_decoder",
+            "reconstruction_loss",
+        }
+        architecture_changed = any(
+            getattr(current_config, field) != getattr(new_config, field)
+            for field in architecture_fields
+            if hasattr(current_config, field)
         )
-        
-        architecture_changed = any([
-            current_config.encoder_type != new_config.encoder_type,
-            current_config.decoder_type != new_config.decoder_type,
-            current_config.latent_dim != new_config.latent_dim,
-            current_config.hidden_dims != new_config.hidden_dims,
-        ])
-        
-        # Update live objects
+
         model = current_model.model
         trainer = current_model.trainer
         model.config = new_config
         trainer.config = new_config
         if hasattr(trainer, "_trainer"):
             trainer._trainer.config = new_config  # type: ignore[attr-defined]
-        
+
         updated_model = current_model.with_config(new_config)
         updated_model = updated_model.with_updated_metadata(
             last_modified=datetime.utcnow().isoformat()
         )
-        
-        # Persist changes
+
         ModelManager.save_config(current_model.model_id, new_config)
         ModelManager.save_metadata(updated_model.metadata)
-        
+
         new_state = state.with_active_model(updated_model)
         if architecture_changed:
             message = (
-                "Configuration saved. Architecture changes require restarting the dashboard."
+                "Configuration saved. Structural changes require restarting the dashboard."
             )
         else:
             message = "Configuration updated successfully."
@@ -827,6 +769,15 @@ class LoadModelCommand(Command):
         if self.model_id not in state.models:
             return f"Model not found: {self.model_id}"
         
+        # Prevent switching while current model is still training
+        if state.active_model and state.active_model.training.is_active():
+            active_id = state.active_model.model_id
+            return (
+                "Training is currently running for "
+                f"model '{active_id}'. Please wait for it to finish or stop the run "
+                "before switching models."
+            )
+
         # Allow reloading same model (no-op is fine)
         return None
     
@@ -854,6 +805,7 @@ class LoadModelCommand(Command):
         import pandas as pd
         import numpy as np
         from dataclasses import replace as dc_replace
+        from use_cases.dashboard.core import state as dashboard_state
         
         # Load metadata
         metadata = ModelManager.load_metadata(self.model_id)
@@ -904,8 +856,9 @@ class LoadModelCommand(Command):
                 x_train = x_train[:preview_n]
                 true_labels = true_labels[:preview_n]
         
-        # Load history
+        # Load history and prior runs
         history = ModelManager.load_history(self.model_id)
+        run_records = load_run_records(self.model_id)
         
         # Load labels
         labels_array = np.full(shape=(x_train.shape[0],), fill_value=np.nan, dtype=float)
@@ -976,9 +929,13 @@ class LoadModelCommand(Command):
             data=data_state,
             training=training_status,
             ui=ui_state,
-            history=history
+            history=history,
+            runs=tuple(run_records)
         )
         
+        # Reset any leftover training metrics from previous model
+        dashboard_state._clear_metrics_queue()
+
         # Update state
         new_state = state.with_active_model(model_state)
         return new_state, f"Loaded model: {self.model_id}"

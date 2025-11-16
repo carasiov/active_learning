@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import threading
-from dataclasses import replace
+import time
 from typing import Dict, List, Optional, Tuple
+from datetime import datetime
 
 import dash
 from dash import Dash, Input, Output, State, html, no_update
@@ -25,7 +26,12 @@ from use_cases.dashboard.core.state import (
     _update_history_with_epoch,
 )
 from use_cases.dashboard.core.commands import StartTrainingCommand, CompleteTrainingCommand
+from use_cases.dashboard.core.state_models import RunRecord, TrainingState
 from use_cases.dashboard.utils.visualization import _build_hover_metadata
+from use_cases.dashboard.core.logging_config import get_logger
+
+
+logger = get_logger('callbacks')
 
 
 # Performance optimization: Cache last poll state to avoid unnecessary Dash updates
@@ -37,6 +43,165 @@ _LAST_POLL_STATE: Dict[str, object] = {
     "interval_disabled": None,
     "latent_version": None,
 }
+
+
+def _format_run_timestamp(timestamp: str) -> str:
+    try:
+        dt = datetime.fromisoformat(timestamp)
+    except (ValueError, TypeError):
+        return timestamp or ""
+    now = datetime.utcnow()
+    delta = now - dt
+    if delta.days >= 1:
+        return dt.strftime("%b %d %H:%M")
+    if delta.seconds >= 3600:
+        return dt.strftime("%H:%M")
+    return dt.strftime("%H:%M:%S")
+
+
+def _format_duration(seconds: Optional[float]) -> str:
+    if seconds is None or seconds <= 0:
+        return "—"
+    minutes, secs = divmod(int(round(seconds)), 60)
+    if minutes:
+        return f"{minutes}m {secs:02d}s"
+    return f"{secs}s"
+
+
+def _run_history_card(run: RunRecord, model_id: str) -> html.Div:
+    metric_tags: List[html.Span] = []
+    val_loss = run.metrics.get("val_loss") if run.metrics else None
+    train_loss = run.metrics.get("loss") if run.metrics else None
+    if isinstance(val_loss, (int, float)):
+        metric_tags.append(
+            html.Span(
+                f"val {val_loss:.4f}",
+                style={
+                    "backgroundColor": "#E3F2FD",
+                    "color": "#114B8B",
+                    "padding": "2px 8px",
+                    "borderRadius": "999px",
+                    "fontSize": "11px",
+                    "fontWeight": "600",
+                },
+            )
+        )
+    if isinstance(train_loss, (int, float)):
+        metric_tags.append(
+            html.Span(
+                f"train {train_loss:.4f}",
+                style={
+                    "backgroundColor": "#FDECEB",
+                    "color": "#C10A27",
+                    "padding": "2px 8px",
+                    "borderRadius": "999px",
+                    "fontSize": "11px",
+                    "fontWeight": "600",
+                },
+            )
+        )
+
+    meta_line = f"Epochs {run.start_epoch}→{run.end_epoch}" if run.epochs_completed else "No epochs"
+    if run.epochs_completed and run.start_epoch == run.end_epoch:
+        meta_line = f"Epoch {run.end_epoch}"
+
+    link = dcc.Link(
+        "Open report →",
+        href=f"/experiments?model={model_id}&run={run.run_id}",
+        style={
+            "fontSize": "11px",
+            "fontWeight": "600",
+            "color": "#45717A",
+            "textDecoration": "none",
+        },
+    )
+
+    return html.Div(
+        [
+            html.Div(
+                [
+                    html.Div(
+                        run.run_id,
+                        style={
+                            "fontSize": "12px",
+                            "fontWeight": "700",
+                            "color": "#000000",
+                            "fontFamily": "'Open Sans', Verdana, sans-serif",
+                        },
+                    ),
+                    html.Div(
+                        _format_run_timestamp(run.timestamp),
+                        style={
+                            "fontSize": "11px",
+                            "color": "#6F6F6F",
+                        },
+                    ),
+                ],
+                style={"display": "flex", "justifyContent": "space-between", "alignItems": "baseline"},
+            ),
+            html.Div(
+                [
+                    html.Span(
+                        meta_line,
+                        style={
+                            "fontSize": "11px",
+                            "color": "#4A4A4A",
+                            "marginRight": "8px",
+                        },
+                    ),
+                    html.Span(
+                        f"labels v{run.label_version}",
+                        style={
+                            "fontSize": "11px",
+                            "color": "#6F6F6F",
+                        },
+                    ),
+                ],
+                style={"marginTop": "6px"},
+            ),
+            html.Div(
+                metric_tags,
+                style={
+                    "display": "flex",
+                    "flexWrap": "wrap",
+                    "gap": "6px",
+                    "marginTop": "8px",
+                },
+            ),
+            html.Div(
+                [
+                    html.Span(
+                        f"⏱ { _format_duration(run.train_time_sec) }",
+                        style={
+                            "fontSize": "11px",
+                            "color": "#6F6F6F",
+                            "marginRight": "8px",
+                        },
+                    ),
+                    link,
+                ],
+                style={"marginTop": "10px", "display": "flex", "justifyContent": "space-between"},
+            ),
+        ],
+        style={
+            "padding": "12px",
+            "backgroundColor": "#F7F7F7",
+            "borderRadius": "8px",
+            "border": "1px solid #E5E5E5",
+        },
+    )
+
+
+def _run_history_placeholder(message: str) -> html.Div:
+    return html.Div(
+        message,
+        style={
+            "fontSize": "12px",
+            "color": "#6F6F6F",
+            "fontStyle": "italic",
+            "padding": "8px 0",
+        },
+    )
 
 
 def _configure_trainer_callbacks(trainer: InteractiveTrainer, target_epochs: int, checkpoint_path: str) -> None:
@@ -57,22 +222,40 @@ def _configure_trainer_callbacks(trainer: InteractiveTrainer, target_epochs: int
 def train_worker(num_epochs: int) -> None:
     """Background worker that runs incremental training and pushes updates to the UI."""
 
+    logger.info("Training worker started | target_epochs=%s", num_epochs)
+
+    def _predict_outputs(model, data: np.ndarray):
+        try:
+            mixture_mode = bool(model.config.is_mixture_based_prior())
+        except AttributeError:
+            mixture_mode = False
+
+        if mixture_mode:
+            latent_val, recon_val, preds, cert, responsibilities, pi_values = model.predict_batched(
+                data,
+                return_mixture=True,
+            )
+            return latent_val, recon_val, preds, cert, responsibilities, pi_values
+
+        latent_val, recon_val, preds, cert = model.predict_batched(data)
+        return latent_val, recon_val, preds, cert, None, None
+
     try:
         with dashboard_state.state_lock:
             if dashboard_state.app_state.active_model is None:
                 metrics_queue.put({"type": "error", "message": "No model loaded."})
                 return
-            
+
             trainer: InteractiveTrainer = dashboard_state.app_state.active_model.trainer
             x_train_ref = dashboard_state.app_state.active_model.data.x_train
             labels_ref = dashboard_state.app_state.active_model.data.labels
             target_epochs = int(dashboard_state.app_state.active_model.training.target_epochs or num_epochs)
             model_id = dashboard_state.app_state.active_model.model_id
-        
-        # Get model-specific checkpoint path
+            run_epoch_offset = len(dashboard_state.app_state.active_model.history.epochs)
+
         from use_cases.dashboard.core.model_manager import ModelManager
         checkpoint_path = str(ModelManager.checkpoint_path(model_id))
-        
+
         with dashboard_state.state_lock:
             if dashboard_state.app_state.active_model is None:
                 return
@@ -85,19 +268,28 @@ def train_worker(num_epochs: int) -> None:
         x_train = np.array(x_train_ref)
         labels = np.array(labels_ref, copy=True)
 
+        logger.info(
+            "Starting training run | model_id=%s | epochs=%s | labeled=%s",  # noqa: G004 (structured log string)
+            model_id,
+            target_epochs,
+            int(np.sum(~np.isnan(labels))),
+        )
         _append_status_message(f"Training for {target_epochs} epoch(s)...")
+        start_time = time.perf_counter()
         history = trainer.train_epochs(
             num_epochs=target_epochs,
             data=x_train,
             labels=labels,
             weights_path=checkpoint_path,
         )
+        train_time = time.perf_counter() - start_time
+        epochs_completed = int(len(history.get("loss", []))) if isinstance(history, dict) else target_epochs
 
         with dashboard_state.state_lock:
             if dashboard_state.app_state.active_model is None:
                 return
             model = dashboard_state.app_state.active_model.model
-        latent, recon, pred_classes, pred_certainty = model.predict(x_train)
+        latent, recon, pred_classes, pred_certainty, responsibilities, pi_values = _predict_outputs(model, x_train)
 
         with dashboard_state.state_lock:
             if dashboard_state.app_state.active_model is None:
@@ -106,15 +298,20 @@ def train_worker(num_epochs: int) -> None:
             true_labels = dashboard_state.app_state.active_model.data.true_labels
         hover_metadata = _build_hover_metadata(pred_classes, pred_certainty, labels_latest, true_labels)
 
-        # Use command to update state with training results
         command = CompleteTrainingCommand(
             latent=latent,
             reconstructed=recon,
             pred_classes=pred_classes,
             pred_certainty=pred_certainty,
-            hover_metadata=hover_metadata
+            hover_metadata=hover_metadata,
+            responsibilities=responsibilities,
+            pi_values=pi_values,
+            train_time=train_time,
+            epoch_offset=run_epoch_offset,
+            epochs_completed=epochs_completed,
         )
         success, message = dashboard_state.dispatcher.execute(command)
+        _append_status_message(message)
 
         with dashboard_state.state_lock:
             if dashboard_state.app_state.active_model:
@@ -124,6 +321,7 @@ def train_worker(num_epochs: int) -> None:
         metrics_queue.put({"type": "latent_updated", "version": latent_version})
         metrics_queue.put({"type": "training_complete", "history": history})
     except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Training worker failed: %s", exc)
         # Check if this is a user-initiated stop
         from use_cases.dashboard.utils.training_callback import TrainingStoppedException
         if isinstance(exc, TrainingStoppedException):
@@ -136,13 +334,14 @@ def train_worker(num_epochs: int) -> None:
                     model = dashboard_state.app_state.active_model.model
                     x_train_ref = dashboard_state.app_state.active_model.data.x_train
                 x_train = np.array(x_train_ref)
-                latent, recon, pred_classes, pred_certainty = model.predict(x_train)
+                latent, recon, pred_classes, pred_certainty, responsibilities, pi_values = _predict_outputs(model, x_train)
                 
                 with dashboard_state.state_lock:
                     if dashboard_state.app_state.active_model is None:
                         return
                     labels_latest = np.array(dashboard_state.app_state.active_model.data.labels, copy=True)
                     true_labels = dashboard_state.app_state.active_model.data.true_labels
+                    total_epochs = len(dashboard_state.app_state.active_model.history.epochs)
                 hover_metadata = _build_hover_metadata(pred_classes, pred_certainty, labels_latest, true_labels)
                 
                 command = CompleteTrainingCommand(
@@ -150,9 +349,14 @@ def train_worker(num_epochs: int) -> None:
                     reconstructed=recon,
                     pred_classes=pred_classes,
                     pred_certainty=pred_certainty,
-                    hover_metadata=hover_metadata
+                    hover_metadata=hover_metadata,
+                    responsibilities=responsibilities,
+                    pi_values=pi_values,
+                    epoch_offset=run_epoch_offset,
+                    epochs_completed=max(0, total_epochs - run_epoch_offset),
                 )
-                dashboard_state.dispatcher.execute(command)
+                success, message = dashboard_state.dispatcher.execute(command)
+                _append_status_message(message)
                 
                 with dashboard_state.state_lock:
                     if dashboard_state.app_state.active_model:
@@ -167,7 +371,7 @@ def train_worker(num_epochs: int) -> None:
         with dashboard_state.state_lock:
             if dashboard_state.app_state.active_model:
                 updated_model = dashboard_state.app_state.active_model.with_training(
-                    state=dashboard_state.app_state.active_model.training.state.__class__.IDLE,
+                    state=TrainingState.IDLE,
                     target_epochs=0,
                     thread=None,
                     stop_requested=False
@@ -346,6 +550,34 @@ def register_training_callbacks(app: Dash) -> None:
         return {"token": token}
 
     @app.callback(
+        Output("run-history-list", "children"),
+        Input("latent-store", "data"),
+        Input("url", "pathname"),
+        prevent_initial_call=False,
+    )
+    def refresh_run_history(_latent_store: dict | None, pathname: str | None):
+        if not pathname or not pathname.startswith("/model/"):
+            return [_run_history_placeholder("Open a model to view recent runs.")]
+
+        parts = pathname.strip("/").split("/")
+        if len(parts) > 2:
+            tail = "/".join(parts[2:])
+            if tail.startswith("training-hub") or tail.startswith("configure-training"):
+                raise PreventUpdate
+        with dashboard_state.state_lock:
+            active_model = dashboard_state.app_state.active_model if dashboard_state.app_state else None
+            if not active_model:
+                return [_run_history_placeholder("No model loaded.")]
+            runs = list(active_model.runs)
+            model_id = active_model.model_id
+
+        if not runs:
+            return [_run_history_placeholder("No completed training runs yet.")]
+
+        cards = [_run_history_card(run, model_id) for run in runs]
+        return cards[:8]
+
+    @app.callback(
         Output("training-status", "children", allow_duplicate=True),
         Output("start-training-button", "disabled", allow_duplicate=True),
         Output("num-epochs-input", "disabled", allow_duplicate=True),
@@ -353,14 +585,25 @@ def register_training_callbacks(app: Dash) -> None:
         Output("training-poll", "disabled", allow_duplicate=True),
         Input("training-poll", "n_intervals"),
         Input("training-control-store", "data"),
+        Input("url", "pathname"),
         State("latent-store", "data"),
         prevent_initial_call=True,
     )
     def poll_training_status(
         _n_intervals: int,
         _control_store: Optional[Dict[str, int]],
+        pathname: Optional[str],
         latent_store: Optional[Dict[str, int]],
     ) -> Tuple[object, bool, bool, Dict[str, int], bool]:  # type: ignore[valid-type]
+        if not pathname or not pathname.startswith("/model/"):
+            raise PreventUpdate
+
+        parts = pathname.strip("/").split("/")
+        if len(parts) > 2:
+            tail = "/".join(parts[2:])
+            if tail.startswith("training-hub") or tail.startswith("configure-training"):
+                raise PreventUpdate
+
         latent_version = (latent_store or {}).get("version", 0)
         processed_messages = False
         while True:

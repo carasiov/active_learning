@@ -6,6 +6,7 @@ from dash import dcc, html
 import dash_bootstrap_components as dbc
 
 from use_cases.dashboard.core import state as dashboard_state
+from use_cases.dashboard.core.model_runs import load_run_records
 
 
 def build_home_layout() -> html.Div:
@@ -81,8 +82,28 @@ def build_home_layout() -> html.Div:
                             "fontFamily": "'Open Sans', Verdana, sans-serif",
                         },
                     ),
+                    dcc.Link(
+                        dbc.Button(
+                            "View Experiment Runs",
+                            color="light",
+                            style={
+                                "borderRadius": "8px",
+                                "padding": "12px 24px",
+                                "fontSize": "15px",
+                                "fontWeight": "600",
+                                "fontFamily": "'Open Sans', Verdana, sans-serif",
+                            },
+                        ),
+                        href="/experiments",
+                        style={"textDecoration": "none"},
+                    ),
                 ],
-                style={"padding": "24px 48px", "backgroundColor": "#f5f5f5"},
+                style={
+                    "padding": "24px 48px",
+                    "backgroundColor": "#f5f5f5",
+                    "display": "flex",
+                    "gap": "12px",
+                },
             ),
             html.Div(
                 id="home-delete-feedback",
@@ -185,6 +206,20 @@ def _build_empty_state() -> html.Div:
                             "fontFamily": "'Open Sans', Verdana, sans-serif",
                         },
                     ),
+                    html.Div(
+                        dcc.Link(
+                            "Browse existing experiment outputs",
+                            href="/experiments",
+                            style={
+                                "display": "inline-block",
+                                "marginTop": "16px",
+                                "fontSize": "14px",
+                                "fontWeight": "600",
+                                "color": "#C10A27",
+                                "textDecoration": "none",
+                            },
+                        ),
+                    ),
                 ],
                 style={
                     "textAlign": "center",
@@ -236,6 +271,26 @@ def _build_model_card(metadata) -> html.Div:
     
     # Loss display
     loss_display = f"{metadata.latest_loss:.4f}" if metadata.latest_loss else "—"
+
+    run_records = load_run_records(metadata.model_id)
+    run_count = len(run_records)
+    if run_records:
+        try:
+            last_run_dt = datetime.fromisoformat(run_records[0].timestamp)
+            now = datetime.utcnow()
+            delta = now - last_run_dt
+            if delta.days > 0:
+                last_run = f"{delta.days}d ago"
+            elif delta.seconds > 3600:
+                last_run = f"{delta.seconds // 3600}h ago"
+            elif delta.seconds > 60:
+                last_run = f"{delta.seconds // 60}m ago"
+            else:
+                last_run = "just now"
+        except Exception:
+            last_run = "recent"
+    else:
+        last_run = "none yet"
     
     return html.Div(
         [
@@ -267,6 +322,15 @@ def _build_model_card(metadata) -> html.Div:
                         },
                     ),
                     html.Div(
+                        f"Runs: {run_count} • last {last_run}",
+                        style={
+                            "fontSize": "13px",
+                            "color": "#6F6F6F",
+                            "marginBottom": "12px",
+                            "fontFamily": "'Open Sans', Verdana, sans-serif",
+                        },
+                    ),
+                    html.Div(
                         [
                             html.Span(f"Last: {time_ago}", style={
                                 "marginRight": "16px",
@@ -286,6 +350,25 @@ def _build_model_card(metadata) -> html.Div:
             ),
             html.Div(
                 [
+                    dcc.Link(
+                        dbc.Button(
+                            "History",
+                            color="light",
+                            n_clicks=0,
+                            style={
+                                "border": "1px solid #C6C6C6",
+                                "borderRadius": "6px",
+                                "padding": "8px 16px",
+                                "fontSize": "14px",
+                                "fontWeight": "600",
+                                "color": "#45717A",
+                                "marginRight": "8px",
+                                "fontFamily": "'Open Sans', Verdana, sans-serif",
+                            },
+                        ),
+                        href=f"/experiments?model={metadata.model_id}",
+                        style={"textDecoration": "none"},
+                    ),
                     dbc.Button(
                         "Open",
                         id={"type": "home-open-model", "model_id": metadata.model_id},

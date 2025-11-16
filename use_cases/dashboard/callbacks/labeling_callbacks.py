@@ -15,6 +15,16 @@ from use_cases.dashboard.core.commands import LabelSampleCommand
 from use_cases.dashboard.utils.visualization import array_to_base64, INFOTEAM_PALETTE
 
 
+def _reconstruction_sample(reconstructed: object, idx: int) -> np.ndarray:
+    """Return the primary reconstruction array for the given sample index."""
+    if isinstance(reconstructed, tuple):
+        primary = reconstructed[0]
+    else:
+        primary = reconstructed
+    arr = np.asarray(primary)
+    return arr[idx]
+
+
 def register_labeling_callbacks(app: Dash) -> None:
     """Register callbacks handling sample display and label updates."""
 
@@ -36,7 +46,7 @@ def register_labeling_callbacks(app: Dash) -> None:
                 raise PreventUpdate
             idx = int(selected_idx)
             x_train = np.array(dashboard_state.app_state.active_model.data.x_train)
-            recon = np.array(dashboard_state.app_state.active_model.data.reconstructed)
+            reconstructed = dashboard_state.app_state.active_model.data.reconstructed
             pred_classes = np.array(dashboard_state.app_state.active_model.data.pred_classes)
             pred_certainty = np.array(dashboard_state.app_state.active_model.data.pred_certainty)
             labels = np.array(dashboard_state.app_state.active_model.data.labels)
@@ -50,7 +60,7 @@ def register_labeling_callbacks(app: Dash) -> None:
             raise PreventUpdate
 
         original_src = array_to_base64(x_train[idx])
-        reconstructed_src = array_to_base64(recon[idx])
+        reconstructed_src = array_to_base64(_reconstruction_sample(reconstructed, idx))
 
         user_label = labels[idx]
         label_text = "unlabeled" if np.isnan(user_label) else f"{int(user_label)}"

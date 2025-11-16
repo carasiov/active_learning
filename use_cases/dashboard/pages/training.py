@@ -1,1046 +1,273 @@
-"""Training configuration page for the SSVAE dashboard."""
-
 from __future__ import annotations
 
-from typing import Dict, Optional
+"""Configuration page built from metadata to stay in sync with SSVAE options."""
 
-from dash import dcc, html, callback, Input, Output, State
+from typing import Any, Dict, List, Optional, Sequence
+
+import dash
+from dash import Dash, Input, Output, State, dcc, html
 import dash_bootstrap_components as dbc
 
+from use_cases.dashboard.core import state as dashboard_state
+from use_cases.dashboard.core.commands import UpdateModelConfigCommand
+from use_cases.dashboard.core.config_metadata import (
+    FieldSpec,
+    SectionSpec,
+    build_updates,
+    default_config_dict,
+    extract_initial_values,
+    get_field_specs,
+    get_section_specs,
+)
+from use_cases.dashboard.core.state import _append_status_message
 
-def build_training_config_page(model_id: str | None = None) -> html.Div:
-    """Build the dedicated training configuration page."""
-    dashboard_url = f"/model/{model_id}" if model_id else "/"
+FIELD_SPECS: Sequence[FieldSpec] = get_field_specs()
+SECTION_SPECS: Sequence[SectionSpec] = get_section_specs()
+FIELD_OUTPUTS = [Output(spec.component_id, "value") for spec in FIELD_SPECS]
+FIELD_STATES = [State(spec.component_id, "value") for spec in FIELD_SPECS]
+
+_INPUT_STYLE = {
+    "width": "100%",
+    "padding": "10px 12px",
+    "fontSize": "14px",
+    "border": "1px solid #C6C6C6",
+    "borderRadius": "6px",
+    "fontFamily": "ui-monospace, monospace",
+}
+_DROPDOWN_STYLE = {
+    "width": "100%",
+    "fontSize": "14px",
+    "fontFamily": "'Open Sans', Verdana, sans-serif",
+}
+_LABEL_STYLE = {
+    "fontSize": "14px",
+    "fontWeight": "600",
+    "marginBottom": "6px",
+    "color": "#000000",
+    "fontFamily": "'Open Sans', Verdana, sans-serif",
+}
+_DESC_STYLE = {
+    "fontSize": "13px",
+    "color": "#6F6F6F",
+    "marginBottom": "12px",
+    "fontFamily": "'Open Sans', Verdana, sans-serif",
+}
+
+
+def _render_control(spec: FieldSpec):
+    props = dict(spec.props)
+    if spec.control == "number":
+        return dcc.Input(
+            id=spec.component_id,
+            type="number",
+            value=spec.default,
+            debounce=True,
+            style=_INPUT_STYLE,
+            **props,
+        )
+    if spec.control == "text":
+        return dcc.Input(
+            id=spec.component_id,
+            type="text",
+            value=spec.default,
+            debounce=True,
+            style=_INPUT_STYLE,
+            **props,
+        )
+    if spec.control == "dropdown":
+        options = [opt.to_dash_option() for opt in spec.options]
+        return dcc.Dropdown(
+            id=spec.component_id,
+            options=options,
+            value=spec.default,
+            clearable=False,
+            style=_DROPDOWN_STYLE,
+            **props,
+        )
+    if spec.control == "radio":
+        options = [opt.to_dash_option() for opt in spec.options]
+        return dbc.RadioItems(
+            id=spec.component_id,
+            options=options,
+            value=spec.default,
+            inline=False,
+            style={"fontSize": "14px", "fontFamily": "'Open Sans', Verdana, sans-serif"},
+        )
+    if spec.control == "switch":
+        return dbc.Switch(
+            id=spec.component_id,
+            value=bool(spec.default),
+            style={"marginTop": "4px"},
+            **props,
+        )
+    raise ValueError(f"Unsupported control type: {spec.control}")
+
+
+def _render_field(spec: FieldSpec) -> html.Div:
+    return html.Div(
+        [
+            html.Label(spec.label, style=_LABEL_STYLE, htmlFor=spec.component_id),
+            html.Div(spec.description, style=_DESC_STYLE),
+            _render_control(spec),
+        ],
+        style={"marginBottom": "12px"},
+    )
+
+
+def _build_section_tab(section: SectionSpec) -> dbc.Tab:
+    section_fields = [spec for spec in FIELD_SPECS if spec.section == section.id]
+    rows: List[dbc.Row] = []
+    current_cols: List[dbc.Col] = []
+    width_acc = 0
+    for spec in section_fields:
+        col_width = min(max(spec.width, 1), 12)
+        current_cols.append(dbc.Col(_render_field(spec), width=col_width))
+        width_acc += col_width
+        if width_acc >= 12:
+            rows.append(dbc.Row(current_cols, class_name="gy-3"))
+            current_cols = []
+            width_acc = 0
+    if current_cols:
+        rows.append(dbc.Row(current_cols, class_name="gy-3"))
+
+    content = html.Div(
+        [
+            html.P(section.description, style={"fontSize": "13px", "color": "#6F6F6F"}),
+            *rows,
+        ],
+        className="p-4",
+    )
+    return dbc.Tab(content, tab_id=section.id, label=section.title)
+
+
+def build_training_config_page(model_id: Optional[str] = None) -> html.Div:
+    target_href = f"/model/{model_id}" if model_id else "/"
+    tabs = [_build_section_tab(section) for section in SECTION_SPECS]
 
     return html.Div(
         [
-            # Header
-            html.Div(
-                    [
-                        dcc.Link(
-                            "← Back to Dashboard",
-                            href=dashboard_url,
-                            style={
-                                "fontSize": "14px",
-                                "color": "#C10A27",
-                                "textDecoration": "none",
-                            "fontWeight": "600",
-                            "fontFamily": "'Open Sans', Verdana, sans-serif",
-                            "display": "inline-block",
-                            "marginBottom": "16px",
-                        },
-                    ),
-                    html.H1(
-                        "Training Configuration",
-                        style={
-                            "fontSize": "28px",
-                            "fontWeight": "700",
-                            "color": "#000000",
-                            "marginBottom": "8px",
-                            "fontFamily": "'Open Sans', Verdana, sans-serif",
-                        },
-                    ),
-                    html.P(
-                        "Configure SSVAE hyperparameters for training. Changes take effect on the next training run.",
-                        style={
-                            "fontSize": "15px",
-                            "color": "#6F6F6F",
-                            "marginBottom": "32px",
-                            "fontFamily": "'Open Sans', Verdana, sans-serif",
-                        },
-                    ),
-                ],
-                style={
-                    "padding": "32px 48px 24px 48px",
-                    "backgroundColor": "#ffffff",
-                    "borderBottom": "4px solid #C10A27",
-                },
-            ),
-            # Form content
             html.Div(
                 [
-                    _build_core_config_section(),
-                    _build_architecture_section(),
-                    _build_loss_weights_section(),
-                    _build_regularization_section(),
-                    _build_advanced_section(),
-                    # Action buttons
                     html.Div(
                         [
-                            dbc.Button(
-                                "Cancel",
-                                id="config-cancel-btn",
-                                href=dashboard_url,
+                            html.H1(
+                                "Model Configuration",
                                 style={
-                                    "backgroundColor": "#ffffff",
-                                    "color": "#6F6F6F",
-                                    "border": "1px solid #C6C6C6",
-                                    "borderRadius": "8px",
-                                    "padding": "12px 32px",
-                                    "fontSize": "15px",
-                                    "fontWeight": "600",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                    "marginRight": "16px",
-                                },
-                            ),
-                            dbc.Button(
-                                "Save Configuration",
-                                id="config-save-btn",
-                                n_clicks=0,
-                                style={
-                                    "backgroundColor": "#C10A27",
-                                    "color": "#ffffff",
-                                    "border": "none",
-                                    "borderRadius": "8px",
-                                    "padding": "12px 32px",
-                                    "fontSize": "15px",
+                                    "fontSize": "24px",
                                     "fontWeight": "700",
+                                    "color": "#000000",
+                                    "margin": "0",
                                     "fontFamily": "'Open Sans', Verdana, sans-serif",
                                 },
                             ),
+                            html.Div(
+                                f"Active model: {model_id}" if model_id else "",
+                                style={
+                                    "fontSize": "13px",
+                                    "color": "#6F6F6F",
+                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                    "marginTop": "4px",
+                                },
+                            ),
                         ],
-                        style={
-                            "display": "flex",
-                            "justifyContent": "flex-end",
-                            "marginTop": "32px",
-                            "paddingTop": "32px",
-                            "borderTop": "1px solid #C6C6C6",
-                        },
                     ),
-                    # Feedback area
                     html.Div(
-                        id="config-feedback",
-                        style={
-                            "marginTop": "16px",
-                            "fontSize": "14px",
-                            "textAlign": "center",
-                            "minHeight": "24px",
-                            "fontFamily": "'Open Sans', Verdana, sans-serif",
-                        },
+                        [
+                            dcc.Link(
+                                dbc.Button(
+                                    "Cancel",
+                                    id="config-cancel-btn",
+                                    color="light",
+                                    style={
+                                        "marginRight": "8px",
+                                        "border": "1px solid #C6C6C6",
+                                        "fontWeight": "600",
+                                    },
+                                ),
+                                href=target_href,
+                                style={"textDecoration": "none"},
+                            ),
+                            dbc.Button(
+                                "Save Changes",
+                                id="config-save-btn",
+                                color="danger",
+                                style={"fontWeight": "700"},
+                            ),
+                        ],
+                        style={"display": "flex", "alignItems": "center"},
                     ),
                 ],
                 style={
-                    "maxWidth": "900px",
-                    "margin": "0 auto",
-                    "padding": "48px 48px 96px 48px",
+                    "display": "flex",
+                    "alignItems": "center",
+                    "justifyContent": "space-between",
+                    "padding": "24px 48px 16px 48px",
                     "backgroundColor": "#ffffff",
                 },
             ),
+            html.Div(
+                [
+                    dbc.Tabs(tabs, active_tab=SECTION_SPECS[0].id, class_name="px-3"),
+                    html.Div(id="config-feedback", style={"padding": "16px 32px 32px 32px"}),
+                ],
+                style={"backgroundColor": "#fafafa"},
+            ),
         ],
-        style={
-            "fontFamily": "'Open Sans', Verdana, sans-serif",
-            "backgroundColor": "#fafafa",
-            "minHeight": "100%",
-            "height": "auto",
-            "overflowY": "auto",
-        },
+        style={"minHeight": "100vh", "backgroundColor": "#fafafa"},
     )
 
 
-def _build_core_config_section() -> html.Div:
-    """Build the core training parameters section."""
-    return html.Div(
-        [
-            html.H2(
-                "Core Training Parameters",
-                style={
-                    "fontSize": "18px",
-                    "fontWeight": "700",
-                    "color": "#000000",
-                    "marginBottom": "20px",
-                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                },
-            ),
-            html.Div(
-                [
-                    # Batch Size
-                    html.Div(
-                        [
-                            html.Label(
-                                "Batch Size",
-                                style={
-                                    "fontSize": "14px",
-                                    "color": "#000000",
-                                    "display": "block",
-                                    "marginBottom": "6px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                    "fontWeight": "600",
-                                },
-                            ),
-                            html.P(
-                                "Number of samples per training batch. Larger batches are faster but require more memory.",
-                                style={
-                                    "fontSize": "13px",
-                                    "color": "#6F6F6F",
-                                    "marginBottom": "8px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
-                            ),
-                            dcc.Input(
-                                id="tc-batch-size",
-                                type="number",
-                                min=32,
-                                max=2048,
-                                step=32,
-                                placeholder="e.g., 256",
-                                debounce=True,
-                                style={
-                                    "width": "100%",
-                                    "padding": "10px 12px",
-                                    "fontSize": "14px",
-                                    "border": "1px solid #C6C6C6",
-                                    "borderRadius": "6px",
-                                    "fontFamily": "ui-monospace, monospace",
-                                },
-                            ),
-                        ],
-                        style={"marginBottom": "24px"},
-                    ),
-                    # Max Epochs
-                    html.Div(
-                        [
-                            html.Label(
-                                "Maximum Epochs",
-                                style={
-                                    "fontSize": "14px",
-                                    "color": "#000000",
-                                    "display": "block",
-                                    "marginBottom": "6px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                    "fontWeight": "600",
-                                },
-                            ),
-                            html.P(
-                                "Maximum training epochs before stopping (subject to early stopping).",
-                                style={
-                                    "fontSize": "13px",
-                                    "color": "#6F6F6F",
-                                    "marginBottom": "8px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
-                            ),
-                            dcc.Input(
-                                id="tc-max-epochs",
-                                type="number",
-                                min=1,
-                                max=500,
-                                step=1,
-                                placeholder="e.g., 200",
-                                debounce=True,
-                                style={
-                                    "width": "100%",
-                                    "padding": "10px 12px",
-                                    "fontSize": "14px",
-                                    "border": "1px solid #C6C6C6",
-                                    "borderRadius": "6px",
-                                    "fontFamily": "ui-monospace, monospace",
-                                },
-                            ),
-                        ],
-                        style={"marginBottom": "24px"},
-                    ),
-                    # Patience
-                    html.Div(
-                        [
-                            html.Label(
-                                "Early Stopping Patience",
-                                style={
-                                    "fontSize": "14px",
-                                    "color": "#000000",
-                                    "display": "block",
-                                    "marginBottom": "6px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                    "fontWeight": "600",
-                                },
-                            ),
-                            html.P(
-                                "Number of epochs without improvement before early stopping.",
-                                style={
-                                    "fontSize": "13px",
-                                    "color": "#6F6F6F",
-                                    "marginBottom": "8px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
-                            ),
-                            dcc.Input(
-                                id="tc-patience",
-                                type="number",
-                                min=1,
-                                max=100,
-                                step=1,
-                                placeholder="e.g., 20",
-                                debounce=True,
-                                style={
-                                    "width": "100%",
-                                    "padding": "10px 12px",
-                                    "fontSize": "14px",
-                                    "border": "1px solid #C6C6C6",
-                                    "borderRadius": "6px",
-                                    "fontFamily": "ui-monospace, monospace",
-                                },
-                            ),
-                        ],
-                        style={"marginBottom": "24px"},
-                    ),
-                    # Learning Rate
-                    html.Div(
-                        [
-                            html.Label(
-                                "Learning Rate",
-                                style={
-                                    "fontSize": "14px",
-                                    "color": "#000000",
-                                    "display": "block",
-                                    "marginBottom": "6px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                    "fontWeight": "600",
-                                },
-                            ),
-                            html.P(
-                                "Optimizer learning rate. Typical range: 0.0001 to 0.01.",
-                                style={
-                                    "fontSize": "13px",
-                                    "color": "#6F6F6F",
-                                    "marginBottom": "8px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
-                            ),
-                            dcc.Input(
-                                id="tc-learning-rate",
-                                type="number",
-                                min=0.00001,
-                                max=0.1,
-                                step=0.0001,
-                                placeholder="e.g., 0.001",
-                                debounce=True,
-                                style={
-                                    "width": "100%",
-                                    "padding": "10px 12px",
-                                    "fontSize": "14px",
-                                    "border": "1px solid #C6C6C6",
-                                    "borderRadius": "6px",
-                                    "fontFamily": "ui-monospace, monospace",
-                                },
-                            ),
-                        ],
-                        style={"marginBottom": "0"},
-                    ),
-                ],
-            ),
-        ],
-        style={
-            "marginBottom": "40px",
-            "paddingBottom": "32px",
-            "borderBottom": "1px solid #C6C6C6",
-        },
-    )
-
-
-def _build_architecture_section() -> html.Div:
-    """Build the model architecture section."""
-    return html.Div(
-        [
-            html.H2(
-                "Model Architecture",
-                style={
-                    "fontSize": "18px",
-                    "fontWeight": "700",
-                    "color": "#000000",
-                    "marginBottom": "20px",
-                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                },
-            ),
-            html.Div(
-                [
-                    # Encoder Type
-                    html.Div(
-                        [
-                            html.Label(
-                                "Encoder Type",
-                                style={
-                                    "fontSize": "14px",
-                                    "color": "#000000",
-                                    "display": "block",
-                                    "marginBottom": "6px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                    "fontWeight": "600",
-                                },
-                            ),
-                            html.P(
-                                "Dense: fully-connected MLP. Conv: convolutional layers (better for images).",
-                                style={
-                                    "fontSize": "13px",
-                                    "color": "#6F6F6F",
-                                    "marginBottom": "12px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
-                            ),
-                            dbc.RadioItems(
-                                id="tc-encoder-type",
-                                options=[
-                                    {"label": "Dense (MLP)", "value": "dense"},
-                                    {"label": "Convolutional", "value": "conv"},
-                                ],
-                                inline=False,
-                                style={
-                                    "fontSize": "14px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
-                            ),
-                        ],
-                        style={"marginBottom": "24px"},
-                    ),
-                    # Decoder Type
-                    html.Div(
-                        [
-                            html.Label(
-                                "Decoder Type",
-                                style={
-                                    "fontSize": "14px",
-                                    "color": "#000000",
-                                    "display": "block",
-                                    "marginBottom": "6px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                    "fontWeight": "600",
-                                },
-                            ),
-                            html.P(
-                                "Should typically match encoder type for symmetry.",
-                                style={
-                                    "fontSize": "13px",
-                                    "color": "#6F6F6F",
-                                    "marginBottom": "12px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
-                            ),
-                            dbc.RadioItems(
-                                id="tc-decoder-type",
-                                options=[
-                                    {"label": "Dense (MLP)", "value": "dense"},
-                                    {"label": "Convolutional", "value": "conv"},
-                                ],
-                                inline=False,
-                                style={
-                                    "fontSize": "14px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
-                            ),
-                        ],
-                        style={"marginBottom": "24px"},
-                    ),
-                    # Latent Dimension
-                    html.Div(
-                        [
-                            html.Label(
-                                "Latent Dimension",
-                                style={
-                                    "fontSize": "14px",
-                                    "color": "#000000",
-                                    "display": "block",
-                                    "marginBottom": "6px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                    "fontWeight": "600",
-                                },
-                            ),
-                            html.P(
-                                "Dimensionality of the latent space. 2D is useful for visualization.",
-                                style={
-                                    "fontSize": "13px",
-                                    "color": "#6F6F6F",
-                                    "marginBottom": "8px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
-                            ),
-                            dcc.Dropdown(
-                                id="tc-latent-dim",
-                                options=[
-                                    {"label": "2 (visualization)", "value": 2},
-                                    {"label": "10", "value": 10},
-                                    {"label": "50", "value": 50},
-                                    {"label": "100", "value": 100},
-                                ],
-                                clearable=False,
-                                style={
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
-                            ),
-                        ],
-                        style={"marginBottom": "24px"},
-                    ),
-                    # Hidden Dims (Dense only)
-                    html.Div(
-                        [
-                            html.Label(
-                                "Hidden Dimensions (Dense only)",
-                                style={
-                                    "fontSize": "14px",
-                                    "color": "#000000",
-                                    "display": "block",
-                                    "marginBottom": "6px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                    "fontWeight": "600",
-                                },
-                            ),
-                            html.P(
-                                "Layer sizes for dense encoder. Decoder mirrors in reverse.",
-                                style={
-                                    "fontSize": "13px",
-                                    "color": "#6F6F6F",
-                                    "marginBottom": "8px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
-                            ),
-                            dcc.Dropdown(
-                                id="tc-hidden-dims",
-                                options=[
-                                    {"label": "Small (128, 64)", "value": "128,64"},
-                                    {"label": "Default (256, 128, 64)", "value": "256,128,64"},
-                                    {"label": "Large (512, 256, 128)", "value": "512,256,128"},
-                                ],
-                                clearable=False,
-                                style={
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
-                            ),
-                        ],
-                        style={"marginBottom": "0"},
-                    ),
-                ],
-            ),
-            # Warning for architecture changes
-            html.Div(
-                [
-                    html.Span("⚠️ ", style={"fontSize": "16px"}),
-                    html.Span(
-                        "Changing architecture (encoder/decoder type, latent dim, hidden dims) requires restarting the dashboard to take effect.",
-                        style={"fontSize": "13px"},
-                    ),
-                ],
-                style={
-                    "marginTop": "20px",
-                    "padding": "12px 16px",
-                    "backgroundColor": "#FFF9E6",
-                    "border": "1px solid #F6C900",
-                    "borderRadius": "6px",
-                    "color": "#4A4A4A",
-                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                },
-            ),
-        ],
-        style={
-            "marginBottom": "40px",
-            "paddingBottom": "32px",
-            "borderBottom": "1px solid #C6C6C6",
-        },
-    )
-
-
-def _build_loss_weights_section() -> html.Div:
-    """Build the loss weights section."""
-    return html.Div(
-        [
-            html.H2(
-                "Loss Weights",
-                style={
-                    "fontSize": "18px",
-                    "fontWeight": "700",
-                    "color": "#000000",
-                    "marginBottom": "20px",
-                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                },
-            ),
-            html.Div(
-                [
-                    # Reconstruction Weight
-                    html.Div(
-                        [
-                            html.Label(
-                                "Reconstruction Weight",
-                                style={
-                                    "fontSize": "14px",
-                                    "color": "#000000",
-                                    "display": "block",
-                                    "marginBottom": "6px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                    "fontWeight": "600",
-                                },
-                            ),
-                            html.P(
-                                "Higher values prioritize better image reconstruction quality.",
-                                style={
-                                    "fontSize": "13px",
-                                    "color": "#6F6F6F",
-                                    "marginBottom": "8px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
-                            ),
-                            dcc.Input(
-                                id="tc-recon-weight",
-                                type="number",
-                                min=0,
-                                max=10000,
-                                step=100,
-                                placeholder="e.g., 1000",
-                                debounce=True,
-                                style={
-                                    "width": "100%",
-                                    "padding": "10px 12px",
-                                    "fontSize": "14px",
-                                    "border": "1px solid #C6C6C6",
-                                    "borderRadius": "6px",
-                                    "fontFamily": "ui-monospace, monospace",
-                                },
-                            ),
-                        ],
-                        style={"marginBottom": "24px"},
-                    ),
-                    # KL Weight
-                    html.Div(
-                        [
-                            html.Label(
-                                "KL Divergence Weight",
-                                style={
-                                    "fontSize": "14px",
-                                    "color": "#000000",
-                                    "display": "block",
-                                    "marginBottom": "6px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                    "fontWeight": "600",
-                                },
-                            ),
-                            html.P(
-                                "Regularizes the latent space. Typical range: 0.01 to 1.0.",
-                                style={
-                                    "fontSize": "13px",
-                                    "color": "#6F6F6F",
-                                    "marginBottom": "8px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
-                            ),
-                            dcc.Input(
-                                id="tc-kl-weight",
-                                type="number",
-                                min=0.0,
-                                max=10.0,
-                                step=0.01,
-                                placeholder="e.g., 0.1",
-                                debounce=True,
-                                style={
-                                    "width": "100%",
-                                    "padding": "10px 12px",
-                                    "fontSize": "14px",
-                                    "border": "1px solid #C6C6C6",
-                                    "borderRadius": "6px",
-                                    "fontFamily": "ui-monospace, monospace",
-                                },
-                            ),
-                        ],
-                        style={"marginBottom": "24px"},
-                    ),
-                    # Label Weight
-                    html.Div(
-                        [
-                            html.Label(
-                                "Label Weight",
-                                style={
-                                    "fontSize": "14px",
-                                    "color": "#000000",
-                                    "display": "block",
-                                    "marginBottom": "6px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                    "fontWeight": "600",
-                                },
-                            ),
-                            html.P(
-                                "Weight for classification loss on labeled samples.",
-                                style={
-                                    "fontSize": "13px",
-                                    "color": "#6F6F6F",
-                                    "marginBottom": "8px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
-                            ),
-                            dcc.Input(
-                                id="tc-label-weight",
-                                type="number",
-                                min=0.0,
-                                max=10.0,
-                                step=0.1,
-                                placeholder="e.g., 1.0",
-                                debounce=True,
-                                style={
-                                    "width": "100%",
-                                    "padding": "10px 12px",
-                                    "fontSize": "14px",
-                                    "border": "1px solid #C6C6C6",
-                                    "borderRadius": "6px",
-                                    "fontFamily": "ui-monospace, monospace",
-                                },
-                            ),
-                        ],
-                        style={"marginBottom": "0"},
-                    ),
-                ],
-            ),
-        ],
-        style={
-            "marginBottom": "40px",
-            "paddingBottom": "32px",
-            "borderBottom": "1px solid #C6C6C6",
-        },
-    )
-
-
-def _build_regularization_section() -> html.Div:
-    """Build the regularization section."""
-    return html.Div(
-        [
-            html.H2(
-                "Regularization",
-                style={
-                    "fontSize": "18px",
-                    "fontWeight": "700",
-                    "color": "#000000",
-                    "marginBottom": "20px",
-                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                },
-            ),
-            html.Div(
-                [
-                    # Weight Decay
-                    html.Div(
-                        [
-                            html.Label(
-                                "Weight Decay",
-                                style={
-                                    "fontSize": "14px",
-                                    "color": "#000000",
-                                    "display": "block",
-                                    "marginBottom": "6px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                    "fontWeight": "600",
-                                },
-                            ),
-                            html.P(
-                                "L2 regularization penalty. Typical range: 0.0001 to 0.01.",
-                                style={
-                                    "fontSize": "13px",
-                                    "color": "#6F6F6F",
-                                    "marginBottom": "8px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
-                            ),
-                            dcc.Input(
-                                id="tc-weight-decay",
-                                type="number",
-                                min=0.0,
-                                max=0.1,
-                                step=0.0001,
-                                placeholder="e.g., 0.0001",
-                                debounce=True,
-                                style={
-                                    "width": "100%",
-                                    "padding": "10px 12px",
-                                    "fontSize": "14px",
-                                    "border": "1px solid #C6C6C6",
-                                    "borderRadius": "6px",
-                                    "fontFamily": "ui-monospace, monospace",
-                                },
-                            ),
-                        ],
-                        style={"marginBottom": "24px"},
-                    ),
-                    # Dropout Rate
-                    html.Div(
-                        [
-                            html.Label(
-                                "Dropout Rate",
-                                style={
-                                    "fontSize": "14px",
-                                    "color": "#000000",
-                                    "display": "block",
-                                    "marginBottom": "6px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                    "fontWeight": "600",
-                                },
-                            ),
-                            html.P(
-                                "Dropout probability in the classifier. Range: 0.0 to 0.5.",
-                                style={
-                                    "fontSize": "13px",
-                                    "color": "#6F6F6F",
-                                    "marginBottom": "12px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
-                            ),
-                            dcc.Slider(
-                                id="tc-dropout-rate",
-                                min=0.0,
-                                max=0.5,
-                                step=0.05,
-                                marks={
-                                    0.0: "0.0",
-                                    0.1: "0.1",
-                                    0.2: "0.2",
-                                    0.3: "0.3",
-                                    0.4: "0.4",
-                                    0.5: "0.5",
-                                },
-                                tooltip={"placement": "bottom", "always_visible": False},
-                            ),
-                        ],
-                        style={"marginBottom": "24px"},
-                    ),
-                    # Gradient Clip Norm
-                    html.Div(
-                        [
-                            html.Label(
-                                "Gradient Clip Norm",
-                                style={
-                                    "fontSize": "14px",
-                                    "color": "#000000",
-                                    "display": "block",
-                                    "marginBottom": "6px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                    "fontWeight": "600",
-                                },
-                            ),
-                            html.P(
-                                "Maximum gradient norm. Set to 0 to disable clipping.",
-                                style={
-                                    "fontSize": "13px",
-                                    "color": "#6F6F6F",
-                                    "marginBottom": "8px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
-                            ),
-                            dcc.Input(
-                                id="tc-grad-clip-norm",
-                                type="number",
-                                min=0.0,
-                                max=10.0,
-                                step=0.1,
-                                placeholder="e.g., 1.0 (0 = disabled)",
-                                debounce=True,
-                                style={
-                                    "width": "100%",
-                                    "padding": "10px 12px",
-                                    "fontSize": "14px",
-                                    "border": "1px solid #C6C6C6",
-                                    "borderRadius": "6px",
-                                    "fontFamily": "ui-monospace, monospace",
-                                },
-                            ),
-                        ],
-                        style={"marginBottom": "0"},
-                    ),
-                ],
-            ),
-        ],
-        style={
-            "marginBottom": "40px",
-            "paddingBottom": "32px",
-            "borderBottom": "1px solid #C6C6C6",
-        },
-    )
-
-
-def _build_advanced_section() -> html.Div:
-    """Build the advanced options section."""
-    return html.Div(
-        [
-            html.H2(
-                "Advanced Options",
-                style={
-                    "fontSize": "18px",
-                    "fontWeight": "700",
-                    "color": "#000000",
-                    "marginBottom": "20px",
-                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                },
-            ),
-            html.Div(
-                [
-                    # Monitor Metric
-                    html.Div(
-                        [
-                            html.Label(
-                                "Monitor Metric",
-                                style={
-                                    "fontSize": "14px",
-                                    "color": "#000000",
-                                    "display": "block",
-                                    "marginBottom": "6px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                    "fontWeight": "600",
-                                },
-                            ),
-                            html.P(
-                                "Metric used for early stopping decisions.",
-                                style={
-                                    "fontSize": "13px",
-                                    "color": "#6F6F6F",
-                                    "marginBottom": "8px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
-                            ),
-                            dcc.Dropdown(
-                                id="tc-monitor-metric",
-                                options=[
-                                    {"label": "Total Loss", "value": "loss"},
-                                    {"label": "Classification Loss", "value": "classification_loss"},
-                                ],
-                                clearable=False,
-                                style={
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
-                            ),
-                        ],
-                        style={"marginBottom": "24px"},
-                    ),
-                    # Use Contrastive
-                    html.Div(
-                        [
-                            html.Label(
-                                "Contrastive Learning",
-                                style={
-                                    "fontSize": "14px",
-                                    "color": "#000000",
-                                    "display": "block",
-                                    "marginBottom": "6px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                    "fontWeight": "600",
-                                },
-                            ),
-                            html.P(
-                                "Enable experimental contrastive loss term.",
-                                style={
-                                    "fontSize": "13px",
-                                    "color": "#6F6F6F",
-                                    "marginBottom": "12px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
-                            ),
-                            dbc.Checklist(
-                                id="tc-use-contrastive",
-                                options=[{"label": "Enable contrastive loss", "value": True}],
-                                value=[],
-                                style={
-                                    "fontSize": "14px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
-                            ),
-                        ],
-                        style={"marginBottom": "24px"},
-                    ),
-                    # Contrastive Weight
-                    html.Div(
-                        [
-                            html.Label(
-                                "Contrastive Weight",
-                                style={
-                                    "fontSize": "14px",
-                                    "color": "#000000",
-                                    "display": "block",
-                                    "marginBottom": "6px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                    "fontWeight": "600",
-                                },
-                            ),
-                            html.P(
-                                "Weight for contrastive loss (only applies if enabled above).",
-                                style={
-                                    "fontSize": "13px",
-                                    "color": "#6F6F6F",
-                                    "marginBottom": "8px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
-                            ),
-                            dcc.Input(
-                                id="tc-contrastive-weight",
-                                type="number",
-                                min=0.0,
-                                max=10.0,
-                                step=0.1,
-                                placeholder="e.g., 0.0",
-                                debounce=True,
-                                style={
-                                    "width": "100%",
-                                    "padding": "10px 12px",
-                                    "fontSize": "14px",
-                                    "border": "1px solid #C6C6C6",
-                                    "borderRadius": "6px",
-                                    "fontFamily": "ui-monospace, monospace",
-                                },
-                            ),
-                        ],
-                        style={"marginBottom": "0"},
-                    ),
-                ],
-            ),
-        ],
-        style={
-            "marginBottom": "0",
-        },
-    )
-
-
-def register_config_page_callbacks(app):
-    """Register callbacks to populate form from config store."""
-    
+def register_config_page_callbacks(app: Dash) -> None:
     @app.callback(
-        Output("tc-batch-size", "value"),
-        Output("tc-max-epochs", "value"),
-        Output("tc-patience", "value"),
-        Output("tc-learning-rate", "value"),
-        Output("tc-encoder-type", "value"),
-        Output("tc-decoder-type", "value"),
-        Output("tc-latent-dim", "value"),
-        Output("tc-hidden-dims", "value"),
-        Output("tc-recon-weight", "value"),
-        Output("tc-kl-weight", "value"),
-        Output("tc-label-weight", "value"),
-        Output("tc-weight-decay", "value"),
-        Output("tc-dropout-rate", "value"),
-        Output("tc-grad-clip-norm", "value"),
-        Output("tc-monitor-metric", "value"),
-        Output("tc-use-contrastive", "value"),
-        Output("tc-contrastive-weight", "value"),
+        FIELD_OUTPUTS,
         Input("training-config-store", "data"),
     )
-    def populate_form_from_config(config_dict: Optional[Dict]) -> tuple:
-        """Populate form fields from the config store."""
+    def populate_form_from_config(config_dict: Optional[Dict[str, Any]]) -> List[Any]:
         if not config_dict:
-            # Return empty/default values if no config
-            return (256, 200, 20, 0.001, "dense", "dense", 2, "256,128,64", 
-                   1000.0, 0.1, 1.0, 0.0001, 0.2, 1.0, "classification_loss", [], 0.0)
-        
-        # Convert hidden_dims tuple to comma-separated string
-        hidden_dims_str = ",".join(str(d) for d in config_dict.get("hidden_dims", (256, 128, 64)))
-        
-        # Convert grad_clip_norm: None -> 0
-        grad_clip = config_dict.get("grad_clip_norm", 1.0)
-        grad_clip_value = 0.0 if grad_clip is None else grad_clip
-        
-        # Convert use_contrastive bool to checkbox list
-        use_contrastive_list = [True] if config_dict.get("use_contrastive", False) else []
-        
-        return (
-            config_dict.get("batch_size", 256),
-            config_dict.get("max_epochs", 200),
-            config_dict.get("patience", 20),
-            config_dict.get("learning_rate", 0.001),
-            config_dict.get("encoder_type", "dense"),
-            config_dict.get("decoder_type", "dense"),
-            config_dict.get("latent_dim", 2),
-            hidden_dims_str,
-            config_dict.get("recon_weight", 1000.0),
-            config_dict.get("kl_weight", 0.1),
-            config_dict.get("label_weight", 1.0),
-            config_dict.get("weight_decay", 0.0001),
-            config_dict.get("dropout_rate", 0.2),
-            grad_clip_value,
-            config_dict.get("monitor_metric", "classification_loss"),
-            use_contrastive_list,
-            config_dict.get("contrastive_weight", 0.0),
-        )
+            return extract_initial_values(default_config_dict())
+        return extract_initial_values(config_dict)
+
+    @app.callback(
+        Output("url", "pathname", allow_duplicate=True),
+        Output("config-feedback", "children"),
+        Input("config-save-btn", "n_clicks"),
+        *FIELD_STATES,
+        State("training-config-store", "data"),
+        prevent_initial_call=True,
+    )
+    def save_training_config(n_clicks: int, *args) -> tuple:
+        if not n_clicks:
+            raise dash.exceptions.PreventUpdate
+
+        *field_values, config_store = args
+        config_store = config_store or {}
+        current_config = default_config_dict()
+        current_config.update(config_store)
+
+        try:
+            updates = build_updates(field_values, current_config)
+        except ValueError as exc:  # type: ignore[catching-class-any]
+            error = html.Div(str(exc), style={"color": "#C10A27", "fontWeight": "600"})
+            return dash.no_update, error
+
+        if not updates:
+            info = html.Div("No changes detected.", style={"color": "#6F6F6F"})
+            return dash.no_update, info
+
+        command = UpdateModelConfigCommand(updates=updates)
+        success, message = dashboard_state.dispatcher.execute(command)
+
+        if not success:
+            error_msg = html.Div(message, style={"color": "#C10A27", "fontWeight": "600"})
+            return dash.no_update, error_msg
+
+        _append_status_message(message)
+
+        model_id = config_store.get("_model_id")
+        if not model_id:
+            with dashboard_state.state_lock:
+                if dashboard_state.app_state.active_model:
+                    model_id = dashboard_state.app_state.active_model.model_id
+        redirect_path = f"/model/{model_id}" if model_id else "/"
+        success_msg = html.Div("Configuration saved.", style={"color": "#45717A"})
+        return redirect_path, success_msg

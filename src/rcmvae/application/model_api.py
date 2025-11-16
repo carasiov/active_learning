@@ -625,11 +625,24 @@ class SSVAE:
 
         return result
 
+    def _default_predict_batch_size(self) -> int:
+        """Heuristic batch size that stays GPU-friendly for heavy decoders."""
+
+        # Start from training batch size when available, else fall back.
+        target = self.config.batch_size or 128
+
+        # Convolutional + heteroscedastic decoders allocate large workspaces.
+        if self.config.decoder_type == "conv" or self.config.use_heteroscedastic_decoder:
+            target = min(target, 64)
+
+        # Keep a reasonable floor to avoid excessive looping on tiny configs.
+        return max(32, target)
+
     def predict_batched(
         self,
         data: np.ndarray,
         *,
-        batch_size: int = 512,
+        batch_size: int | None = None,
         sample: bool = False,
         num_samples: int = 1,
         return_mixture: bool = False,
@@ -641,7 +654,7 @@ class SSVAE:
         
         Args:
             data: Input images [N, H, W]
-            batch_size: Batch size for prediction (default: 512)
+            batch_size: Batch size for prediction (defaults to safe heuristic based on config)
             sample: Whether to sample from latent distribution
             num_samples: Number of samples to draw (if sample=True)
             return_mixture: Return mixture-specific outputs (responsibilities, π)
@@ -650,8 +663,9 @@ class SSVAE:
             Standard: (latent, reconstruction, class_predictions, certainty)
             With mixture: (latent, reconstruction, class_predictions, certainty, q_c, π)
         """
+        inferred_batch_size = batch_size or self._default_predict_batch_size()
         total = data.shape[0]
-        if total == 0 or total <= batch_size:
+        if total == 0 or total <= inferred_batch_size:
             return self.predict(
                 data,
                 sample=sample,
@@ -670,8 +684,8 @@ class SSVAE:
         pi_value = None
         heteroscedastic_mode: bool | None = None
         
-        for start in range(0, total, batch_size):
-            end = min(start + batch_size, total)
+        for start in range(0, total, inferred_batch_size):
+            end = min(start + inferred_batch_size, total)
             batch_data = data[start:end]
             
             if return_mixture:

@@ -87,8 +87,12 @@ def _update_history_with_epoch(payload: Dict[str, float]) -> None:
         global app_state
         if app_state.active_model is None:
             return
-        epoch = int(payload["epoch"])
-        new_history = app_state.active_model.history.with_epoch(epoch, payload)
+        current_history = app_state.active_model.history
+        next_epoch = (current_history.epochs[-1] + 1) if current_history.epochs else 1
+        metrics = dict(payload)
+        metrics["epoch_absolute"] = float(next_epoch)
+        metrics["epoch_in_run"] = float(payload.get("epoch", next_epoch))
+        new_history = current_history.with_epoch(next_epoch, metrics)
         updated_model = app_state.active_model.with_history(new_history)
         app_state = app_state.with_active_model(updated_model)
 
@@ -135,6 +139,7 @@ def load_model(model_id: str) -> None:
     """Load a specific model as active."""
     global app_state
     from use_cases.dashboard.core.model_manager import ModelManager
+    from use_cases.dashboard.core.model_runs import load_run_records
     
     # Ensure app state initialized
     initialize_app_state()
@@ -149,8 +154,8 @@ def load_model(model_id: str) -> None:
         if not metadata:
             raise ValueError(f"Model {model_id} not found")
         
-        # Load config from metadata or create default
-        config = SSVAEConfig()
+        # Load persisted config if available
+        config = ModelManager.load_config(model_id) or SSVAEConfig()
         
         # Load model
         model = SSVAE(input_dim=(28, 28), config=config)
@@ -176,8 +181,9 @@ def load_model(model_id: str) -> None:
             x_train = x_train[:preview_n]
             true_labels = true_labels[:preview_n]
         
-        # Load history
+        # Load history and run manifest
         history = ModelManager.load_history(model_id)
+        run_records = load_run_records(model_id)
         
         # Load labels
         labels_array = np.full(shape=(x_train.shape[0],), fill_value=np.nan, dtype=float)
@@ -239,7 +245,8 @@ def load_model(model_id: str) -> None:
             data=data_state,
             training=training_status,
             ui=ui_state,
-            history=history
+            history=history,
+            runs=tuple(run_records),
         )
         
         # Update app state

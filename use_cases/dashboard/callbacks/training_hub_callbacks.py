@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from typing import Dict, List, Optional, Tuple
 
 import dash
@@ -11,7 +12,6 @@ from dash.exceptions import PreventUpdate
 import numpy as np
 import plotly.graph_objects as go
 from queue import Empty
-from dataclasses import replace
 
 from rcmvae.application.runtime.interactive import InteractiveTrainer
 
@@ -70,6 +70,7 @@ def train_worker_hub(num_epochs: int) -> None:
             labels_ref = dashboard_state.app_state.active_model.data.labels
             target_epochs = int(dashboard_state.app_state.active_model.training.target_epochs or num_epochs)
             model_id = dashboard_state.app_state.active_model.model_id
+            run_epoch_offset = len(dashboard_state.app_state.active_model.history.epochs)
         
         # Get model-specific checkpoint path
         from use_cases.dashboard.core.model_manager import ModelManager
@@ -88,12 +89,15 @@ def train_worker_hub(num_epochs: int) -> None:
         labels = np.array(labels_ref, copy=True)
 
         _append_status_message(f"Training for {target_epochs} epoch(s)...")
+        start_time = time.perf_counter()
         history = trainer.train_epochs(
             num_epochs=target_epochs,
             data=x_train,
             labels=labels,
             weights_path=checkpoint_path,
         )
+        train_time = time.perf_counter() - start_time
+        epochs_completed = int(len(history.get("loss", []))) if isinstance(history, dict) else target_epochs
 
         with dashboard_state.state_lock:
             if dashboard_state.app_state.active_model is None:
@@ -114,7 +118,10 @@ def train_worker_hub(num_epochs: int) -> None:
             reconstructed=recon,
             pred_classes=pred_classes,
             pred_certainty=pred_certainty,
-            hover_metadata=hover_metadata
+            hover_metadata=hover_metadata,
+            train_time=train_time,
+            epoch_offset=run_epoch_offset,
+            epochs_completed=epochs_completed,
         )
         success, message = dashboard_state.dispatcher.execute(command)
 
@@ -145,6 +152,7 @@ def train_worker_hub(num_epochs: int) -> None:
                         return
                     labels_latest = np.array(dashboard_state.app_state.active_model.data.labels, copy=True)
                     true_labels = dashboard_state.app_state.active_model.data.true_labels
+                    total_epochs = len(dashboard_state.app_state.active_model.history.epochs)
                 hover_metadata = _build_hover_metadata(pred_classes, pred_certainty, labels_latest, true_labels)
                 
                 command = CompleteTrainingCommand(
@@ -152,7 +160,9 @@ def train_worker_hub(num_epochs: int) -> None:
                     reconstructed=recon,
                     pred_classes=pred_classes,
                     pred_certainty=pred_certainty,
-                    hover_metadata=hover_metadata
+                    hover_metadata=hover_metadata,
+                    epoch_offset=run_epoch_offset,
+                    epochs_completed=max(0, total_epochs - run_epoch_offset),
                 )
                 dashboard_state.dispatcher.execute(command)
                 

@@ -216,11 +216,13 @@ runtime = ModelFactoryService.build_runtime(
 - Load parameters and restore model state
 - Handle version compatibility
 - Manage checkpoint metadata
+- Merge legacy checkpoints with the current optimizer/dataclass template without corrupting the pytree layout
 
 **Design Rationale:**
 - JAX requires explicit state management (no implicit parameter storage)
 - Checkpoints include full state (params, optimizer, config)
 - Enables model deployment and experiment reproduction
+- Compatibility shim guarantees that older checkpoints missing newer optimizer slots fall back to the fresh template rather than crashing Optax with mismatched update/state chains
 
 ### 5. DiagnosticsCollector
 
@@ -434,6 +436,8 @@ Reconstruction  Predictions + Certainty
 **Types:**
 - `LoggingCallback`: Console and CSV logging
 - `PlottingCallback`: Loss curve visualization
+- Dashboard background workers log structured training events into `/tmp/ssvae_dashboard.log`; the log level is controlled via the `DASHBOARD_LOG_LEVEL` environment variable (defaults to INFO).
+- `SSVAE.predict_batched()` automatically caps inference micro-batches (uses the smaller of `config.batch_size` and 64 for conv/heteroscedastic decoders) so GPU runs don't trip cuDNN autotune OOMs when generating metrics.
 
 **Design:**
 - Observer pattern for training events

@@ -162,6 +162,9 @@ This project has a layered documentation structure (see [AGENTS.md](AGENTS.md) f
 - **[Dashboard Overview](use_cases/dashboard/README.md)** - Interactive interface features and workflows
 - **[Dashboard Development](use_cases/dashboard/docs/DEVELOPER_GUIDE.md)** - Internal architecture and debugging
 - **[Dashboard Extensions](use_cases/dashboard/docs/AGENT_GUIDE.md)** - Adding custom commands and UI components
+- **[Dashboard Autonomous Agent Spec](use_cases/dashboard/docs/autonomous_agent_spec.md)** - Operating contract and roadmap for autonomous agents
+- **[Dashboard Collaboration Notes](use_cases/dashboard/docs/collaboration_notes.md)** - Quick restart checklist, debugging playbook, and working agreements
+- **[Dashboard State Plan](use_cases/dashboard/docs/dashboard_state_plan.md)** - Full status snapshot and roadmap
 
 ---
 

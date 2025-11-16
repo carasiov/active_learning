@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from enum import Enum, auto
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple, Sequence, Union
 
 import numpy as np
 
@@ -112,7 +112,7 @@ class DataState:
     labels: np.ndarray  # Float array with NaN for unlabeled
     true_labels: np.ndarray
     latent: np.ndarray
-    reconstructed: np.ndarray
+    reconstructed: Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]
     pred_classes: np.ndarray
     pred_certainty: np.ndarray
     hover_metadata: List[List[object]]
@@ -134,7 +134,7 @@ class DataState:
     def with_updated_predictions(
         self,
         latent: np.ndarray,
-        reconstructed: np.ndarray,
+        reconstructed: Union[np.ndarray, Tuple[np.ndarray, np.ndarray]],
         pred_classes: np.ndarray,
         pred_certainty: np.ndarray,
         hover_metadata: List[List[object]]
@@ -289,6 +289,65 @@ class TrainingHistory:
 
 
 @dataclass(frozen=True)
+class RunRecord:
+    """Summary of a completed dashboard training run."""
+
+    run_id: str
+    timestamp: str
+    architecture_code: Optional[str]
+    label_version: int
+    train_time_sec: float
+    total_samples: int
+    labeled_samples: int
+    start_epoch: int
+    end_epoch: int
+    epochs_completed: int
+    metrics: Dict[str, float]
+    summary_path: Optional[str]
+    report_path: Optional[str]
+    config_path: Optional[str]
+    results_root: Optional[str]
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, object]) -> "RunRecord":
+        return cls(
+            run_id=str(data.get("run_id", "unknown")),
+            timestamp=str(data.get("timestamp", "")),
+            architecture_code=data.get("architecture_code"),
+            label_version=int(data.get("label_version", 0)),
+            train_time_sec=float(data.get("train_time_sec", 0.0)),
+            total_samples=int(data.get("total_samples", 0)),
+            labeled_samples=int(data.get("labeled_samples", 0)),
+            start_epoch=int(data.get("start_epoch", 0)),
+            end_epoch=int(data.get("end_epoch", 0)),
+            epochs_completed=int(data.get("epochs_completed", 0)),
+            metrics=dict(data.get("metrics", {})) if isinstance(data.get("metrics", {}), dict) else {},
+            summary_path=data.get("summary_path"),
+            report_path=data.get("report_path"),
+            config_path=data.get("config_path"),
+            results_root=data.get("results_root"),
+        )
+
+    def to_dict(self) -> Dict[str, object]:
+        return {
+            "run_id": self.run_id,
+            "timestamp": self.timestamp,
+            "architecture_code": self.architecture_code,
+            "label_version": self.label_version,
+            "train_time_sec": self.train_time_sec,
+            "total_samples": self.total_samples,
+            "labeled_samples": self.labeled_samples,
+            "start_epoch": self.start_epoch,
+            "end_epoch": self.end_epoch,
+            "epochs_completed": self.epochs_completed,
+            "metrics": self.metrics,
+            "summary_path": self.summary_path,
+            "report_path": self.report_path,
+            "config_path": self.config_path,
+            "results_root": self.results_root,
+        }
+
+@dataclass(frozen=True)
 class ModelState:
     """Full state for one model - only loaded when active."""
     model_id: str
@@ -300,6 +359,7 @@ class ModelState:
     training: TrainingStatus
     ui: UIState
     history: TrainingHistory
+    runs: Tuple[RunRecord, ...] = ()
     
     def with_updated_metadata(self, **kwargs) -> ModelState:
         """Helper to update metadata fields."""
@@ -327,6 +387,10 @@ class ModelState:
     def with_history(self, new_history: TrainingHistory) -> ModelState:
         """Replace entire history."""
         return replace(self, history=new_history)
+
+    def with_runs(self, runs: Sequence[RunRecord]) -> ModelState:
+        """Replace run records."""
+        return replace(self, runs=tuple(runs))
     
     def with_config(self, config: SSVAEConfig) -> ModelState:
         """Replace configuration snapshot."""
@@ -346,7 +410,7 @@ class ModelState:
     def with_training_complete(
         self,
         latent: np.ndarray,
-        reconstructed: np.ndarray,
+        reconstructed: Union[np.ndarray, Tuple[np.ndarray, np.ndarray]],
         pred_classes: np.ndarray,
         pred_certainty: np.ndarray,
         hover_metadata: List[List[object]]

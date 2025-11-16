@@ -185,6 +185,7 @@ def build_dashboard_layout() -> html.Div:
                             html.Div(
                                 [
                                     _build_stats_section(),
+                                    _build_run_history_section(model_id),
                                     
                                     # Training section
                                     html.Div(
@@ -654,6 +655,60 @@ def _build_stats_section() -> html.Div:
             html.Div(
                 id="dataset-stats",
                 style={"fontSize": "13px", "lineHeight": "1.6", "fontFamily": "'Open Sans', Verdana, sans-serif"},
+            ),
+        ],
+        style={
+            "marginBottom": "24px",
+            "paddingBottom": "24px",
+            "borderBottom": "1px solid #C6C6C6",
+        },
+    )
+
+
+def _run_history_placeholder() -> html.Div:
+    return html.Div(
+        "No completed training runs yet.",
+        style={
+            "fontSize": "12px",
+            "color": "#6F6F6F",
+            "fontStyle": "italic",
+        },
+    )
+
+
+def _build_run_history_section(model_id: str) -> html.Div:
+    return html.Div(
+        [
+            html.Div(
+                "Training Runs (latest 8)",
+                style={
+                    "fontSize": "15px",
+                    "fontWeight": "700",
+                    "color": "#000000",
+                    "marginBottom": "12px",
+                    "fontFamily": "'Open Sans', Verdana, sans-serif",
+                },
+            ),
+            html.Div(
+                [_run_history_placeholder()],
+                id="run-history-list",
+                style={
+                    "display": "flex",
+                    "flexDirection": "column",
+                    "gap": "10px",
+                },
+            ),
+            dcc.Link(
+                "Open full history →",
+                href=f"/experiments?model={model_id}",
+                style={
+                    "fontSize": "12px",
+                    "color": "#45717A",
+                    "textDecoration": "none",
+                    "fontWeight": "600",
+                    "marginTop": "12px",
+                    "display": "inline-block",
+                },
             ),
         ],
         style={

@@ -7,7 +7,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from flax.serialization import from_bytes, to_bytes
+from collections.abc import Mapping, Sequence
+
+from flax.serialization import from_bytes, to_bytes, msgpack_restore
+from flax.core import FrozenDict, freeze, unfreeze
 
 from rcmvae.application.runtime.state import SSVAETrainState
 
@@ -67,7 +70,72 @@ class CheckpointManager:
                 "opt_state": state_template.opt_state,
                 "step": state_template.step,
             }
-            payload = from_bytes(payload_template, f.read())
+            data = f.read()
+
+        try:
+            payload = from_bytes(payload_template, data)
+        except ValueError:
+            # Fallback for checkpoints missing newer keys (e.g., prior params)
+            raw_payload = msgpack_restore(data)
+
+            def merge_structures(template, source):  # noqa: ANN001 - helper for nested merges
+                if source is None:
+                    return template
+
+                # FrozenDict handling (params trees)
+                if isinstance(template, FrozenDict):
+                    target_dict = dict(template)
+                    source_dict = dict(source) if isinstance(source, Mapping) else {}
+                    merged = {}
+                    for key, value in target_dict.items():
+                        merged[key] = merge_structures(value, source_dict.get(key))
+                    return FrozenDict(merged)
+
+                # Mapping (plain dict)
+                if isinstance(template, Mapping):
+                    target_dict = dict(template)
+                    source_dict = dict(source) if isinstance(source, Mapping) else {}
+                    merged = {}
+                    for key, value in target_dict.items():
+                        merged[key] = merge_structures(value, source_dict.get(key))
+                    return type(template)(merged)
+
+                # Tuples / sequences (opt state chains)
+                if isinstance(template, tuple):
+                    source_seq = list(source) if isinstance(source, Sequence) else []
+                    items = []
+                    for idx, tmpl_item in enumerate(template):
+                        src_item = source_seq[idx] if idx < len(source_seq) else None
+                        items.append(merge_structures(tmpl_item, src_item))
+                    return tuple(items)
+
+                if isinstance(template, list):
+                    source_seq = list(source) if isinstance(source, Sequence) else []
+                    items = []
+                    for idx, tmpl_item in enumerate(template):
+                        src_item = source_seq[idx] if idx < len(source_seq) else None
+                        items.append(merge_structures(tmpl_item, src_item))
+                    return items
+
+                # Scalars / arrays: prefer source when available
+                return source
+
+            params_template = payload_template["params"]
+            opt_state_template = payload_template["opt_state"]
+            raw_params = raw_payload.get("params")
+            raw_opt_state = raw_payload.get("opt_state")
+
+            merged_params = merge_structures(params_template, raw_params)
+            try:
+                merged_opt_state = merge_structures(opt_state_template, raw_opt_state)
+            except Exception:
+                merged_opt_state = opt_state_template
+
+            payload = {
+                "params": merged_params,
+                "opt_state": merged_opt_state,
+                "step": raw_payload.get("step", payload_template["step"]),
+            }
 
         return state_template.replace(
             params=payload["params"],

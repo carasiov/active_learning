@@ -38,7 +38,7 @@ experiment:
 # ============================================================================
 data:
   dataset: "mnist"                  # Currently only MNIST is supported
-  num_samples: 1000               # Total samples from dataset
+  num_samples: 10000               # Total samples from dataset
   num_labeled: 100                  # Labeled samples (rest are unlabeled)
   seed: 42                          # Random seed for data sampling
   dataset_variant: "mnist"          # "mnist" (default) or "digits" to force fallback
