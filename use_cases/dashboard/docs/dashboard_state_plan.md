@@ -60,23 +60,24 @@ This note captures the current status of the interactive dashboard and its suppo
 
 ## 3. Known Gaps
 
-1. **Callback validation warnings**: Need placeholder components in `validation_layout` to silence Dash warnings when switching pages.
-2. **Configuration coverage**: UI does not expose every backend option (priors, decoders, losses).
+1. ~~**Callback validation warnings**~~: ✅ **Completed November 2025** - Added all missing placeholders to `validation_layout`.
+2. ~~**Configuration coverage**~~: ✅ **Completed November 2025** - Full metadata-driven config UI in `pages/training.py` and Training Hub now exposes all backend options via `core/config_metadata.py`.
 3. **Run comparison tooling**: Experiment browser lacks side-by-side comparisons, tagging, filtering.
-4. **Label provenance**: Runs capture label version, but UI doesn’t visualise label history or diffs.
+4. **Label provenance**: Runs capture label version, but UI doesn't visualise label history or diffs.
 
 ---
 
 ## 4. Roadmap (Proposed)
 
-### 4.1 Platform Hardening
-- Define `validation_layout` placeholders for all callback IDs.
-- Consider page-specific callback modules or pattern-matching IDs for better isolation.
+### 4.1 Platform Hardening ✅ **Completed November 2025**
+- ✅ Defined `validation_layout` placeholders for all callback IDs.
+- Future: Consider page-specific callback modules or pattern-matching IDs for better isolation.
 
-### 4.2 Configuration Experience Upgrade
-- Generate form controls from `core/config_metadata.py` (registry-driven metadata).
-- Organise UI into sections/tabs (Data, Architecture, Priors, Losses, Advanced).
-- Persist presets for quick setup.
+### 4.2 Configuration Experience Upgrade ✅ **Completed November 2025**
+- ✅ Generated form controls from `core/config_metadata.py` (registry-driven metadata).
+- ✅ Organized UI into sections/tabs (Data, Architecture, Priors, Losses, Advanced).
+- ✅ Refactored Training Hub quick controls to use metadata (consistent with config page).
+- Future: Persist presets for quick setup.
 
 ### 4.3 Experiment Browser Enhancements
 - Add filters (tags, model, date) and comparison views.
@@ -98,9 +99,9 @@ This note captures the current status of the interactive dashboard and its suppo
 
 ## 5. Recommended Next Steps (Short Horizon)
 
-1. Implement `validation_layout` placeholders (warning cleanup).
-2. Build metadata-driven configuration UI.
-3. Enhance experiment browser with comparisons/filters.
+1. ✅ ~~Implement `validation_layout` placeholders (warning cleanup).~~
+2. ✅ ~~Build metadata-driven configuration UI.~~
+3. **Enhance experiment browser with comparisons/filters.** ← Next priority
 4. Surface run history within dashboard layout.
 5. Expose label provenance and statistics.
 
