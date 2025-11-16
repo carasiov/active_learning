@@ -166,12 +166,25 @@ class AppStateManager:
             # Load persisted config if available
             config = ModelManager.load_config(model_id) or SSVAEConfig()
 
-            # Load model
+            # Load model with error handling
             model = SSVAE(input_dim=(28, 28), config=config)
             checkpoint_path = ModelManager.checkpoint_path(model_id)
+            weights_loaded = False
+            checkpoint_error = None
+
             if checkpoint_path.exists():
-                model.load_model_weights(str(checkpoint_path))
-                model.weights_path = str(checkpoint_path)
+                try:
+                    model.load_model_weights(str(checkpoint_path))
+                    model.weights_path = str(checkpoint_path)
+                    weights_loaded = True
+                except Exception as e:
+                    checkpoint_error = str(e)
+                    if "ScopeParamShapeError" in str(type(e).__name__):
+                        checkpoint_error = (
+                            f"Architecture mismatch: Checkpoint incompatible with config. "
+                            f"Model will use random weights. Error: {e}"
+                        )
+                    logger.error(f"Failed to load checkpoint for {model_id}: {checkpoint_error}")
 
             trainer = InteractiveTrainer(model)
 
@@ -209,14 +222,24 @@ class AppStateManager:
                     valid_mask = (serials >= 0) & (serials < x_train.shape[0])
                     labels_array[serials[valid_mask]] = label_values[valid_mask].astype(float)
 
-            # Get predictions
+            # Get predictions with error handling
+            prediction_error = None
             if FAST_DASHBOARD_MODE:
                 latent = np.zeros((preview_n, model.config.latent_dim), dtype=np.float32)
                 recon = np.zeros_like(x_train)
                 pred_classes = np.zeros(preview_n, dtype=np.int32)
                 pred_certainty = np.zeros(preview_n, dtype=np.float32)
             else:
-                latent, recon, pred_classes, pred_certainty = model.predict(x_train)
+                try:
+                    latent, recon, pred_classes, pred_certainty = model.predict(x_train)
+                except Exception as e:
+                    prediction_error = str(e)
+                    logger.error(f"Prediction failed for {model_id}: {prediction_error}")
+                    # Fallback to zeros
+                    latent = np.zeros((x_train.shape[0], model.config.latent_dim), dtype=np.float32)
+                    recon = np.zeros_like(x_train)
+                    pred_classes = np.zeros(x_train.shape[0], dtype=np.int32)
+                    pred_certainty = np.zeros(x_train.shape[0], dtype=np.float32)
 
             hover_metadata = _build_hover_metadata(pred_classes, pred_certainty, labels_array, true_labels)
 
@@ -233,10 +256,19 @@ class AppStateManager:
                 version=0
             )
 
+            # Build initial status messages with any errors/warnings
+            initial_messages = []
+            if checkpoint_error and not weights_loaded:
+                initial_messages.append(f"⚠️ WARNING: {checkpoint_error}")
+                initial_messages.append("Model loaded with random weights. Training from scratch required.")
+            elif prediction_error:
+                initial_messages.append(f"⚠️ WARNING: Prediction failed - {prediction_error}")
+                initial_messages.append("Using zero predictions. Model may need retraining.")
+
             training_status = TrainingStatus(
                 state=TrainingState.IDLE,
                 target_epochs=0,
-                status_messages=[],
+                status_messages=initial_messages,
                 thread=None
             )
 

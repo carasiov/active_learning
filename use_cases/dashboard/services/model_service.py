@@ -182,9 +182,23 @@ class ModelService:
             # Initialize model
             model = SSVAE(input_dim=(28, 28), config=config)
             checkpoint_path = self._manager.checkpoint_path(request.model_id)
+            weights_loaded = False
+            checkpoint_error = None
+
             if checkpoint_path.exists():
-                model.load_model_weights(str(checkpoint_path))
-                model.weights_path = str(checkpoint_path)
+                try:
+                    model.load_model_weights(str(checkpoint_path))
+                    model.weights_path = str(checkpoint_path)
+                    weights_loaded = True
+                except Exception as e:
+                    # Architecture mismatch or corrupt checkpoint
+                    checkpoint_error = str(e)
+                    if "ScopeParamShapeError" in str(type(e).__name__):
+                        checkpoint_error = (
+                            f"Architecture mismatch: Checkpoint was trained with different model architecture. "
+                            f"Config may be missing or incorrect. Original error: {e}"
+                        )
+                    # Continue with uninitialized model rather than crashing
 
             trainer = InteractiveTrainer(model)
 
@@ -233,9 +247,27 @@ class ModelService:
                 dataset_total_samples=x_train.shape[0],
             )
 
-            # Get predictions
-            latent, recon, pred_classes, pred_certainty = model.predict(x_train)
-            hover_metadata = _build_hover_metadata(pred_classes, pred_certainty, labels_array, true_labels)
+            # Get predictions - with fallback for uninitialized/incompatible models
+            prediction_error = None
+            try:
+                latent, recon, pred_classes, pred_certainty = model.predict(x_train)
+                hover_metadata = _build_hover_metadata(pred_classes, pred_certainty, labels_array, true_labels)
+            except Exception as e:
+                # Prediction failed - create zero/dummy predictions
+                prediction_error = str(e)
+                if not weights_loaded and checkpoint_error:
+                    prediction_error = f"Cannot generate predictions: {checkpoint_error}"
+
+                # Create dummy predictions
+                n_samples = x_train.shape[0]
+                latent = np.zeros((n_samples, config.latent_dim), dtype=np.float32)
+                recon = np.zeros_like(x_train)
+                pred_classes = np.zeros(n_samples, dtype=np.int32)
+                pred_certainty = np.zeros(n_samples, dtype=np.float32)
+                hover_metadata = [
+                    f"Sample {i} | Error: Model incompatible"
+                    for i in range(n_samples)
+                ]
 
             # Load history and runs
             history = self._manager.load_history(request.model_id)
@@ -254,10 +286,19 @@ class ModelService:
                 version=0
             )
 
+            # Build initial status messages with any errors/warnings
+            initial_messages = []
+            if checkpoint_error and not weights_loaded:
+                initial_messages.append(f"⚠️ WARNING: {checkpoint_error}")
+                initial_messages.append("Model loaded with random weights. Training from scratch required.")
+            elif prediction_error:
+                initial_messages.append(f"⚠️ WARNING: {prediction_error}")
+                initial_messages.append("Predictions unavailable. Model may need retraining.")
+
             training_status = TrainingStatus(
                 state=TrainingState.IDLE,
                 target_epochs=0,
-                status_messages=[],
+                status_messages=initial_messages,
                 thread=None
             )
 
