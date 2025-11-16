@@ -184,7 +184,7 @@ def train_worker_hub(num_epochs: int) -> None:
                     thread=None,
                     stop_requested=False
                 )
-                dashboard_state.state_manager.state = dashboard_state.state_manager.state.with_active_model(updated_model)
+                dashboard_state.state_manager.update_state(dashboard_state.state_manager.state.with_active_model(updated_model))
 
 
 def register_training_hub_callbacks(app: Dash) -> None:
@@ -615,7 +615,7 @@ def register_training_hub_callbacks(app: Dash) -> None:
                     updated_model = dashboard_state.state_manager.state.active_model.with_training(
                         thread=worker
                     )
-                    dashboard_state.state_manager.state = dashboard_state.state_manager.state.with_active_model(updated_model)
+                    dashboard_state.state_manager.update_state(dashboard_state.state_manager.state.with_active_model(updated_model))
             worker.start()
             _append_status_message(message)
         except Exception as exc:
@@ -628,7 +628,7 @@ def register_training_hub_callbacks(app: Dash) -> None:
                         thread=None,
                         stop_requested=False
                     )
-                    dashboard_state.state_manager.state = dashboard_state.state_manager.state.with_active_model(updated_model)
+                    dashboard_state.state_manager.update_state(dashboard_state.state_manager.state.with_active_model(updated_model))
             _append_status_message(f"Error starting training: {exc}")
             return no_update
 
