@@ -56,6 +56,24 @@ def _configure_trainer_callbacks(trainer: InteractiveTrainer, target_epochs: int
     trainer._callbacks = base_callbacks
 
 
+def _predict_outputs(model, data: np.ndarray):
+    """Predict outputs from model, handling both mixture and non-mixture models."""
+    try:
+        mixture_mode = bool(model.config.is_mixture_based_prior())
+    except AttributeError:
+        mixture_mode = False
+
+    if mixture_mode:
+        latent_val, recon_val, preds, cert, responsibilities, pi_values = model.predict_batched(
+            data,
+            return_mixture=True,
+        )
+        return latent_val, recon_val, preds, cert, responsibilities, pi_values
+
+    latent_val, recon_val, preds, cert = model.predict_batched(data)
+    return latent_val, recon_val, preds, cert, None, None
+
+
 def train_worker_hub(num_epochs: int) -> None:
     """Background worker for Training Hub page - identical logic to main page worker."""
     try:
@@ -102,7 +120,7 @@ def train_worker_hub(num_epochs: int) -> None:
             if dashboard_state.state_manager.state.active_model is None:
                 return
             model = dashboard_state.state_manager.state.active_model.model
-        latent, recon, pred_classes, pred_certainty = model.predict(x_train)
+        latent, recon, pred_classes, pred_certainty, responsibilities, pi_values = _predict_outputs(model, x_train)
 
         with dashboard_state.state_manager.state_lock:
             if dashboard_state.state_manager.state.active_model is None:
@@ -118,6 +136,8 @@ def train_worker_hub(num_epochs: int) -> None:
             pred_classes=pred_classes,
             pred_certainty=pred_certainty,
             hover_metadata=hover_metadata,
+            responsibilities=responsibilities,
+            pi_values=pi_values,
             train_time=train_time,
             epoch_offset=run_epoch_offset,
             epochs_completed=epochs_completed,
@@ -144,8 +164,8 @@ def train_worker_hub(num_epochs: int) -> None:
                     model = dashboard_state.state_manager.state.active_model.model
                     x_train_ref = dashboard_state.state_manager.state.active_model.data.x_train
                 x_train = np.array(x_train_ref)
-                latent, recon, pred_classes, pred_certainty = model.predict(x_train)
-                
+                latent, recon, pred_classes, pred_certainty, responsibilities, pi_values = _predict_outputs(model, x_train)
+
                 with dashboard_state.state_manager.state_lock:
                     if dashboard_state.state_manager.state.active_model is None:
                         return
@@ -153,13 +173,15 @@ def train_worker_hub(num_epochs: int) -> None:
                     true_labels = dashboard_state.state_manager.state.active_model.data.true_labels
                     total_epochs = len(dashboard_state.state_manager.state.active_model.history.epochs)
                 hover_metadata = _build_hover_metadata(pred_classes, pred_certainty, labels_latest, true_labels)
-                
+
                 command = CompleteTrainingCommand(
                     latent=latent,
                     reconstructed=recon,
                     pred_classes=pred_classes,
                     pred_certainty=pred_certainty,
                     hover_metadata=hover_metadata,
+                    responsibilities=responsibilities,
+                    pi_values=pi_values,
                     epoch_offset=run_epoch_offset,
                     epochs_completed=max(0, total_epochs - run_epoch_offset),
                 )
