@@ -125,14 +125,18 @@ def build_dashboard_layout() -> html.Div:
                         # infoteam Logo (left)
                         html.Div(
                             [
-                                html.Img(
-                                    src="/assets/infoteam_logo_basic.png",
-                                    alt="infoteam software",
-                                    style={
-                                        "height": "50px",
-                                        "width": "auto",
-                                        "display": "block",
-                                    },
+                                dcc.Link(
+                                    html.Img(
+                                        src="/assets/infoteam_logo_basic.png",
+                                        alt="infoteam software",
+                                        style={
+                                            "height": "50px",
+                                            "width": "auto",
+                                            "display": "block",
+                                        },
+                                    ),
+                                    href="/",
+                                    style={"textDecoration": "none", "display": "block"},
                                 ),
                             ],
                             style={"display": "inline-block", "marginRight": "32px"},

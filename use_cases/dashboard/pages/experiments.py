@@ -34,57 +34,84 @@ def build_experiments_layout() -> html.Div:
             dcc.Location(id="experiments-url", refresh=False),
             dcc.Store(id="experiments-run-data", data=runs),
             dcc.Store(id="experiments-model-list", data=available_models),
-            html.Div(
-                [
-                    html.Div(
-                        [
-                            html.H1(
-                                "Experiment Browser",
-                                style={
-                                    "fontSize": "26px",
+
+            # Header with logo and red accent bar
+            html.Div([
+                # Top header with logo
+                html.Div(
+                    [
+                        # infoteam Logo (left)
+                        html.Div(
+                            [
+                                dcc.Link(
+                                    html.Img(
+                                        src="/assets/infoteam_logo_basic.png",
+                                        alt="infoteam software",
+                                        style={
+                                            "height": "50px",
+                                            "width": "auto",
+                                            "display": "block",
+                                        },
+                                    ),
+                                    href="/",
+                                    style={"textDecoration": "none", "display": "block"},
+                                ),
+                            ],
+                            style={"display": "inline-block", "marginRight": "32px"},
+                        ),
+                        # Title (right)
+                        html.Div(
+                            [
+                                html.H1("Experiment Browser", style={
+                                    "fontSize": "24px",
                                     "fontWeight": "700",
                                     "margin": "0",
                                     "color": "#000000",
-                                },
-                            ),
-                            html.Div(
-                                "Review training runs by model",
-                                style={
+                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                }),
+                                html.Div("Review training runs by model", style={
                                     "fontSize": "15px",
                                     "color": "#6F6F6F",
-                                    "marginTop": "4px",
-                                },
-                            ),
-                            html.Div(
-                                id="experiments-filter-indicator",
-                                style={
-                                    "fontSize": "13px",
-                                    "color": "#45717A",
-                                    "marginTop": "8px",
-                                    "fontWeight": "600",
-                                },
-                            ),
-                        ],
-                        style={"display": "inline-block"},
-                    ),
+                                    "marginTop": "2px",
+                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                }),
+                            ],
+                            style={
+                                "display": "inline-block",
+                                "marginLeft": "0",
+                                "verticalAlign": "middle",
+                            },
+                        ),
+                    ],
+                    style={
+                        "padding": "16px 32px",
+                        "backgroundColor": "#ffffff",
+                        "display": "flex",
+                        "alignItems": "center",
+                    },
+                ),
+                # Red accent bar (infoteam brand element)
+                html.Div(style={
+                    "height": "4px",
+                    "backgroundColor": "#C10A27",
+                    "width": "100%",
+                }),
+            ]),
+
+            # Filter indicator bar
+            html.Div(
+                [
                     html.Div(
-                        [
-                            dcc.Link(
-                                "← Back to Home",
-                                href="/",
-                                style={
-                                    "fontSize": "14px",
-                                    "fontWeight": "600",
-                                    "color": "#C10A27",
-                                    "textDecoration": "none",
-                                },
-                            )
-                        ],
-                        style={"float": "right", "marginTop": "8px"},
+                        id="experiments-filter-indicator",
+                        style={
+                            "fontSize": "13px",
+                            "color": "#45717A",
+                            "fontWeight": "600",
+                        },
                     ),
                 ],
                 style={
-                    "padding": "24px 48px 16px 48px",
+                    "padding": "12px 48px",
                     "backgroundColor": "#ffffff",
                     "borderBottom": "1px solid #E5E5E5",
                 },

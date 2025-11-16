@@ -30,10 +30,14 @@ def build_home_layout() -> html.Div:
                 [
                     html.Div(
                         [
-                            html.Img(
-                                src="/assets/infoteam_logo_basic.png",
-                                alt="infoteam software",
-                                style={"height": "50px", "width": "auto"},
+                            dcc.Link(
+                                html.Img(
+                                    src="/assets/infoteam_logo_basic.png",
+                                    alt="infoteam software",
+                                    style={"height": "50px", "width": "auto"},
+                                ),
+                                href="/",
+                                style={"textDecoration": "none", "display": "block"},
                             ),
                         ],
                         style={"display": "inline-block", "marginRight": "32px"},
@@ -138,10 +142,14 @@ def _build_empty_state() -> html.Div:
                 [
                     html.Div(
                         [
-                            html.Img(
-                                src="/assets/infoteam_logo_basic.png",
-                                alt="infoteam software",
-                                style={"height": "50px", "width": "auto"},
+                            dcc.Link(
+                                html.Img(
+                                    src="/assets/infoteam_logo_basic.png",
+                                    alt="infoteam software",
+                                    style={"height": "50px", "width": "auto"},
+                                ),
+                                href="/",
+                                style={"textDecoration": "none", "display": "block"},
                             ),
                         ],
                         style={"display": "inline-block", "marginRight": "32px"},
