@@ -7,7 +7,6 @@ from pathlib import Path
 
 from dash import dcc, html
 import dash_bootstrap_components as dbc
-import numpy as np
 
 # Ensure repository imports work
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -19,6 +18,52 @@ if str(ROOT_DIR) not in sys.path:
 
 from use_cases.dashboard.core import state as dashboard_state
 from use_cases.dashboard.core.model_manager import ModelManager
+from use_cases.dashboard.core.config_metadata import get_field_specs, FieldSpec
+from typing import Dict, Any
+import dataclasses
+
+
+# Build a lookup for metadata fields by key
+_FIELD_BY_KEY: Dict[str, FieldSpec] = {spec.key: spec for spec in get_field_specs()}
+
+
+def _render_quick_control(
+    field_key: str,
+    custom_id: str,
+    config: Any,
+    label_style: Dict[str, Any],
+    input_style: Dict[str, Any],
+) -> html.Div:
+    """Render a training control from metadata with a custom component ID.
+
+    This allows the Training Hub to use metadata-driven controls while keeping
+    its own component IDs for callback compatibility.
+    """
+    spec = _FIELD_BY_KEY[field_key]
+    config_dict = dataclasses.asdict(config)
+    value = spec.extract_value(config_dict)
+
+    # Build the input control based on metadata type
+    props = dict(spec.props)
+    if spec.control == "number":
+        control = dcc.Input(
+            id=custom_id,
+            type="number",
+            value=value,
+            debounce=True,
+            style=input_style,
+            **props,
+        )
+    else:
+        raise ValueError(f"Quick controls only support 'number' type, got: {spec.control}")
+
+    return html.Div(
+        [
+            html.Label(spec.label, style=label_style),
+            control,
+        ],
+        style={"marginBottom": "12px"},
+    )
 
 
 def build_training_hub_layout() -> html.Div:
@@ -36,7 +81,6 @@ def build_training_hub_layout() -> html.Div:
         
         config = dashboard_state.app_state.active_model.config
         training_state = dashboard_state.app_state.active_model.training.state
-        target_epochs = dashboard_state.app_state.active_model.training.target_epochs or 10
         status_messages = list(dashboard_state.app_state.active_model.training.status_messages)
         latent_version = dashboard_state.app_state.active_model.data.version
         model_id = dashboard_state.app_state.active_model.model_id
@@ -140,10 +184,14 @@ def build_training_hub_layout() -> html.Div:
                     [
                         html.Div(
                             [
-                                html.Img(
-                                    src="/assets/infoteam_logo_basic.png",
-                                    alt="infoteam software",
-                                    style={"height": "50px", "width": "auto", "display": "block"},
+                                dcc.Link(
+                                    html.Img(
+                                        src="/assets/infoteam_logo_basic.png",
+                                        alt="infoteam software",
+                                        style={"height": "50px", "width": "auto", "display": "block"},
+                                    ),
+                                    href="/",
+                                    style={"textDecoration": "none", "display": "block"},
                                 ),
                             ],
                             style={"display": "inline-block", "marginRight": "32px"},
@@ -253,36 +301,27 @@ def build_training_hub_layout() -> html.Div:
                                         "fontFamily": "'Open Sans', Verdana, sans-serif",
                                     }),
                                     
-                                    # Epochs input
-                                    html.Div(
-                                        [
-                                            html.Label("Epochs", style={
-                                                "fontSize": "14px",
-                                                "color": "#6F6F6F",
-                                                "display": "block",
-                                                "marginBottom": "6px",
-                                                "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                                "fontWeight": "600",
-                                            }),
-                                            dcc.Input(
-                                                id="training-hub-epochs",
-                                                type="number",
-                                                min=1,
-                                                max=200,
-                                                step=1,
-                                                value=target_epochs,
-                                                debounce=True,
-                                                style={
-                                                    "width": "100%",
-                                                    "padding": "10px 12px",
-                                                    "fontSize": "14px",
-                                                    "border": "1px solid #C6C6C6",
-                                                    "borderRadius": "6px",
-                                                    "fontFamily": "ui-monospace, monospace",
-                                                },
-                                            ),
-                                        ],
-                                        style={"marginBottom": "16px"},
+                                    # Epochs input (metadata-driven)
+                                    _render_quick_control(
+                                        field_key="max_epochs",
+                                        custom_id="training-hub-epochs",
+                                        config=config,
+                                        label_style={
+                                            "fontSize": "14px",
+                                            "color": "#6F6F6F",
+                                            "display": "block",
+                                            "marginBottom": "6px",
+                                            "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                            "fontWeight": "600",
+                                        },
+                                        input_style={
+                                            "width": "100%",
+                                            "padding": "10px 12px",
+                                            "fontSize": "14px",
+                                            "border": "1px solid #C6C6C6",
+                                            "borderRadius": "6px",
+                                            "fontFamily": "ui-monospace, monospace",
+                                        },
                                     ),
                                     
                                     # Essential Parameters (Collapsible)
@@ -314,96 +353,70 @@ def build_training_hub_layout() -> html.Div:
                                             ),
                                             html.Div(
                                                 [
-                                                    # Learning Rate
-                                                    html.Div(
-                                                        [
-                                                            html.Label("Learning Rate", style={
-                                                                "fontSize": "13px",
-                                                                "color": "#6F6F6F",
-                                                                "display": "block",
-                                                                "marginBottom": "4px",
-                                                                "fontWeight": "600",
-                                                            }),
-                                                            dcc.Input(
-                                                                id="training-hub-lr",
-                                                                type="number",
-                                                                min=0.0001,
-                                                                max=0.01,
-                                                                step=0.0001,
-                                                                value=float(np.clip(config.learning_rate, 0.0001, 0.01)),
-                                                                debounce=True,
-                                                                style={
-                                                                    "width": "100%",
-                                                                    "padding": "8px 10px",
-                                                                    "fontSize": "13px",
-                                                                    "border": "1px solid #C6C6C6",
-                                                                    "borderRadius": "6px",
-                                                                    "fontFamily": "ui-monospace, monospace",
-                                                                },
-                                                            ),
-                                                        ],
-                                                        style={"marginBottom": "12px"},
+                                                    # Learning Rate (metadata-driven)
+                                                    _render_quick_control(
+                                                        field_key="learning_rate",
+                                                        custom_id="training-hub-lr",
+                                                        config=config,
+                                                        label_style={
+                                                            "fontSize": "13px",
+                                                            "color": "#6F6F6F",
+                                                            "display": "block",
+                                                            "marginBottom": "4px",
+                                                            "fontWeight": "600",
+                                                        },
+                                                        input_style={
+                                                            "width": "100%",
+                                                            "padding": "8px 10px",
+                                                            "fontSize": "13px",
+                                                            "border": "1px solid #C6C6C6",
+                                                            "borderRadius": "6px",
+                                                            "fontFamily": "ui-monospace, monospace",
+                                                        },
                                                     ),
                                                     
-                                                    # Recon Weight
-                                                    html.Div(
-                                                        [
-                                                            html.Label("Reconstruction Weight", style={
-                                                                "fontSize": "13px",
-                                                                "color": "#6F6F6F",
-                                                                "display": "block",
-                                                                "marginBottom": "4px",
-                                                                "fontWeight": "600",
-                                                            }),
-                                                            dcc.Input(
-                                                                id="training-hub-recon",
-                                                                type="number",
-                                                                min=0,
-                                                                max=5000,
-                                                                step=50,
-                                                                value=float(np.clip(config.recon_weight, 0, 5000)),
-                                                                debounce=True,
-                                                                style={
-                                                                    "width": "100%",
-                                                                    "padding": "8px 10px",
-                                                                    "fontSize": "13px",
-                                                                    "border": "1px solid #C6C6C6",
-                                                                    "borderRadius": "6px",
-                                                                    "fontFamily": "ui-monospace, monospace",
-                                                                },
-                                                            ),
-                                                        ],
-                                                        style={"marginBottom": "12px"},
+                                                    # Recon Weight (metadata-driven)
+                                                    _render_quick_control(
+                                                        field_key="recon_weight",
+                                                        custom_id="training-hub-recon",
+                                                        config=config,
+                                                        label_style={
+                                                            "fontSize": "13px",
+                                                            "color": "#6F6F6F",
+                                                            "display": "block",
+                                                            "marginBottom": "4px",
+                                                            "fontWeight": "600",
+                                                        },
+                                                        input_style={
+                                                            "width": "100%",
+                                                            "padding": "8px 10px",
+                                                            "fontSize": "13px",
+                                                            "border": "1px solid #C6C6C6",
+                                                            "borderRadius": "6px",
+                                                            "fontFamily": "ui-monospace, monospace",
+                                                        },
                                                     ),
                                                     
-                                                    # KL Weight
-                                                    html.Div(
-                                                        [
-                                                            html.Label("KL Weight", style={
-                                                                "fontSize": "13px",
-                                                                "color": "#6F6F6F",
-                                                                "display": "block",
-                                                                "marginBottom": "4px",
-                                                                "fontWeight": "600",
-                                                            }),
-                                                            dcc.Input(
-                                                                id="training-hub-kl",
-                                                                type="number",
-                                                                min=0.0,
-                                                                max=1.0,
-                                                                step=0.01,
-                                                                value=float(np.clip(config.kl_weight, 0, 1)),
-                                                                debounce=True,
-                                                                style={
-                                                                    "width": "100%",
-                                                                    "padding": "8px 10px",
-                                                                    "fontSize": "13px",
-                                                                    "border": "1px solid #C6C6C6",
-                                                                    "borderRadius": "6px",
-                                                                    "fontFamily": "ui-monospace, monospace",
-                                                                },
-                                                            ),
-                                                        ],
+                                                    # KL Weight (metadata-driven)
+                                                    _render_quick_control(
+                                                        field_key="kl_weight",
+                                                        custom_id="training-hub-kl",
+                                                        config=config,
+                                                        label_style={
+                                                            "fontSize": "13px",
+                                                            "color": "#6F6F6F",
+                                                            "display": "block",
+                                                            "marginBottom": "4px",
+                                                            "fontWeight": "600",
+                                                        },
+                                                        input_style={
+                                                            "width": "100%",
+                                                            "padding": "8px 10px",
+                                                            "fontSize": "13px",
+                                                            "border": "1px solid #C6C6C6",
+                                                            "borderRadius": "6px",
+                                                            "fontFamily": "ui-monospace, monospace",
+                                                        },
                                                     ),
                                                 ],
                                                 id="training-hub-params-content",

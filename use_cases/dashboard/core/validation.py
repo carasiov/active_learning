@@ -105,6 +105,7 @@ def build_validation_layout() -> html.Div:
         ),
         dcc.Download(id="training-hub-terminal-download"),
         html.Div(id="home-create-feedback"),
+        html.Div(id="home-delete-feedback"),
         html.Div(id="home-unlabeled-preview"),
         dbc.Modal(
             [
@@ -123,10 +124,14 @@ def build_validation_layout() -> html.Div:
         html.Div(id="run-history-list"),
         dcc.Location(id="experiments-url"),
         dcc.Store(id="experiments-run-data"),
-        dcc.Dropdown(id="experiments-run-selector", options=[], value=None),
+        dcc.Store(id="experiments-model-list"),
+        dcc.Dropdown(id="experiments-tag-filter", options=[], value=None),
+        dbc.Button("Refresh", id="experiments-refresh-btn"),
+        html.Div(id="experiments-model-list-ui"),
         html.Div(id="experiments-run-list"),
         html.Div(id="experiments-run-detail"),
         html.Div(id="experiments-filter-indicator"),
+        html.Div(id="config-feedback"),
     ]
 
     return html.Div(field_components + shared_components, style={"display": "none"})

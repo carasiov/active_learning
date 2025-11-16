@@ -60,31 +60,40 @@ This note captures the current status of the interactive dashboard and its suppo
 
 ## 3. Known Gaps
 
-1. **Callback validation warnings**: Need placeholder components in `validation_layout` to silence Dash warnings when switching pages.
-2. **Configuration coverage**: UI does not expose every backend option (priors, decoders, losses).
+1. ~~**Callback validation warnings**~~: ✅ **Completed November 2025** - Added all missing placeholders to `validation_layout`.
+2. ~~**Configuration coverage**~~: ✅ **Completed November 2025** - Full metadata-driven config UI in `pages/training.py` and Training Hub now exposes all backend options via `core/config_metadata.py`.
 3. **Run comparison tooling**: Experiment browser lacks side-by-side comparisons, tagging, filtering.
-4. **Label provenance**: Runs capture label version, but UI doesn’t visualise label history or diffs.
+4. **Label provenance**: Runs capture label version, but UI doesn't visualise label history or diffs.
 
 ---
 
 ## 4. Roadmap (Proposed)
 
-### 4.1 Platform Hardening
-- Define `validation_layout` placeholders for all callback IDs.
-- Consider page-specific callback modules or pattern-matching IDs for better isolation.
+### 4.1 Platform Hardening ✅ **Completed November 2025**
+- ✅ Defined `validation_layout` placeholders for all callback IDs.
+- Future: Consider page-specific callback modules or pattern-matching IDs for better isolation.
 
-### 4.2 Configuration Experience Upgrade
-- Generate form controls from `core/config_metadata.py` (registry-driven metadata).
-- Organise UI into sections/tabs (Data, Architecture, Priors, Losses, Advanced).
-- Persist presets for quick setup.
+### 4.2 Configuration Experience Upgrade ✅ **Completed November 2025**
+- ✅ Generated form controls from `core/config_metadata.py` (registry-driven metadata).
+- ✅ Organized UI into sections/tabs (Data, Architecture, Priors, Losses, Advanced).
+- ✅ Refactored Training Hub quick controls to use metadata (consistent with config page).
+- Future: Persist presets for quick setup.
 
-### 4.3 Experiment Browser Enhancements
-- Add filters (tags, model, date) and comparison views.
-- Provide artifact downloads for large items.
+### 4.3 Experiment Browser with Model-Centric Organization ✅ **Completed November 2025**
+- ✅ Refactored to three-panel layout: Models | Runs | Detail.
+- ✅ Left panel shows model list with run counts and latest timestamps.
+- ✅ Middle panel shows runs filtered by selected model.
+- ✅ Right panel shows detailed run information (metrics, figures, config).
+- ✅ Tag filtering available as secondary filter within selected model.
+- ✅ Backend helpers (`get_available_models()`, `get_available_tags()`) in `core/experiment_catalog.py`.
+- ✅ URL-based navigation supports `/experiments?model=<model_id>&run=<run_id>` pattern.
+- ✅ Dynamic filter indicator shows active model and tag with result counts.
+- Future: Add date range filtering and run comparison views.
+- Future: Provide artifact downloads for large items.
 
-### 4.4 Cohesive Training History
-- Surface per-model run history in main dashboard (timeline/cards).
-- Link runs to experiment browser entries and label versions.
+### 4.4 Cohesive Training History ✅ **Completed November 2025**
+- ✅ Surface per-model run history in main dashboard (timeline/cards).
+- ✅ Link runs to experiment browser entries and label versions.
 
 ### 4.5 Label Versioning & Provenance
 - Version `labels.csv` or track diffs for each run.
@@ -98,10 +107,10 @@ This note captures the current status of the interactive dashboard and its suppo
 
 ## 5. Recommended Next Steps (Short Horizon)
 
-1. Implement `validation_layout` placeholders (warning cleanup).
-2. Build metadata-driven configuration UI.
-3. Enhance experiment browser with comparisons/filters.
-4. Surface run history within dashboard layout.
-5. Expose label provenance and statistics.
+1. ✅ ~~Implement `validation_layout` placeholders (warning cleanup).~~
+2. ✅ ~~Build metadata-driven configuration UI.~~
+3. ✅ ~~Enhance experiment browser with comparisons/filters.~~
+4. ✅ ~~Surface run history within dashboard layout.~~
+5. **Expose label provenance and statistics.** ← Next priority
 
 These steps move the dashboard toward being the primary interface for interactive active learning while keeping the CLI experiment pipeline aligned.
