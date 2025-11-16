@@ -66,9 +66,10 @@ This keeps the loop tight and avoids regressions.
 
 ## Future Checklist Ideas
 
+- **Validation layout cleanup (Completed November 2025):** Added missing component IDs (`home-delete-feedback`, `config-feedback`) to `core/validation.py` to eliminate Dash "nonexistent ID" warnings. All callback outputs now have corresponding placeholders in the validation layout.
 - Expand dashboard docs folder with targeted tutorials (e.g., adding a training metric).
 - Automate end-to-end smoke tests for the dashboard (start training → view history).
 - Consider surfacing a UI toggle for `DASHBOARD_LOG_LEVEL` presets to ease debugging.
-- Work from the short-horizon priorities in [`dashboard_state_plan.md`](dashboard_state_plan.md) (UI warning cleanup, config upgrade, experiment compare tools, run history surfacing, label provenance).
+- Work from the short-horizon priorities in [`dashboard_state_plan.md`](dashboard_state_plan.md) (config upgrade, experiment compare tools, run history surfacing, label provenance).
 
 Keep this file handy when starting a fresh session so we can pick up momentum immediately.

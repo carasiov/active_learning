@@ -105,6 +105,7 @@ def build_validation_layout() -> html.Div:
         ),
         dcc.Download(id="training-hub-terminal-download"),
         html.Div(id="home-create-feedback"),
+        html.Div(id="home-delete-feedback"),
         html.Div(id="home-unlabeled-preview"),
         dbc.Modal(
             [
@@ -127,6 +128,7 @@ def build_validation_layout() -> html.Div:
         html.Div(id="experiments-run-list"),
         html.Div(id="experiments-run-detail"),
         html.Div(id="experiments-filter-indicator"),
+        html.Div(id="config-feedback"),
     ]
 
     return html.Div(field_components + shared_components, style={"display": "none"})
