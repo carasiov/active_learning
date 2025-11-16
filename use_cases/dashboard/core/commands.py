@@ -290,15 +290,24 @@ class StartTrainingCommand(Command):
         """Validate training can start."""
         if state.active_model is None:
             return "No model loaded"
-        
-        # Check not already training
+
+        # Check not already training (explicit state check for better debugging)
+        training_state = state.active_model.training.state
         if state.active_model.training.is_active():
-            return "Training already in progress"
-        
+            return f"Training already in progress (state: {training_state.name})"
+
+        # Extra safety: check thread is not running
+        if state.active_model.training.thread is not None and state.active_model.training.thread.is_alive():
+            logger.warning(
+                f"Training thread still alive but state={training_state.name}, "
+                f"model={state.active_model.model_id}"
+            )
+            return "Training thread still active (please wait for it to complete)"
+
         # Validate epochs
         if self.num_epochs < 1 or self.num_epochs > 200:
             return f"Epochs must be between 1 and 200, got {self.num_epochs}"
-        
+
         # Validate hyperparameters
         if self.recon_weight < 0:
             return "Reconstruction weight must be non-negative"
@@ -306,7 +315,7 @@ class StartTrainingCommand(Command):
             return "KL weight must be between 0 and 10"
         if self.learning_rate <= 0 or self.learning_rate > 0.1:
             return "Learning rate must be between 0.00001 and 0.1"
-        
+
         return None  # Valid
     
     def execute(self, state: AppState, services: Any) -> Tuple[AppState, str]:

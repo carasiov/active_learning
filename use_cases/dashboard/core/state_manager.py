@@ -39,8 +39,10 @@ from use_cases.dashboard.core.state_models import (  # noqa: E402
 )
 from use_cases.dashboard.core.commands import CommandDispatcher  # noqa: E402
 from use_cases.dashboard.services import ServiceContainer  # noqa: E402
+from use_cases.dashboard.core.logging_config import get_logger  # noqa: E402
 
 
+logger = get_logger('state_manager')
 MAX_STATUS_MESSAGES = 10
 PREVIEW_SAMPLE_LIMIT = 2048  # Limit dataset size when loading models for dashboard
 FAST_DASHBOARD_MODE = os.environ.get("DASHBOARD_FAST_MODE", "1").lower() not in {"0", "false", "no"}
@@ -98,6 +100,17 @@ class AppStateManager:
             new_state: New application state to set
         """
         with self._state_lock:
+            # Log training state transitions for debugging
+            if self._state and self._state.active_model and new_state.active_model:
+                old_training_state = self._state.active_model.training.state
+                new_training_state = new_state.active_model.training.state
+                if old_training_state != new_training_state:
+                    model_id = new_state.active_model.model_id
+                    logger.info(
+                        f"Training state transition | model={model_id} | "
+                        f"{old_training_state.name} → {new_training_state.name}"
+                    )
+
             self._state = new_state
 
     def initialize(self) -> None:

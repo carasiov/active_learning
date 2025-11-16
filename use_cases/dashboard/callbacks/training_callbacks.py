@@ -223,20 +223,37 @@ def train_worker(num_epochs: int) -> None:
     logger.info("Training worker started | target_epochs=%s", num_epochs)
 
     def _predict_outputs(model, data: np.ndarray):
+        """Predict outputs, handling both mixture and non-mixture models safely."""
         try:
             mixture_mode = bool(model.config.is_mixture_based_prior())
         except AttributeError:
+            logger.warning("Could not determine if model is mixture-based, assuming non-mixture")
             mixture_mode = False
 
-        if mixture_mode:
-            latent_val, recon_val, preds, cert, responsibilities, pi_values = model.predict_batched(
-                data,
-                return_mixture=True,
-            )
-            return latent_val, recon_val, preds, cert, responsibilities, pi_values
+        try:
+            if mixture_mode:
+                result = model.predict_batched(data, return_mixture=True)
+                if len(result) != 6:
+                    logger.error(f"Expected 6 outputs from mixture model, got {len(result)}")
+                    raise ValueError("Invalid mixture model output")
+                latent_val, recon_val, preds, cert, responsibilities, pi_values = result
 
-        latent_val, recon_val, preds, cert = model.predict_batched(data)
-        return latent_val, recon_val, preds, cert, None, None
+                # Validate shapes
+                if responsibilities is not None and responsibilities.shape[0] != data.shape[0]:
+                    logger.error(
+                        f"Responsibilities shape mismatch: {responsibilities.shape[0]} != {data.shape[0]}"
+                    )
+                    responsibilities = None
+                    pi_values = None
+
+                return latent_val, recon_val, preds, cert, responsibilities, pi_values
+
+            latent_val, recon_val, preds, cert = model.predict_batched(data)
+            return latent_val, recon_val, preds, cert, None, None
+
+        except Exception as e:
+            logger.exception(f"Error in _predict_outputs: {e}")
+            raise
 
     try:
         with dashboard_state.state_manager.state_lock:
