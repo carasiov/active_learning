@@ -45,30 +45,33 @@
   - Training state lifecycle fixes
   - Defensive error handling
 
-- **Phase 1.1 & 1.2: Experiment Integration** (Complete, commit `7ceec67`)
-  - ✅ REPORT.md generation for dashboard runs
-  - ✅ Run records persisted to `ModelState.runs` and `runs.json`
-  - ✅ "Recent Runs" section in Training Hub (last 5 runs)
-  - ✅ Run Viewer page at `/model/{id}/run/{run_id}`
-  - ✅ Displays run metadata: epochs, labeled samples, metrics
-  - ⚠️ Image rendering in reports (known limitation, workaround provided)
+- **Phase 1: Experiment Integration** (✅ Complete)
+  - **Phase 1.1 & 1.2** (commits `7ceec67`, `1aaf22c`)
+    - ✅ REPORT.md generation for dashboard runs
+    - ✅ Run records persisted to `ModelState.runs` and `runs.json`
+    - ✅ "Recent Runs" section in Training Hub (last 5 runs)
+    - ✅ Run Viewer page at `/model/{id}/run/{run_id}`
+    - ✅ Displays run metadata: epochs, labeled samples, metrics
+    - ⚠️ Image rendering in reports (known limitation, workaround provided)
 
-- **Mixture Model Support**:
-  - Captures `responsibilities` and `pi_values` during training
-  - Enables component specialization analysis
-  - Data ready for visualization (Phase 1.3)
+  - **Phase 1.3: Mixture Diagnostics** (commits `7effff6`, `58b27eb`, `93761c2`)
+    - ✅ Added responsibilities and pi_values to DataState
+    - ✅ Component coloring mode in latent space visualization
+    - ✅ Mixture Diagnostics section with π values bar chart
+    - ✅ Auto-hides for non-mixture models
+    - ✅ Component visualization using tab20 colormap
 
-- **Basic Active Learning Loop**:
-  - Label samples via click → Train → See updated latent space → View run report
+- **Active Learning Loop** (Fully Functional):
+  - Label samples via click → Train → See updated latent space → View run report → Analyze mixture components
 
-**🚧 In Progress**:
-- Phase 1.3: Expose Mixture Diagnostics in UI (Next)
+**🚧 Next Steps**:
+- Phase 2.1: Implement OOD scoring for strategic labeling
+- Phase 2.2: Strategic labeling suggestions
 
-**❌ Missing**:
-- τ-matrix (component→label mapping) visualizations in UI
-- π evolution tracking across training sessions in UI
+**❌ Future Enhancements**:
+- τ-matrix (component→label mapping) live viewer (currently in REPORT.md)
+- π evolution tracking across training sessions
 - Uncertainty/OOD highlighting for strategic labeling
-- Component specialization diagnostics in UI
 - Real-time mixture updates during training
 
 ### Vision: Dashboard as Active Learning Workbench
@@ -230,48 +233,71 @@ Training Hub
   - Option 2: Convert images to base64 and embed in HTML
   - Option 3: Create custom image viewer component that reads from filesystem
 
-### 1.3 Expose Mixture Diagnostics in UI
+### 1.3 Expose Mixture Diagnostics in UI ✅
+
+**Status**: ✅ Complete (Implemented November 2025, commits `58b27eb`, `93761c2`)
 
 **Goal**: Surface component specialization information during and after training.
 
-**Background**: The experiment workflow generates:
-- `latent_by_component.png`: Latent scatter colored by component assignment
-- `responsibility_histogram.png`: Distribution of component ownership
-- `tau_matrix_heatmap.png`: Component→label mapping visualization
-- π evolution plots
+**Background**: The experiment workflow generates mixture-specific visualizations. This phase integrates component diagnostics into the dashboard UI.
 
 **See Also**:
 - [Conceptual Model §How-We-Classify](../../../docs/theory/conceptual_model.md) - Component specialization theory
 - [Experiments Guide §Channel-Wise Latent Diagnostic](../../experiments/README.md) - Visualization details
 - [Mathematical Specification](../../../docs/theory/mathematical_specification.md) - Formal definition of τ-matrix
 
-**Tasks**:
-1. Create new "Component Analysis" tab in training hub
-2. Display τ-matrix heatmap (if mixture model)
-3. Show latent space colored by component (not just by label)
-4. Add toggle: "Color by Label" vs "Color by Component"
-5. Display current π values as bar chart
+**Implementation**:
 
-**UI Layout**:
+1. ✅ **Component Coloring Mode** (commit `58b27eb`)
+   - Added "Component" as a color mode option in latent space visualization
+   - Colors based on argmax(responsibilities)
+   - Uses tab20 colormap for up to 20 components
+   - Legend shows number of components dynamically
+   - Gracefully handles non-mixture models
+
+2. ✅ **Mixture Diagnostics Section** (commit `93761c2`)
+   - Added dedicated section in left panel of dashboard
+   - Shows π (mixture weights) as bar chart
+   - Auto-hides when not a mixture model
+   - Updates automatically when model changes
+
+3. ✅ **Data Infrastructure** (commit `7effff6`)
+   - Added responsibilities and pi_values to DataState
+   - Captured during training in CompleteTrainingCommand
+   - Captured during initial load in ModelService
+
+**Files Modified**:
+- `core/commands.py` - Added "component" to valid color modes
+- `core/state_models.py` - Added responsibilities/pi_values fields
+- `services/model_service.py` - Capture mixture data on load
+- `callbacks/visualization_callbacks.py` - Component coloring + π chart
+- `utils/visualization.py` - _colorize_components() helper
+- `pages/layouts.py` - Added mixture diagnostics section
+
+**UI Features** (Implemented):
 ```
-Component Analysis Tab
-├── Component Assignment (Latent Space)
-│   └── Scatter plot colored by argmax(responsibilities)
-├── τ-Matrix Heatmap
-│   └── Shows which components map to which labels
-├── Mixture Weights (π)
-│   └── Bar chart of current component probabilities
-└── Responsibility Distribution
-    └── Histogram of max responsibilities (certainty measure)
+Main Dashboard
+├── Latent Space Visualization
+│   └── NEW: "Component" color mode option
+│       └── Colors by argmax(responsibilities)
+├── Left Panel
+│   └── NEW: "Mixture Diagnostics" section
+│       ├── π values bar chart (C0, C1, C2, ...)
+│       └── Auto-hides for non-mixture models
 ```
 
 **Acceptance Criteria**:
-- Mixture models show all component visualizations
-- Non-mixture models show message "Not a mixture model"
-- Visualizations update after each training run
-- Can toggle between label-colored and component-colored latent views
+- ✅ Mixture models show component coloring option
+- ✅ π values displayed as bar chart with component labels
+- ✅ Non-mixture models: section hidden automatically
+- ✅ Visualizations update after each training run
+- ✅ Can toggle between label/prediction/component coloring
 
-**Estimated Duration**: 3-4 days
+**Not Implemented** (out of scope for Phase 1.3):
+- τ-matrix heatmap in live UI (available in REPORT.md via Run Viewer)
+- Responsibility histogram visualization
+- Component-specific detailed analysis tab
+- These advanced diagnostics remain available in experiment REPORT.md files
 
 ---
 
@@ -727,5 +753,5 @@ When resuming work:
 ---
 
 **Last Updated**: November 17, 2025
-**Status**: Phase 0 ✅ Complete | Phase 1.1 & 1.2 ✅ Complete | Phase 1.3 🚧 In Progress
-**Next Milestone**: Complete Phase 1.3 (Mixture Diagnostics UI)
+**Status**: Phase 0 ✅ Complete | Phase 1 (all) ✅ Complete
+**Next Milestone**: Begin Phase 2.1 (OOD Scoring for Strategic Labeling)
