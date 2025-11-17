@@ -17,9 +17,8 @@ from rcmvae.application.runtime.interactive import InteractiveTrainer
 
 from use_cases.dashboard.utils.training_callback import DashboardMetricsCallback
 from use_cases.dashboard.core import state as dashboard_state
+from use_cases.dashboard.core.state_manager import MAX_STATUS_MESSAGES
 from use_cases.dashboard.core.state import (
-    MAX_STATUS_MESSAGES,
-    metrics_queue,
     _append_status_message,
     _clear_metrics_queue,
     _update_history_with_epoch,
@@ -53,36 +52,73 @@ def _configure_trainer_callbacks(trainer: InteractiveTrainer, target_epochs: int
                 export_history=False,
             )
         )
-    base_callbacks.append(DashboardMetricsCallback(metrics_queue, target_epochs))
+    base_callbacks.append(DashboardMetricsCallback(dashboard_state.state_manager.metrics_queue, target_epochs))
     trainer._callbacks = base_callbacks
+
+
+def _predict_outputs(model, data: np.ndarray):
+    """Predict outputs from model, handling both mixture and non-mixture models safely."""
+    from use_cases.dashboard.core.logging_config import get_logger
+    logger = get_logger('training_hub')
+
+    try:
+        mixture_mode = bool(model.config.is_mixture_based_prior())
+    except AttributeError:
+        logger.warning("Could not determine if model is mixture-based, assuming non-mixture")
+        mixture_mode = False
+
+    try:
+        if mixture_mode:
+            result = model.predict_batched(data, return_mixture=True)
+            if len(result) != 6:
+                logger.error(f"Expected 6 outputs from mixture model, got {len(result)}")
+                raise ValueError("Invalid mixture model output")
+            latent_val, recon_val, preds, cert, responsibilities, pi_values = result
+
+            # Validate shapes
+            if responsibilities is not None and responsibilities.shape[0] != data.shape[0]:
+                logger.error(
+                    f"Responsibilities shape mismatch: {responsibilities.shape[0]} != {data.shape[0]}"
+                )
+                responsibilities = None
+                pi_values = None
+
+            return latent_val, recon_val, preds, cert, responsibilities, pi_values
+
+        latent_val, recon_val, preds, cert = model.predict_batched(data)
+        return latent_val, recon_val, preds, cert, None, None
+
+    except Exception as e:
+        logger.exception(f"Error in _predict_outputs: {e}")
+        raise
 
 
 def train_worker_hub(num_epochs: int) -> None:
     """Background worker for Training Hub page - identical logic to main page worker."""
     try:
-        with dashboard_state.state_lock:
-            if dashboard_state.app_state.active_model is None:
-                metrics_queue.put({"type": "error", "message": "No model loaded."})
+        with dashboard_state.state_manager.state_lock:
+            if dashboard_state.state_manager.state.active_model is None:
+                dashboard_state.state_manager.metrics_queue.put({"type": "error", "message": "No model loaded."})
                 return
             
-            trainer: InteractiveTrainer = dashboard_state.app_state.active_model.trainer
-            x_train_ref = dashboard_state.app_state.active_model.data.x_train
-            labels_ref = dashboard_state.app_state.active_model.data.labels
-            target_epochs = int(dashboard_state.app_state.active_model.training.target_epochs or num_epochs)
-            model_id = dashboard_state.app_state.active_model.model_id
-            run_epoch_offset = len(dashboard_state.app_state.active_model.history.epochs)
+            trainer: InteractiveTrainer = dashboard_state.state_manager.state.active_model.trainer
+            x_train_ref = dashboard_state.state_manager.state.active_model.data.x_train
+            labels_ref = dashboard_state.state_manager.state.active_model.data.labels
+            target_epochs = int(dashboard_state.state_manager.state.active_model.training.target_epochs or num_epochs)
+            model_id = dashboard_state.state_manager.state.active_model.model_id
+            run_epoch_offset = len(dashboard_state.state_manager.state.active_model.history.epochs)
         
         # Get model-specific checkpoint path
         from use_cases.dashboard.core.model_manager import ModelManager
         checkpoint_path = str(ModelManager.checkpoint_path(model_id))
         
-        with dashboard_state.state_lock:
-            if dashboard_state.app_state.active_model is None:
+        with dashboard_state.state_manager.state_lock:
+            if dashboard_state.state_manager.state.active_model is None:
                 return
             _configure_trainer_callbacks(trainer, target_epochs, checkpoint_path)
 
         if x_train_ref is None or labels_ref is None:
-            metrics_queue.put({"type": "error", "message": "Training data not initialized."})
+            dashboard_state.state_manager.metrics_queue.put({"type": "error", "message": "Training data not initialized."})
             return
 
         x_train = np.array(x_train_ref)
@@ -99,17 +135,17 @@ def train_worker_hub(num_epochs: int) -> None:
         train_time = time.perf_counter() - start_time
         epochs_completed = int(len(history.get("loss", []))) if isinstance(history, dict) else target_epochs
 
-        with dashboard_state.state_lock:
-            if dashboard_state.app_state.active_model is None:
+        with dashboard_state.state_manager.state_lock:
+            if dashboard_state.state_manager.state.active_model is None:
                 return
-            model = dashboard_state.app_state.active_model.model
-        latent, recon, pred_classes, pred_certainty = model.predict(x_train)
+            model = dashboard_state.state_manager.state.active_model.model
+        latent, recon, pred_classes, pred_certainty, responsibilities, pi_values = _predict_outputs(model, x_train)
 
-        with dashboard_state.state_lock:
-            if dashboard_state.app_state.active_model is None:
+        with dashboard_state.state_manager.state_lock:
+            if dashboard_state.state_manager.state.active_model is None:
                 return
-            labels_latest = np.array(dashboard_state.app_state.active_model.data.labels, copy=True)
-            true_labels = dashboard_state.app_state.active_model.data.true_labels
+            labels_latest = np.array(dashboard_state.state_manager.state.active_model.data.labels, copy=True)
+            true_labels = dashboard_state.state_manager.state.active_model.data.true_labels
         hover_metadata = _build_hover_metadata(pred_classes, pred_certainty, labels_latest, true_labels)
 
         # Use command to update state with training results
@@ -119,19 +155,21 @@ def train_worker_hub(num_epochs: int) -> None:
             pred_classes=pred_classes,
             pred_certainty=pred_certainty,
             hover_metadata=hover_metadata,
+            responsibilities=responsibilities,
+            pi_values=pi_values,
             train_time=train_time,
             epoch_offset=run_epoch_offset,
             epochs_completed=epochs_completed,
         )
-        success, message = dashboard_state.dispatcher.execute(command)
+        success, message = dashboard_state.state_manager.dispatcher.execute(command)
 
-        with dashboard_state.state_lock:
-            if dashboard_state.app_state.active_model:
-                latent_version = dashboard_state.app_state.active_model.data.version
+        with dashboard_state.state_manager.state_lock:
+            if dashboard_state.state_manager.state.active_model:
+                latent_version = dashboard_state.state_manager.state.active_model.data.version
             else:
                 latent_version = 0
-        metrics_queue.put({"type": "latent_updated", "version": latent_version})
-        metrics_queue.put({"type": "training_complete", "history": history})
+        dashboard_state.state_manager.metrics_queue.put({"type": "latent_updated", "version": latent_version})
+        dashboard_state.state_manager.metrics_queue.put({"type": "training_complete", "history": history})
     except Exception as exc:  # pragma: no cover - defensive
         # Check if this is a user-initiated stop
         from use_cases.dashboard.utils.training_callback import TrainingStoppedException
@@ -139,53 +177,55 @@ def train_worker_hub(num_epochs: int) -> None:
             _append_status_message("Training stopped by user.")
             # Still update predictions with current state
             try:
-                with dashboard_state.state_lock:
-                    if dashboard_state.app_state.active_model is None:
+                with dashboard_state.state_manager.state_lock:
+                    if dashboard_state.state_manager.state.active_model is None:
                         return
-                    model = dashboard_state.app_state.active_model.model
-                    x_train_ref = dashboard_state.app_state.active_model.data.x_train
+                    model = dashboard_state.state_manager.state.active_model.model
+                    x_train_ref = dashboard_state.state_manager.state.active_model.data.x_train
                 x_train = np.array(x_train_ref)
-                latent, recon, pred_classes, pred_certainty = model.predict(x_train)
-                
-                with dashboard_state.state_lock:
-                    if dashboard_state.app_state.active_model is None:
+                latent, recon, pred_classes, pred_certainty, responsibilities, pi_values = _predict_outputs(model, x_train)
+
+                with dashboard_state.state_manager.state_lock:
+                    if dashboard_state.state_manager.state.active_model is None:
                         return
-                    labels_latest = np.array(dashboard_state.app_state.active_model.data.labels, copy=True)
-                    true_labels = dashboard_state.app_state.active_model.data.true_labels
-                    total_epochs = len(dashboard_state.app_state.active_model.history.epochs)
+                    labels_latest = np.array(dashboard_state.state_manager.state.active_model.data.labels, copy=True)
+                    true_labels = dashboard_state.state_manager.state.active_model.data.true_labels
+                    total_epochs = len(dashboard_state.state_manager.state.active_model.history.epochs)
                 hover_metadata = _build_hover_metadata(pred_classes, pred_certainty, labels_latest, true_labels)
-                
+
                 command = CompleteTrainingCommand(
                     latent=latent,
                     reconstructed=recon,
                     pred_classes=pred_classes,
                     pred_certainty=pred_certainty,
                     hover_metadata=hover_metadata,
+                    responsibilities=responsibilities,
+                    pi_values=pi_values,
                     epoch_offset=run_epoch_offset,
                     epochs_completed=max(0, total_epochs - run_epoch_offset),
                 )
-                dashboard_state.dispatcher.execute(command)
+                dashboard_state.state_manager.dispatcher.execute(command)
                 
-                with dashboard_state.state_lock:
-                    if dashboard_state.app_state.active_model:
-                        latent_version = dashboard_state.app_state.active_model.data.version
-                        metrics_queue.put({"type": "latent_updated", "version": latent_version})
+                with dashboard_state.state_manager.state_lock:
+                    if dashboard_state.state_manager.state.active_model:
+                        latent_version = dashboard_state.state_manager.state.active_model.data.version
+                        dashboard_state.state_manager.metrics_queue.put({"type": "latent_updated", "version": latent_version})
             except Exception:
                 pass  # If update fails after stop, just continue
         else:
             _append_status_message(f"Training error: {exc}")
-            metrics_queue.put({"type": "error", "message": str(exc)})
+            dashboard_state.state_manager.metrics_queue.put({"type": "error", "message": str(exc)})
     finally:
-        with dashboard_state.state_lock:
-            if dashboard_state.app_state.active_model:
+        with dashboard_state.state_manager.state_lock:
+            if dashboard_state.state_manager.state.active_model:
                 from use_cases.dashboard.core.state_models import TrainingState
-                updated_model = dashboard_state.app_state.active_model.with_training(
+                updated_model = dashboard_state.state_manager.state.active_model.with_training(
                     state=TrainingState.IDLE,
                     target_epochs=0,
                     thread=None,
                     stop_requested=False
                 )
-                dashboard_state.app_state = dashboard_state.app_state.with_active_model(updated_model)
+                dashboard_state.state_manager.update_state(dashboard_state.state_manager.state.with_active_model(updated_model))
 
 
 def register_training_hub_callbacks(app: Dash) -> None:
@@ -199,8 +239,8 @@ def register_training_hub_callbacks(app: Dash) -> None:
     )
     def update_hub_loss_curves(_latent_store: dict | None, smoothing_enabled: list, _n_intervals: int):
         """Render training progress loss curves for Training Hub."""
-        with dashboard_state.state_lock:
-            if dashboard_state.app_state.active_model is None:
+        with dashboard_state.state_manager.state_lock:
+            if dashboard_state.state_manager.state.active_model is None:
                 # Return empty figure if no model loaded
                 figure = go.Figure()
                 figure.update_layout(
@@ -210,7 +250,7 @@ def register_training_hub_callbacks(app: Dash) -> None:
                     margin=dict(l=40, r=20, t=30, b=40),
                 )
                 return figure
-            history = dashboard_state.app_state.active_model.history
+            history = dashboard_state.state_manager.state.active_model.history
             epochs = list(history.epochs)
 
         figure = go.Figure()
@@ -295,9 +335,9 @@ def register_training_hub_callbacks(app: Dash) -> None:
     )
     def update_hub_terminal(_control: dict | None, _latent: dict | None, _n_intervals: int):
         """Show training status messages in terminal-style output."""
-        with dashboard_state.state_lock:
-            if dashboard_state.app_state.active_model:
-                status_messages = list(dashboard_state.app_state.active_model.training.status_messages)
+        with dashboard_state.state_manager.state_lock:
+            if dashboard_state.state_manager.state.active_model:
+                status_messages = list(dashboard_state.state_manager.state.active_model.training.status_messages)
             else:
                 status_messages = ["No model loaded"]
         
@@ -356,11 +396,11 @@ def register_training_hub_callbacks(app: Dash) -> None:
     )
     def update_hub_status_metrics(_control: dict | None, _latent: dict | None):
         """Show live training metrics in status hero bar."""
-        with dashboard_state.state_lock:
-            if dashboard_state.app_state.active_model is None:
+        with dashboard_state.state_manager.state_lock:
+            if dashboard_state.state_manager.state.active_model is None:
                 return "No model loaded"
-            training_state = dashboard_state.app_state.active_model.training.state
-            history = dashboard_state.app_state.active_model.history
+            training_state = dashboard_state.state_manager.state.active_model.training.state
+            history = dashboard_state.state_manager.state.active_model.history
             epochs = list(history.epochs)
         
         if training_state.name == "RUNNING":
@@ -423,13 +463,15 @@ def register_training_hub_callbacks(app: Dash) -> None:
             raise PreventUpdate
         
         # Clear status messages in state
-        with dashboard_state.state_lock:
-            if dashboard_state.app_state.active_model:
+        with dashboard_state.state_manager.state_lock:
+            if dashboard_state.state_manager.state.active_model:
                 from use_cases.dashboard.core.state_models import TrainingStatus, TrainingState
-                updated_model = dashboard_state.app_state.active_model.with_training(
+                updated_model = dashboard_state.state_manager.state.active_model.with_training(
                     status_messages=[]
                 )
-                dashboard_state.app_state = dashboard_state.app_state.with_active_model(updated_model)
+                dashboard_state.state_manager.update_state(
+                    dashboard_state.state_manager.state.with_active_model(updated_model)
+                )
         
         return [html.Div("Terminal cleared", style={
             "fontFamily": "ui-monospace, 'SF Mono', Monaco, monospace",
@@ -448,9 +490,9 @@ def register_training_hub_callbacks(app: Dash) -> None:
         if not n_clicks:
             raise PreventUpdate
         
-        with dashboard_state.state_lock:
-            if dashboard_state.app_state.active_model:
-                status_messages = list(dashboard_state.app_state.active_model.training.status_messages)
+        with dashboard_state.state_manager.state_lock:
+            if dashboard_state.state_manager.state.active_model:
+                status_messages = list(dashboard_state.state_manager.state.active_model.training.status_messages)
             else:
                 status_messages = ["No model loaded"]
         
@@ -523,9 +565,9 @@ def register_training_hub_callbacks(app: Dash) -> None:
             estimated_minutes = (epochs * 30) / 60
             eta_text = f"~{int(estimated_minutes)} min" if estimated_minutes >= 1 else "<1 min"
             
-            with dashboard_state.state_lock:
-                if dashboard_state.app_state.active_model:
-                    labels = np.array(dashboard_state.app_state.active_model.data.labels)
+            with dashboard_state.state_manager.state_lock:
+                if dashboard_state.state_manager.state.active_model:
+                    labels = np.array(dashboard_state.state_manager.state.active_model.data.labels)
                     labeled_count = int(np.sum(~np.isnan(labels)))
                 else:
                     labeled_count = 0
@@ -602,7 +644,7 @@ def register_training_hub_callbacks(app: Dash) -> None:
             learning_rate=float(learning_rate)
         )
 
-        success, message = dashboard_state.dispatcher.execute(command)
+        success, message = dashboard_state.state_manager.dispatcher.execute(command)
 
         if not success:
             _append_status_message(message)
@@ -611,25 +653,25 @@ def register_training_hub_callbacks(app: Dash) -> None:
         try:
             _clear_metrics_queue()
             worker = threading.Thread(target=train_worker_hub, args=(epochs,), daemon=True)
-            with dashboard_state.state_lock:
-                if dashboard_state.app_state.active_model:
-                    updated_model = dashboard_state.app_state.active_model.with_training(
+            with dashboard_state.state_manager.state_lock:
+                if dashboard_state.state_manager.state.active_model:
+                    updated_model = dashboard_state.state_manager.state.active_model.with_training(
                         thread=worker
                     )
-                    dashboard_state.app_state = dashboard_state.app_state.with_active_model(updated_model)
+                    dashboard_state.state_manager.update_state(dashboard_state.state_manager.state.with_active_model(updated_model))
             worker.start()
             _append_status_message(message)
         except Exception as exc:
-            with dashboard_state.state_lock:
-                if dashboard_state.app_state.active_model:
+            with dashboard_state.state_manager.state_lock:
+                if dashboard_state.state_manager.state.active_model:
                     from use_cases.dashboard.core.state_models import TrainingState
-                    updated_model = dashboard_state.app_state.active_model.with_training(
+                    updated_model = dashboard_state.state_manager.state.active_model.with_training(
                         state=TrainingState.IDLE,
                         target_epochs=0,
                         thread=None,
                         stop_requested=False
                     )
-                    dashboard_state.app_state = dashboard_state.app_state.with_active_model(updated_model)
+                    dashboard_state.state_manager.update_state(dashboard_state.state_manager.state.with_active_model(updated_model))
             _append_status_message(f"Error starting training: {exc}")
             return no_update
 
@@ -647,7 +689,7 @@ def register_training_hub_callbacks(app: Dash) -> None:
         from use_cases.dashboard.core.commands import StopTrainingCommand
         
         command = StopTrainingCommand()
-        success, message = dashboard_state.dispatcher.execute(command)
+        success, message = dashboard_state.state_manager.dispatcher.execute(command)
         
         if success:
             _append_status_message(message)
@@ -682,7 +724,7 @@ def register_training_hub_callbacks(app: Dash) -> None:
         
         while True:
             try:
-                message = metrics_queue.get_nowait()
+                message = dashboard_state.state_manager.metrics_queue.get_nowait()
             except Empty:
                 break
             processed_messages = True
@@ -710,10 +752,10 @@ def register_training_hub_callbacks(app: Dash) -> None:
             elif msg_type == "error":
                 _append_status_message(f"Error: {message.get('message', 'Unknown error')}")
 
-        with dashboard_state.state_lock:
-            if dashboard_state.app_state.active_model:
-                active = dashboard_state.app_state.active_model.training.is_active()
-                state_latent_version = int(dashboard_state.app_state.active_model.data.version)
+        with dashboard_state.state_manager.state_lock:
+            if dashboard_state.state_manager.state.active_model:
+                active = dashboard_state.state_manager.state.active_model.training.is_active()
+                state_latent_version = int(dashboard_state.state_manager.state.active_model.data.version)
             else:
                 active = False
                 state_latent_version = int(latent_version)
@@ -727,7 +769,7 @@ def register_training_hub_callbacks(app: Dash) -> None:
             or controls_disabled != _HUB_LAST_POLL_STATE["controls_disabled"]
         )
 
-        interval_disabled = not active and not processed_messages and metrics_queue.empty()
+        interval_disabled = not active and not processed_messages and dashboard_state.state_manager.metrics_queue.empty()
         interval_changed = (
             _HUB_LAST_POLL_STATE["interval_disabled"] is None
             or interval_disabled != _HUB_LAST_POLL_STATE["interval_disabled"]
@@ -768,9 +810,9 @@ def register_training_hub_callbacks(app: Dash) -> None:
     )
     def update_hub_status_text(_control: dict):
         """Update status text and color based on training state."""
-        with dashboard_state.state_lock:
-            if dashboard_state.app_state.active_model:
-                training_state = dashboard_state.app_state.active_model.training.state
+        with dashboard_state.state_manager.state_lock:
+            if dashboard_state.state_manager.state.active_model:
+                training_state = dashboard_state.state_manager.state.active_model.training.state
             else:
                 from use_cases.dashboard.core.state_models import TrainingState
                 training_state = TrainingState.IDLE

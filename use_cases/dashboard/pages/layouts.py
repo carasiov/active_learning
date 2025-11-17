@@ -12,9 +12,9 @@ def build_dashboard_layout() -> html.Div:
     """Build dashboard with intelligent proportional panel resizing."""
     dashboard_state.initialize_model_and_data()
     
-    with dashboard_state.state_lock:
+    with dashboard_state.state_manager.state_lock:
         # Check if we have an active model
-        if dashboard_state.app_state.active_model is None:
+        if dashboard_state.state_manager.state.active_model is None:
             # Return a simple message if no model loaded
             return html.Div([
                 html.H3("No Model Loaded", style={"textAlign": "center", "marginTop": "100px"}),
@@ -22,13 +22,13 @@ def build_dashboard_layout() -> html.Div:
                 html.A("Go to Home", href="/", style={"display": "block", "textAlign": "center"})
             ])
         
-        config = dashboard_state.app_state.active_model.config
-        default_epochs = max(1, dashboard_state.app_state.active_model.training.target_epochs or 5)
-        latent_version = dashboard_state.app_state.active_model.data.version
-        existing_status = list(dashboard_state.app_state.active_model.training.status_messages)
-        selected_sample = dashboard_state.app_state.active_model.ui.selected_sample
-        labels_version = dashboard_state.app_state.active_model.data.version
-        model_id = dashboard_state.app_state.active_model.model_id
+        config = dashboard_state.state_manager.state.active_model.config
+        default_epochs = max(1, dashboard_state.state_manager.state.active_model.training.target_epochs or 5)
+        latent_version = dashboard_state.state_manager.state.active_model.data.version
+        existing_status = list(dashboard_state.state_manager.state.active_model.training.status_messages)
+        selected_sample = dashboard_state.state_manager.state.active_model.ui.selected_sample
+        labels_version = dashboard_state.state_manager.state.active_model.data.version
+        model_id = dashboard_state.state_manager.state.active_model.model_id
 
     status_initial = existing_status[-3:] if existing_status else ["Ready to train"]
     checkpoint_path = ModelManager.checkpoint_path(model_id)

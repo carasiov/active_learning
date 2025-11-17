@@ -5,13 +5,17 @@
 ## 1. Architecture at a Glance
 
 - **Entry point** – `use_cases/dashboard/app.py`
-  - Configures logging (`DASHBOARD_LOG_LEVEL`), initializes global state, registers pages, and wires callbacks.
+  - Configures logging (`DASHBOARD_LOG_LEVEL`), initializes AppStateManager, registers pages, and wires callbacks.
   - Hosts the router callback that renders `/`, `/model/{id}`, `/model/{id}/training-hub`, `/model/{id}/configure-training`, and `/experiments`.
-- **State container** – `use_cases/dashboard/core/state.py`
-  - Singleton-style `AppState` protected by `state_lock` (`threading.RLock`).
+- **State management** – `use_cases/dashboard/core/state_manager.py`
+  - `AppStateManager` encapsulates `AppState` with internal `RLock` for thread safety.
   - `CommandDispatcher` orchestrates all mutations atomically.
+  - Replaces old global `app_state` and module-level `state_lock` (Phase 3 refactoring, November 2025).
+- **Service layer** – `use_cases/dashboard/services/`
+  - `ModelService`, `TrainingService`, `LabelingService` handle domain logic.
+  - Commands receive services via dependency injection, delegate business logic to services.
 - **Command layer** – `use_cases/dashboard/core/commands.py`
-  - Every user action is a dataclass with `validate()` + `execute()`; commands return a new `AppState` and message.
+  - Every user action is a dataclass with `validate(state, services)` + `execute(state, services)`; commands return a new `AppState` and message.
 - **Persistence services** – `core/model_manager.py`, `core/model_runs.py`, `core/run_generation.py`
   - Manage model directories, configs, dataset manifests, run histories, and generated artifacts.
 - **UI & callbacks** – `use_cases/dashboard/pages/*`, `use_cases/dashboard/callbacks/*`
@@ -23,20 +27,31 @@ The dashboard layers on top of the SSVAE backend (`src/rcmvae`). Keep these touc
 
 | Concern | Dashboard touchpoint | Backend module(s) | Notes |
 | --- | --- | --- | --- |
-| Model lifecycle | `core/commands.LoadModelCommand` → `ModelManager` | `rcmvae/application/model_api.py` | Instantiates `SSVAE`, restores params + optimizer state. |
+| Model lifecycle | `services/ModelService` → `LoadModelCommand` | `rcmvae/application/model_api.py` | ModelService instantiates `SSVAE`, restores params + optimizer state. |
 | Configuration | `core/config_metadata.py`, `state_models.py` | `rcmvae/domain/config.py::SSVAEConfig` | UI fields map directly to dataclass attributes; validation happens both in commands and config docstrings. |
-| Training loop | `callbacks/training_callbacks.py::train_worker` | `rcmvae/application/services/training_service.py`, `application/runtime/interactive.py` | Background worker calls `InteractiveTrainer.train`; relies on optimizer state compatibility. |
-| Checkpoints | `core/model_manager.py`, `core/commands.Save/Load` | `rcmvae/application/services/checkpoint_service.py` | Tuple-preserving merge shim keeps legacy checkpoints usable; fallback initializes fresh optimizer state. |
+| Training loop | `services/TrainingService`, `callbacks/training_callbacks.py` | `rcmvae/application/services/training_service.py`, `application/runtime/interactive.py` | TrainingService validates and starts training; worker calls `InteractiveTrainer.train`. |
+| Checkpoints | `services/ModelService`, `core/model_manager.py` | `rcmvae/application/services/checkpoint_service.py` | Tuple-preserving merge shim keeps legacy checkpoints usable; fallback initializes fresh optimizer state. |
+| Labeling | `services/LabelingService` | `core/model_manager.py` (labels.csv) | LabelingService handles label persistence and updates. |
 | Losses & metrics | `core/run_generation.py` | `rcmvae/application/services/loss_pipeline.py`, `use_cases/experiments` | Training completion triggers the experiment pipeline to regenerate plots/reports. |
-| Data sampling | `core/commands.CreateModelCommand` | `use_cases/experiments/data/mnist/mnist.py` | Dataset manifests ensure CLI and dashboard sample the same data. |
+| Data sampling | `CreateModelCommand` → `ModelService` | `use_cases/experiments/data/mnist/mnist.py` | Dataset manifests ensure CLI and dashboard sample the same data. |
 
 Whenever a backend change affects these modules (new priors, additional metrics, altered state), update dashboard config metadata, persistence, and run generation accordingly.
 
 ## 3. Dashboard Internals
 
-### 3.1 State & Commands
-- `AppState` tracks model registry, `active_model`, `training_status`, run history cache, and global settings.
-- Commands should be pure: compute the result, build copies of dataclasses, and return a new state.
+### 3.1 State & Commands (Refactored November 2025)
+- **AppStateManager** (`core/state_manager.py`) manages all state operations:
+  - `AppState` tracks model registry, `active_model`, run history cache, and global settings.
+  - Internal `RLock` ensures thread safety.
+  - `update_state(new_state)` is the **only** way to update state (never assign directly).
+- **Service Layer** (`services/`) handles business logic:
+  - `ModelService`: Model CRUD, loading, predictions
+  - `TrainingService`: Training execution, validation
+  - `LabelingService`: Label persistence
+- **Commands** (`core/commands.py`) orchestrate state transitions:
+  - Receive `state` and `services` parameters via dependency injection.
+  - Should be pure: compute the result, build copies of dataclasses, return new state.
+  - Delegate domain logic to services, only orchestrate state transitions.
 - Register commands through callbacks (e.g., `callbacks/home_callbacks.py`, `callbacks/training_callbacks.py`).
 
 ### 3.2 Persistence & Runs

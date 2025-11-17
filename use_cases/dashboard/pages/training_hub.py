@@ -70,20 +70,20 @@ def build_training_hub_layout() -> html.Div:
     """Build the Training Hub page layout."""
     dashboard_state.initialize_model_and_data()
     
-    with dashboard_state.state_lock:
+    with dashboard_state.state_manager.state_lock:
         # Check if we have an active model
-        if dashboard_state.app_state.active_model is None:
+        if dashboard_state.state_manager.state.active_model is None:
             return html.Div([
                 html.H3("No Model Loaded", style={"textAlign": "center", "marginTop": "100px"}),
                 html.P("Please select a model from the home page.", style={"textAlign": "center"}),
                 html.A("Go to Home", href="/", style={"display": "block", "textAlign": "center"})
             ])
         
-        config = dashboard_state.app_state.active_model.config
-        training_state = dashboard_state.app_state.active_model.training.state
-        status_messages = list(dashboard_state.app_state.active_model.training.status_messages)
-        latent_version = dashboard_state.app_state.active_model.data.version
-        model_id = dashboard_state.app_state.active_model.model_id
+        config = dashboard_state.state_manager.state.active_model.config
+        training_state = dashboard_state.state_manager.state.active_model.training.state
+        status_messages = list(dashboard_state.state_manager.state.active_model.training.status_messages)
+        latent_version = dashboard_state.state_manager.state.active_model.data.version
+        model_id = dashboard_state.state_manager.state.active_model.model_id
     
     # Determine status for hero bar
     if training_state.name == "RUNNING":

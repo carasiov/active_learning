@@ -70,7 +70,7 @@ def register_home_callbacks(app: Dash) -> None:
             num_labeled=int(num_labeled) if num_labeled is not None else 128,
             seed=int(seed) if seed is not None else 0,
         )
-        success, model_id_or_error = dashboard_state.dispatcher.execute(command)
+        success, model_id_or_error = dashboard_state.state_manager.dispatcher.execute(command)
         
         if not success:
             return no_update, html.Div(model_id_or_error, style={"color": "#C10A27"})
@@ -80,7 +80,7 @@ def register_home_callbacks(app: Dash) -> None:
         
         # Now load the model
         load_command = LoadModelCommand(model_id=model_id)
-        load_success, load_message = dashboard_state.dispatcher.execute(load_command)
+        load_success, load_message = dashboard_state.state_manager.dispatcher.execute(load_command)
         
         if not load_success:
             return no_update, html.Div(f"Created but failed to load: {load_message}", style={"color": "#C10A27"})
@@ -144,7 +144,7 @@ def register_home_callbacks(app: Dash) -> None:
         
         # Load model
         command = LoadModelCommand(model_id=model_id)
-        success, message = dashboard_state.dispatcher.execute(command)
+        success, message = dashboard_state.state_manager.dispatcher.execute(command)
         
         if not success:
             raise PreventUpdate
@@ -183,7 +183,7 @@ def register_home_callbacks(app: Dash) -> None:
         
         # Execute delete command
         command = DeleteModelCommand(model_id=model_id)
-        success, message = dashboard_state.dispatcher.execute(command)
+        success, message = dashboard_state.state_manager.dispatcher.execute(command)
         
         if not success:
             # Don't navigate on failure

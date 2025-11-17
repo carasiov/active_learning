@@ -255,7 +255,7 @@ def register_config_page_callbacks(app: Dash) -> None:
             return dash.no_update, info
 
         command = UpdateModelConfigCommand(updates=updates)
-        success, message = dashboard_state.dispatcher.execute(command)
+        success, message = dashboard_state.state_manager.dispatcher.execute(command)
 
         if not success:
             error_msg = html.Div(message, style={"color": "#C10A27", "fontWeight": "600"})
@@ -265,9 +265,9 @@ def register_config_page_callbacks(app: Dash) -> None:
 
         model_id = config_store.get("_model_id")
         if not model_id:
-            with dashboard_state.state_lock:
-                if dashboard_state.app_state.active_model:
-                    model_id = dashboard_state.app_state.active_model.model_id
+            with dashboard_state.state_manager.state_lock:
+                if dashboard_state.state_manager.state.active_model:
+                    model_id = dashboard_state.state_manager.state.active_model.model_id
         redirect_path = f"/model/{model_id}" if model_id else "/"
         success_msg = html.Div("Configuration saved.", style={"color": "#45717A"})
         return redirect_path, success_msg

@@ -26,33 +26,38 @@ FAST_DASHBOARD_MODE = os.environ.get("DASHBOARD_FAST_MODE", "1").lower() not in 
 
 class Command(ABC):
     """Base class for all state-modifying commands.
-    
+
     Commands encapsulate both validation and execution logic.
     This makes actions testable, auditable, and explicit.
+
+    Phase 2: Commands receive ServiceContainer for all domain operations.
+    No fallback paths - services are required.
     """
-    
+
     @abstractmethod
-    def validate(self, state: AppState) -> Optional[str]:
+    def validate(self, state: AppState, services: Any) -> Optional[str]:
         """Validate if command can execute on current state.
-        
+
         Args:
             state: Current application state (read-only)
-        
+            services: Service container for domain operations (required)
+
         Returns:
             Error message if invalid, None if valid
         """
         pass
-    
+
     @abstractmethod
-    def execute(self, state: AppState) -> Tuple[AppState, str]:
+    def execute(self, state: AppState, services: Any) -> Tuple[AppState, str]:
         """Execute command, producing new state.
-        
+
         Args:
             state: Current application state (read-only)
-        
+            services: Service container for domain operations (required)
+
         Returns:
             (new_state, status_message)
-        
+
         Raises:
             Exception: If execution fails unexpectedly
         """
@@ -70,58 +75,62 @@ class CommandHistoryEntry:
 
 class CommandDispatcher:
     """Central dispatcher for all state-modifying commands.
-    
+
     Provides:
     - Atomic execution under lock
     - Validation before execution
     - Command history for debugging
     - Thread-safe access to state
+    - Service injection for all domain operations
     """
-    
-    def __init__(self, state_lock: threading.Lock | threading.RLock):
-        """Initialize dispatcher with state lock.
-        
+
+    def __init__(self, state_lock: threading.Lock | threading.RLock, services: Any):
+        """Initialize dispatcher with state lock and services.
+
         Args:
             state_lock: Lock or RLock protecting app_state access
+            services: Service container for dependency injection (required)
         """
         self._state_lock = state_lock
+        self._services = services
         self._command_history: List[CommandHistoryEntry] = []
         self._history_lock = threading.Lock()
     
     def execute(self, command: Command) -> Tuple[bool, str]:
-        """Execute command atomically.
-        
+        """Execute command atomically with service injection.
+
         Args:
             command: Command to execute
-        
+
         Returns:
             (success, message) tuple
         """
         from use_cases.dashboard.core import state as dashboard_state
-        
+
         with self._state_lock:
             # Check state is initialized
-            if dashboard_state.app_state is None:
+            if dashboard_state.state_manager.state is None:
                 error_msg = "Application state not initialized"
                 self._log_command(command, success=False, message=error_msg)
                 return False, error_msg
-            
-            # Validate
-            error = command.validate(dashboard_state.app_state)
+
+            # Validate (with services)
+            error = command.validate(dashboard_state.state_manager.state, self._services)
             if error:
                 self._log_command(command, success=False, message=error)
                 return False, error
-            
-            # Execute
+
+            # Execute (with services)
             try:
-                new_state, message = command.execute(dashboard_state.app_state)
-                dashboard_state.app_state = new_state
+                new_state, message = command.execute(dashboard_state.state_manager.state, self._services)
+                dashboard_state.state_manager.update_state(new_state)
                 self._log_command(command, success=True, message=message)
                 return True, message
-            
+
             except Exception as e:
                 error_msg = f"Command execution failed: {e}"
                 self._log_command(command, success=False, message=error_msg)
+                logger.error("Command execution failed", exc_info=True)
                 return False, error_msg
     
     def _log_command(self, command: Command, success: bool, message: str) -> None:
@@ -178,7 +187,7 @@ class LabelSampleCommand(Command):
     sample_idx: int
     label: Optional[int]  # None = delete label
     
-    def validate(self, state: AppState) -> Optional[str]:
+    def validate(self, state: AppState, services: Any) -> Optional[str]:
         """Validate sample index and label value."""
         if state.active_model is None:
             return "No model loaded"
@@ -196,30 +205,33 @@ class LabelSampleCommand(Command):
         
         return None  # Valid
     
-    def execute(self, state: AppState) -> Tuple[AppState, str]:
-        """Execute label update on ACTIVE model."""
+    def execute(self, state: AppState, services: Any) -> Tuple[AppState, str]:
+        """Execute label update on ACTIVE model.
+
+        Phase 2: Uses LabelingService for all persistence.
+        """
         if state.active_model is None:
             return state, "No model loaded"
-        
-        from use_cases.dashboard.core.state import _load_labels_dataframe, _persist_labels_dataframe
+
         from use_cases.dashboard.core.model_manager import ModelManager
-        
-        # Copy labels array and update
+
+        # Update labels array (in-memory)
         labels_array = state.active_model.data.labels.copy()
         if self.label is None:
             labels_array[self.sample_idx] = np.nan
         else:
             labels_array[self.sample_idx] = float(self.label)
-        
-        # Update CSV persistence
-        df = _load_labels_dataframe()
-        if self.label is None:
-            if self.sample_idx in df.index:
-                df = df.drop(self.sample_idx)
-        else:
-            df.loc[self.sample_idx, "label"] = int(self.label)
-        _persist_labels_dataframe(df)
-        
+
+        # Persist label via LabelingService
+        try:
+            services.labeling.set_label(
+                model_id=state.active_model.model_id,
+                sample_idx=self.sample_idx,
+                label=self.label,
+            )
+        except ValueError as e:
+            return state, f"Label update failed: {e}"
+
         # Update hover metadata
         from use_cases.dashboard.utils.visualization import _format_hover_metadata_entry
         hover_metadata = list(state.active_model.data.hover_metadata)
@@ -231,20 +243,22 @@ class LabelSampleCommand(Command):
             float(labels_array[self.sample_idx]),
             true_label_value,
         )
-        
+
         # Update model with label changes
         updated_model = state.active_model.with_label_update(labels_array, hover_metadata)
-        
+
+        # Get labeled count via LabelingService
+        labeled_count = services.labeling.get_labeled_count(state.active_model.model_id)
+
         # Update metadata
-        labeled_count = int(np.sum(~np.isnan(labels_array)))
         updated_model = updated_model.with_updated_metadata(
             labeled_count=labeled_count,
             last_modified=datetime.utcnow().isoformat()
         )
-        
+
         # Save metadata
         ModelManager.save_metadata(updated_model.metadata)
-        
+
         # Update app state
         new_state = state.with_active_model(updated_model)
         
@@ -272,19 +286,28 @@ class StartTrainingCommand(Command):
     kl_weight: float
     learning_rate: float
     
-    def validate(self, state: AppState) -> Optional[str]:
+    def validate(self, state: AppState, services: Any) -> Optional[str]:
         """Validate training can start."""
         if state.active_model is None:
             return "No model loaded"
-        
-        # Check not already training
+
+        # Check not already training (explicit state check for better debugging)
+        training_state = state.active_model.training.state
         if state.active_model.training.is_active():
-            return "Training already in progress"
-        
+            return f"Training already in progress (state: {training_state.name})"
+
+        # Extra safety: check thread is not running
+        if state.active_model.training.thread is not None and state.active_model.training.thread.is_alive():
+            logger.warning(
+                f"Training thread still alive but state={training_state.name}, "
+                f"model={state.active_model.model_id}"
+            )
+            return "Training thread still active (please wait for it to complete)"
+
         # Validate epochs
         if self.num_epochs < 1 or self.num_epochs > 200:
             return f"Epochs must be between 1 and 200, got {self.num_epochs}"
-        
+
         # Validate hyperparameters
         if self.recon_weight < 0:
             return "Reconstruction weight must be non-negative"
@@ -292,10 +315,10 @@ class StartTrainingCommand(Command):
             return "KL weight must be between 0 and 10"
         if self.learning_rate <= 0 or self.learning_rate > 0.1:
             return "Learning rate must be between 0.00001 and 0.1"
-        
+
         return None  # Valid
     
-    def execute(self, state: AppState) -> Tuple[AppState, str]:
+    def execute(self, state: AppState, services: Any) -> Tuple[AppState, str]:
         """Queue training with updated config."""
         if state.active_model is None:
             return state, "No model loaded"
@@ -361,7 +384,7 @@ class CompleteTrainingCommand(Command):
     epoch_offset: int = 0
     epochs_completed: int = 0
 
-    def validate(self, state: AppState) -> Optional[str]:
+    def validate(self, state: AppState, services: Any) -> Optional[str]:
         """Validate arrays have correct shape."""
         if state.active_model is None:
             return "No model loaded"
@@ -384,7 +407,7 @@ class CompleteTrainingCommand(Command):
 
         return None
 
-    def execute(self, state: AppState) -> Tuple[AppState, str]:
+    def execute(self, state: AppState, services: Any) -> Tuple[AppState, str]:
         """Update state with training results."""
         if state.active_model is None:
             return state, "No model loaded"
@@ -465,7 +488,7 @@ class SelectSampleCommand(Command):
     """Command to select a sample in the UI."""
     sample_idx: int
     
-    def validate(self, state: AppState) -> Optional[str]:
+    def validate(self, state: AppState, services: Any) -> Optional[str]:
         """Validate sample index."""
         if state.active_model is None:
             return "No model loaded"
@@ -473,7 +496,7 @@ class SelectSampleCommand(Command):
             return f"Invalid sample index: {self.sample_idx}"
         return None
     
-    def execute(self, state: AppState) -> Tuple[AppState, str]:
+    def execute(self, state: AppState, services: Any) -> Tuple[AppState, str]:
         """Update selected sample."""
         if state.active_model is None:
             return state, "No model loaded"
@@ -488,7 +511,7 @@ class ChangeColorModeCommand(Command):
     """Command to change visualization color mode."""
     color_mode: str
     
-    def validate(self, state: AppState) -> Optional[str]:
+    def validate(self, state: AppState, services: Any) -> Optional[str]:
         """Validate color mode."""
         if state.active_model is None:
             return "No model loaded"
@@ -497,7 +520,7 @@ class ChangeColorModeCommand(Command):
             return f"Invalid color mode: {self.color_mode}"
         return None
     
-    def execute(self, state: AppState) -> Tuple[AppState, str]:
+    def execute(self, state: AppState, services: Any) -> Tuple[AppState, str]:
         """Update color mode."""
         if state.active_model is None:
             return state, "No model loaded"
@@ -515,7 +538,7 @@ class StopTrainingCommand(Command):
     Training will complete the current epoch and then halt gracefully.
     """
     
-    def validate(self, state: AppState) -> Optional[str]:
+    def validate(self, state: AppState, services: Any) -> Optional[str]:
         """Validate training is actually running."""
         if state.active_model is None:
             return "No model loaded"
@@ -525,7 +548,7 @@ class StopTrainingCommand(Command):
             return "Stop already requested"
         return None
     
-    def execute(self, state: AppState) -> Tuple[AppState, str]:
+    def execute(self, state: AppState, services: Any) -> Tuple[AppState, str]:
         """Set stop_requested flag."""
         if state.active_model is None:
             return state, "No model loaded"
@@ -544,7 +567,7 @@ class UpdateModelConfigCommand(Command):
     updates: Dict[str, Any]
     _new_config: Optional[SSVAEConfig] = field(init=False, default=None)
 
-    def validate(self, state: AppState) -> Optional[str]:
+    def validate(self, state: AppState, services: Any) -> Optional[str]:
         if state.active_model is None:
             return "No model loaded"
         if not self.updates:
@@ -564,7 +587,7 @@ class UpdateModelConfigCommand(Command):
 
         return None
 
-    def execute(self, state: AppState) -> Tuple[AppState, str]:
+    def execute(self, state: AppState, services: Any) -> Tuple[AppState, str]:
         if state.active_model is None:
             return state, "No model loaded"
         if not self.updates:
@@ -641,7 +664,7 @@ class CreateModelCommand(Command):
     num_labeled: int = 128
     seed: Optional[int] = None
     
-    def validate(self, state: AppState) -> Optional[str]:
+    def validate(self, state: AppState, services: Any) -> Optional[str]:
         """Validate dataset sizing inputs."""
         errors: List[str] = []
         total = self.num_samples
@@ -658,104 +681,55 @@ class CreateModelCommand(Command):
             return "; ".join(errors)
         return None
     
-    def execute(self, state: AppState) -> Tuple[AppState, str]:
-        """Create new model directory, dataset snapshot, and metadata."""
-        from use_cases.dashboard.core.model_manager import ModelManager
-        from use_cases.dashboard.core.state_models import ModelMetadata, TrainingHistory
-        from datetime import datetime
+    def execute(self, state: AppState, services: Any) -> Tuple[AppState, str]:
+        """Create new model via ModelService, then add initial labels via LabelingService."""
         from rcmvae.domain.config import SSVAEConfig
         from use_cases.experiments.data.mnist.mnist import load_mnist_scaled
+        from use_cases.dashboard.services.model_service import CreateModelRequest
         import numpy as np
-        import pandas as pd
-        import re
-        
-        # Use the provided name as model_id (sanitized)
-        if self.name and self.name.strip():
-            sanitized = re.sub(r'[^a-z0-9_-]', '_', self.name.strip().lower())
-            sanitized = re.sub(r'_+', '_', sanitized)
-            model_id = sanitized.strip('_') or "model"
-            base_id = model_id
-            counter = 1
-            while ModelManager.model_dir(model_id).exists():
-                model_id = f"{base_id}_{counter}"
-                counter += 1
-        else:
-            model_id = ModelManager.generate_model_id()
-        
-        display_name = self.name.strip() if self.name and self.name.strip() else model_id
-        ModelManager.create_model_directory(model_id)
-        
-        # Base configuration (default SSVAE config for dashboard usage)
-        config = SSVAEConfig()
-        
-        # Snapshot dataset configuration
-        total_samples = int(self.num_samples)
-        labeled_samples = int(self.num_labeled)
+
+        # Create model via ModelService
         rng_seed = int(self.seed if self.seed is not None else 0)
-        rng = np.random.default_rng(rng_seed)
-        
-        x_full, y_full, _, _, source = load_mnist_scaled(
-            reshape=True,
-            hw=(28, 28),
-            dtype=np.float32,
-        )
-        max_available = x_full.shape[0]
-        if total_samples > max_available:
-            total_samples = max_available
-        selected_indices = rng.choice(max_available, size=total_samples, replace=False)
-        selected_indices = selected_indices.tolist()
-        labeled_count = min(labeled_samples, total_samples)
-        if labeled_count > 0:
-            labeled_positions = sorted(rng.choice(total_samples, size=labeled_count, replace=False).tolist())
-        else:
-            labeled_positions = []
-        
-        # Persist dataset config for reproducible loading
-        dataset_config = {
-            "dataset": "mnist",
-            "source": source,
-            "indices": selected_indices,
-            "labeled_positions": labeled_positions,
-            "seed": rng_seed,
-            "total_samples": total_samples,
-            "labeled_samples": labeled_count,
-        }
-        ModelManager.save_dataset_config(model_id, dataset_config)
-        
-        # Pre-populate labels.csv with labeled subset
-        labels_path = ModelManager.labels_path(model_id)
-        if labeled_positions:
-            selected_labels = y_full[selected_indices]
-            rows = [
-                {"Serial": int(pos), "label": int(selected_labels[pos])}
-                for pos in labeled_positions
-            ]
-            df = pd.DataFrame(rows, columns=["Serial", "label"])
-        else:
-            df = pd.DataFrame(columns=["Serial", "label"])
-        df.to_csv(labels_path, index=False)
-        
-        # Save metadata and auxiliary files
-        now = datetime.utcnow().isoformat()
-        metadata = ModelMetadata(
-            model_id=model_id,
-            name=display_name,
-            created_at=now,
-            last_modified=now,
-            dataset="mnist",
-            total_epochs=0,
-            labeled_count=labeled_count,
-            latest_loss=None,
-            dataset_total_samples=total_samples,
+        request = CreateModelRequest(
+            name=self.name or "Unnamed Model",
+            config=SSVAEConfig(),
+            dataset_total_samples=self.num_samples,
             dataset_seed=rng_seed,
         )
-        ModelManager.save_metadata(metadata)
-        ModelManager.save_history(model_id, TrainingHistory.empty())
-        ModelManager.save_config(model_id, config)
-        
-        # Update registry with new metadata
+
+        model_id = services.model.create_model(request)
+
+        # Add initial labels if requested
+        labeled_count = min(self.num_labeled, self.num_samples)
+        if labeled_count > 0:
+            # Load dataset to get true labels
+            rng = np.random.default_rng(rng_seed)
+            x_full, y_full, _, _, _ = load_mnist_scaled(
+                reshape=True,
+                hw=(28, 28),
+                dtype=np.float32,
+            )
+
+            # Get the same indices the service used (deterministic with same seed)
+            max_available = min(self.num_samples, x_full.shape[0])
+            selected_indices = rng.choice(x_full.shape[0], size=max_available, replace=False)
+
+            # Select random positions for labeling
+            labeled_positions = sorted(rng.choice(max_available, size=labeled_count, replace=False).tolist())
+
+            # Add labels via LabelingService
+            selected_labels = y_full[selected_indices]
+            for pos in labeled_positions:
+                services.labeling.set_label(
+                    model_id=model_id,
+                    sample_idx=int(pos),
+                    label=int(selected_labels[pos]),
+                )
+
+        # Load metadata to add to registry
+        metadata = services.model._manager.load_metadata(model_id)
         new_state = state.with_model_metadata(metadata)
-        
+
         return new_state, model_id
 
 
@@ -764,7 +738,7 @@ class LoadModelCommand(Command):
     """Load a model as active."""
     model_id: str
     
-    def validate(self, state: AppState) -> Optional[str]:
+    def validate(self, state: AppState, services: Any) -> Optional[str]:
         """Check model exists."""
         if self.model_id not in state.models:
             return f"Model not found: {self.model_id}"
@@ -781,160 +755,24 @@ class LoadModelCommand(Command):
         # Allow reloading same model (no-op is fine)
         return None
     
-    def execute(self, state: AppState) -> Tuple[AppState, str]:
-        """Load model into active state."""
+    def execute(self, state: AppState, services: Any) -> Tuple[AppState, str]:
+        """Load model into active state via ModelService."""
         # Check if already loaded
         if state.active_model and state.active_model.model_id == self.model_id:
             return state, f"Model {self.model_id} already active"
-        
-        # Load model components (we're already inside state_lock from dispatcher)
-        from use_cases.dashboard.core.model_manager import ModelManager
-        from use_cases.dashboard.core.state_models import (
-            ModelState,
-            DataState,
-            TrainingStatus,
-            TrainingState,
-            UIState,
-        )
-        from use_cases.dashboard.utils.visualization import _build_hover_metadata
-        from data.mnist.mnist import load_train_images_for_ssvae, load_mnist_splits
-        from use_cases.experiments.data.mnist.mnist import load_mnist_scaled
-        from rcmvae.application.model_api import SSVAE
-        from rcmvae.domain.config import SSVAEConfig
-        from rcmvae.application.runtime.interactive import InteractiveTrainer
-        import pandas as pd
-        import numpy as np
-        from dataclasses import replace as dc_replace
-        from use_cases.dashboard.core import state as dashboard_state
-        
-        # Load metadata
-        metadata = ModelManager.load_metadata(self.model_id)
-        if not metadata:
-            raise ValueError(f"Model {self.model_id} not found")
-        
-        # Load config
-        config = ModelManager.load_config(self.model_id) or SSVAEConfig()
-        
-        # Load model
-        model = SSVAE(input_dim=(28, 28), config=config)
-        checkpoint_path = ModelManager.checkpoint_path(self.model_id)
-        if checkpoint_path.exists():
-            model.load_model_weights(str(checkpoint_path))
-            model.weights_path = str(checkpoint_path)
-        
-        trainer = InteractiveTrainer(model)
-        
-        dataset_config = ModelManager.load_dataset_config(self.model_id)
 
-        if dataset_config:
-            indices = np.asarray(dataset_config.get("indices", []), dtype=np.int64)
-            if indices.size == 0:
-                raise ValueError("Dataset configuration has no indices")
-            x_full, y_full, _, _, _ = load_mnist_scaled(
-                reshape=True,
-                hw=(28, 28),
-                dtype=np.float32,
-            )
-            max_available = x_full.shape[0]
-            if np.any(indices >= max_available):
-                raise ValueError("Dataset indices exceed available MNIST samples")
-            x_train = x_full[indices]
-            true_labels = y_full[indices].astype(np.int32)
-        else:
-            # Backward compatibility: fall back to preview dataset
-            if FAST_DASHBOARD_MODE:
-                preview_n = min(PREVIEW_SAMPLE_LIMIT, 256)
-                rng = np.random.default_rng(0)
-                x_train = rng.random((preview_n, 28, 28), dtype=np.float32)
-                true_labels = np.zeros(preview_n, dtype=np.int32)
-            else:
-                x_train = load_train_images_for_ssvae(dtype=np.float32)
-                (_, true_labels), _ = load_mnist_splits(normalize=True, reshape=False, dtype=np.float32)
-                true_labels = np.asarray(true_labels, dtype=np.int32)
+        from use_cases.dashboard.services.model_service import LoadModelRequest
+        from use_cases.dashboard.core.state import _clear_metrics_queue
 
-                preview_n = min(PREVIEW_SAMPLE_LIMIT, x_train.shape[0])
-                x_train = x_train[:preview_n]
-                true_labels = true_labels[:preview_n]
-        
-        # Load history and prior runs
-        history = ModelManager.load_history(self.model_id)
-        run_records = load_run_records(self.model_id)
-        
-        # Load labels
-        labels_array = np.full(shape=(x_train.shape[0],), fill_value=np.nan, dtype=float)
-        labels_path = ModelManager.labels_path(self.model_id)
-        if labels_path.exists():
-            stored_labels = pd.read_csv(labels_path)
-            if not stored_labels.empty and "Serial" in stored_labels.columns:
-                stored_labels["Serial"] = pd.to_numeric(stored_labels["Serial"], errors="coerce")
-                stored_labels = stored_labels.dropna(subset=["Serial"])
-                stored_labels["Serial"] = stored_labels["Serial"].astype(int)
-                stored_labels["label"] = pd.to_numeric(stored_labels.get("label"), errors="coerce").astype("Int64")
-                serials = stored_labels["Serial"].to_numpy()
-                label_values = stored_labels["label"].astype(int).to_numpy()
-                valid_mask = (serials >= 0) & (serials < x_train.shape[0])
-                labels_array[serials[valid_mask]] = label_values[valid_mask].astype(float)
+        # Load model via ModelService
+        request = LoadModelRequest(model_id=self.model_id)
+        model_state = services.model.load_model(request)
 
-        labeled_count = int(np.sum(~np.isnan(labels_array)))
-        metadata = dc_replace(
-            metadata,
-            labeled_count=labeled_count,
-            dataset_total_samples=x_train.shape[0],
-        )
-        
-        # Get predictions
-        if dataset_config:
-            latent, recon, pred_classes, pred_certainty = model.predict(x_train)
-        elif FAST_DASHBOARD_MODE:
-            latent = np.zeros((preview_n, model.config.latent_dim), dtype=np.float32)
-            recon = np.zeros_like(x_train)
-            pred_classes = np.zeros(preview_n, dtype=np.int32)
-            pred_certainty = np.zeros(preview_n, dtype=np.float32)
-        else:
-            latent, recon, pred_classes, pred_certainty = model.predict(x_train)
+        if model_state is None:
+            return state, f"Failed to load model: {self.model_id}"
 
-        hover_metadata = _build_hover_metadata(pred_classes, pred_certainty, labels_array, true_labels)
-        
-        # Build ModelState
-        data_state = DataState(
-            x_train=x_train,
-            labels=labels_array,
-            true_labels=true_labels,
-            latent=latent,
-            reconstructed=recon,
-            pred_classes=pred_classes,
-            pred_certainty=pred_certainty,
-            hover_metadata=hover_metadata,
-            version=0
-        )
-        
-        training_status = TrainingStatus(
-            state=TrainingState.IDLE,
-            target_epochs=0,
-            status_messages=[],
-            thread=None
-        )
-        
-        ui_state = UIState(
-            selected_sample=0,
-            color_mode="user_labels"
-        )
-        
-        model_state = ModelState(
-            model_id=self.model_id,
-            metadata=metadata,
-            model=model,
-            trainer=trainer,
-            config=model.config,
-            data=data_state,
-            training=training_status,
-            ui=ui_state,
-            history=history,
-            runs=tuple(run_records)
-        )
-        
         # Reset any leftover training metrics from previous model
-        dashboard_state._clear_metrics_queue()
+        _clear_metrics_queue()
 
         # Update state
         new_state = state.with_active_model(model_state)
@@ -946,7 +784,7 @@ class DeleteModelCommand(Command):
     """Delete a model permanently."""
     model_id: str
     
-    def validate(self, state: AppState) -> Optional[str]:
+    def validate(self, state: AppState, services: Any) -> Optional[str]:
         """Check model exists and not active."""
         if self.model_id not in state.models:
             return f"Model not found: {self.model_id}"
@@ -956,34 +794,29 @@ class DeleteModelCommand(Command):
         
         return None
     
-    def execute(self, state: AppState) -> Tuple[AppState, str]:
-        """Delete model files and remove from registry."""
-        from use_cases.dashboard.core.model_manager import ModelManager
+    def execute(self, state: AppState, services: Any) -> Tuple[AppState, str]:
+        """Delete model files and remove from registry via ModelService."""
         from dataclasses import replace
-        from use_cases.dashboard.core import state as dashboard_state
 
         logger.info(f"DELETING MODEL: model_id={self.model_id}")
         logger.debug(f"Available models before delete: {list(state.models.keys())}")
 
-        # Double-check active model guard in case state changed between validate+execute
-        active = dashboard_state.app_state.active_model if dashboard_state.app_state else None
-        if active and active.model_id == self.model_id:
-            raise ValueError("Cannot delete active model. Switch to another model first.")
-
-        # Get name for message
+        # Get name for message before deletion
         model_name = state.models[self.model_id].name
-        
-        # Delete files
+
+        # Delete files via ModelService
         logger.info(f"Deleting files for model: {self.model_id}")
-        ModelManager.delete_model(self.model_id)
+        success = services.model.delete_model(self.model_id)
+        if not success:
+            return state, f"Failed to delete model: {self.model_id}"
         logger.info(f"Files deleted successfully for: {self.model_id}")
-        
+
         # Remove from registry
         updated_models = dict(state.models)
         del updated_models[self.model_id]
         new_state = replace(state, models=updated_models)
-        
+
         logger.info(f"Model {self.model_id} removed from registry")
         logger.debug(f"Available models after delete: {list(updated_models.keys())}")
-        
+
         return new_state, f"Deleted model: {model_name}"
