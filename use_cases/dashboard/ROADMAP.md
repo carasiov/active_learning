@@ -301,6 +301,79 @@ Main Dashboard
 
 ---
 
+## ⚠️ Known Issue: Model Creation Design Flaw (Discovered November 2025)
+
+**Status**: Bug mitigated with fallback fix (commit `a65e7b4`), comprehensive redesign planned
+
+### Problem
+
+**Root Cause**: Models are created with hardcoded `SSVAEConfig()` defaults, but training hub allows editing architectural parameters that require model recreation.
+
+**Impact**:
+- Homepage creates models with `prior_type="standard"` (default)
+- Users navigate to training hub and change `prior_type` to "mixture"
+- Config is updated but model architecture is NOT rebuilt
+- Model still has `DenseEncoder` (3 outputs) instead of `MixtureDenseEncoder` (4 outputs)
+- Training fails: `ValueError: Mixture responsibilities unavailable`
+
+**User Experience**:
+```
+1. Create model (gets standard prior by default)
+2. Go to Training Hub → Change prior_type to "mixture"
+3. Warning shown: "Structural changes require restarting dashboard"
+4. User ignores warning (easy to miss)
+5. Click "Train Model" → ERROR
+```
+
+### Current Mitigation (Temporary Fix)
+
+**Commit**: `a65e7b4` - "fix: Handle mixture data unavailability in training completion"
+
+Added graceful fallback in `training_callbacks.py`:
+```python
+except ValueError as e:
+    error_msg = str(e).lower()
+    if "mixture" in error_msg or "responsibilities" in error_msg:
+        logger.warning(f"Mixture data unavailable ({e}), falling back to non-mixture prediction")
+        latent_val, recon_val, preds, cert = model.predict_batched(data)
+        return latent_val, recon_val, preds, cert, None, None
+    raise
+```
+
+**Effect**: Prevents crashes, but mixture features don't work (responsibilities = None)
+
+### Comprehensive Solution Plan
+
+**See**: [`docs/MODEL_CREATION_REDESIGN.md`](docs/MODEL_CREATION_REDESIGN.md) for full specification
+
+**Key Changes**:
+
+1. **Structural vs Modifiable Parameters**
+   - **Structural** (locked after creation): prior_type, encoder_type, decoder_type, latent_dim, num_components, etc.
+   - **Modifiable** (safe to change): learning_rate, batch_size, loss weights, regularization, etc.
+
+2. **Enhanced Model Creation**
+   - Homepage modal expands to include architectural configuration
+   - Users configure prior type, encoder/decoder, latent dimension, etc. BEFORE creating model
+   - Provide presets: "Standard Baseline", "Mixture (10 components)", "VampPrior", "Custom"
+
+3. **Restricted Training Hub**
+   - Show current architecture (read-only) at top
+   - Remove structural parameters from editable config sections
+   - Only expose modifiable training hyperparameters
+
+4. **Implementation Phases**
+   - ✅ Phase 1: Prevent crashes with fallback (DONE - commit `a65e7b4`)
+   - Phase 2: Add prominent warnings when architecture mismatch detected
+   - Phase 3: Redesign model creation workflow with full config
+   - Phase 4: Restrict training hub to modifiable params only
+
+**Priority**: Medium (mitigated but not resolved)
+
+**Estimated Effort**: 3-5 days for full redesign implementation
+
+---
+
 ## Phase 2: Active Learning Intelligence
 
 **Goal**: Guide users to label strategically impactful samples.
