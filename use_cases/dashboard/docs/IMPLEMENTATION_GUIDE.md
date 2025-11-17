@@ -19,10 +19,11 @@
 2. [Solution Overview](#solution-overview)
 3. [Model Creation Redesign](#model-creation-redesign)
 4. [Training Hub Redesign](#training-hub-redesign)
-5. [Implementation Roadmap](#implementation-roadmap)
-6. [Code References & Patterns](#code-references--patterns)
-7. [Testing & Validation](#testing--validation)
-8. [Migration Strategy](#migration-strategy)
+5. [Full Configuration Page Redesign](#full-configuration-page-redesign)
+6. [Implementation Roadmap](#implementation-roadmap)
+7. [Code References & Patterns](#code-references--patterns)
+8. [Testing & Validation](#testing--validation)
+9. [Migration Strategy](#migration-strategy)
 
 ---
 
@@ -109,7 +110,7 @@ STRUCTURAL_PARAMS = {
 
 ## Solution Overview
 
-### Two-Part Solution
+### Three-Part Solution
 
 **Part 1: Model Creation Redesign**
 - Expand homepage modal to include all structural parameters
@@ -117,11 +118,19 @@ STRUCTURAL_PARAMS = {
 - Parameters organized logically: Dataset → Architecture → Prior
 - Conditional rendering (show mixture params only for mixture priors)
 
-**Part 2: Training Hub Redesign**
+**Part 2: Training Hub Redesign** (Quick Controls)
 - Show architecture summary (read-only) at top
-- Expose only modifiable parameters
+- Expose only essential modifiable parameters
 - Conditional sections based on prior type (contextually intelligent)
 - Group parameters by purpose, not alphabetically
+- Link to full configuration page for advanced parameters
+
+**Part 3: Full Configuration Page Redesign** (Advanced Options)
+- Complete parameter configuration accessible from training hub
+- Filter out structural parameters (show only modifiable ones)
+- Conditional sections/tabs based on prior type
+- Same design principles as training hub but more comprehensive
+- Organized into logical sections/tabs, not alphabetically
 
 ### Design Principles
 
@@ -877,6 +886,360 @@ FieldSpec(
 
 ---
 
+## Full Configuration Page Redesign
+
+### Current Implementation
+
+**Code Reference**: `use_cases/dashboard/pages/training.py:143-217` (build_training_config_page)
+
+**Current Structure**:
+- Full-page configuration editor with tabbed sections
+- Uses `get_field_specs()` and `get_section_specs()` from `config_metadata.py`
+- Shows ALL parameters without filtering structural vs modifiable
+- Organized into tabs: Training, Loss Weights, Prior Configuration, Regularization, etc.
+- No conditional rendering based on prior type
+- Includes structural parameters that shouldn't be changed
+
+**Current Sections** (`config_metadata.py`):
+```python
+SECTION_SPECS = [
+    SectionSpec("training", "Training", "Basic training parameters"),
+    SectionSpec("loss", "Loss Weights", "Loss function weights"),
+    SectionSpec("prior", "Prior Configuration", "Prior-specific parameters"),
+    SectionSpec("regularization", "Regularization", "Regularization techniques"),
+    # ... etc
+]
+```
+
+### Problem with Current Approach
+
+1. **Shows Structural Parameters**: Users can see (and try to change) `prior_type`, `latent_dim`, etc.
+2. **No Conditional Rendering**: Shows VampPrior params even if using Standard prior
+3. **Alphabetical Organization**: Parameters not grouped by semantic relationship
+4. **Confusing UX**: Appears everything is editable, but some changes would break model
+
+### New Configuration Page Design
+
+**Goal**: Comprehensive configuration for all modifiable parameters with contextual intelligence.
+
+**Layout**:
+```
+┌──────────────────────────────────────────────────────┐
+│  Model Configuration                                  │
+│  Active model: experiment-name-123                    │
+│                                         [Cancel] [Save]│
+├──────────────────────────────────────────────────────┤
+│                                                       │
+│  ┌─────────────────────────────────────────────────┐│
+│  │ Architecture 🔒 (fixed at creation)             ││
+│  │ Prior: Mixture (10 components)                  ││
+│  │ Encoder: Convolutional | Latent Dim: 2          ││
+│  │ Recon Loss: BCE | Heteroscedastic: No           ││
+│  └─────────────────────────────────────────────────┘│
+│                                                       │
+│  ┌─── TABS ────────────────────────────────────────┐│
+│  │ [Training Setup] [Loss Weights] [Mixture Prior] ││
+│  │ [Regularization] [Advanced]                      ││
+│  ├──────────────────────────────────────────────────┤│
+│  │                                                   ││
+│  │  [Tab content with all relevant parameters]      ││
+│  │                                                   ││
+│  │  - Training Setup: epochs, LR, batch size, etc.  ││
+│  │  - Loss Weights: recon, KL, label weights        ││
+│  │  - Mixture Prior: τ-classifier, π, entropy       ││
+│  │    (only shown if prior is mixture-based)        ││
+│  │  - Regularization: dropout, weight decay, etc.   ││
+│  │  - Advanced: warmup, anneal, gating, etc.        ││
+│  │                                                   ││
+│  └───────────────────────────────────────────────────┘│
+│                                                       │
+│  [Feedback message area]                             │
+│                                                       │
+└──────────────────────────────────────────────────────┘
+```
+
+### Redesign Principles
+
+1. **Filter Structural Parameters**: Only show modifiable parameters (use `get_modifiable_field_specs()`)
+2. **Conditional Tabs**: Show/hide entire tabs based on prior type
+   - Standard prior: Hide "Mixture Prior", "VampPrior", "Geometric" tabs
+   - Mixture prior: Show "Mixture Prior" tab, hide others
+   - VampPrior: Show "VampPrior" tab, hide others
+   - Geometric: Show "Geometric Prior" tab, hide others
+3. **Architecture Summary**: Add read-only summary at top (reuse from training hub)
+4. **Logical Organization**: Group by purpose, not alphabetically
+5. **Mathematical Terminology**: Use correct terms (Usage Entropy, not diversity)
+
+### Tab Structure (Conditional)
+
+#### Tab 1: Training Setup (Always)
+**Fields**:
+- `max_epochs`, `patience`, `learning_rate`, `batch_size`, `random_seed`
+- `weight_decay`, `grad_clip_norm`, `dropout_rate`
+
+**Width**: Full width (12 columns) for each field
+
+#### Tab 2: Loss Weights (Always)
+**Fields**:
+- `recon_weight` (with helper text based on reconstruction_loss)
+- `kl_weight`
+- `label_weight`
+- **Heteroscedastic** (conditional: only if `use_heteroscedastic_decoder=True`):
+  - `sigma_min`, `sigma_max`
+- **Contrastive** (collapsible):
+  - `use_contrastive`, `contrastive_weight`
+
+#### Tab 3: Mixture Prior (Conditional: prior_type="mixture")
+**Fields**:
+- `use_tau_classifier`, `tau_smoothing_alpha`
+- `kl_c_weight`, `kl_c_anneal_epochs`
+- `learnable_pi`
+- `component_diversity_weight` (label: "Usage Entropy Weight")
+- **Advanced** (collapsible or separate section):
+  - `dirichlet_alpha`, `dirichlet_weight`
+  - `top_m_gating`, `soft_embedding_warmup_epochs`
+
+#### Tab 4: VampPrior (Conditional: prior_type="vamp")
+**Fields**:
+- `use_tau_classifier`, `tau_smoothing_alpha`
+- `kl_c_weight`, `kl_c_anneal_epochs`
+- `component_diversity_weight`
+- `vamp_num_samples_kl`, `vamp_pseudo_lr_scale`
+
+**Info Note**: "VampPrior uses uniform π (not learnable). Pseudo-inputs were initialized at model creation."
+
+#### Tab 5: Geometric Prior (Conditional: prior_type="geometric_mog")
+**Fields**:
+- `use_tau_classifier`, `tau_smoothing_alpha`
+- `kl_c_weight`
+- `learnable_pi`
+- `component_diversity_weight`
+
+**Info Note**: "Components arranged geometrically (circle/grid) with fixed spacing."
+
+#### Tab 6: Advanced (Always, Optional)
+**Fields**: Any remaining modifiable parameters not covered above
+- KL warmup/anneal parameters
+- Beta-VAE scheduling
+- Other experimental features
+
+### Implementation Specifications
+
+#### Update config_metadata.py
+
+**Add Functions**:
+```python
+# Structural parameters (cannot be changed after creation)
+STRUCTURAL_PARAMS = {
+    "encoder_type", "decoder_type", "latent_dim", "hidden_dims",
+    "prior_type", "num_components", "component_embedding_dim",
+    "use_component_aware_decoder", "use_heteroscedastic_decoder",
+    "reconstruction_loss",
+}
+
+def get_modifiable_field_specs() -> Tuple[FieldSpec, ...]:
+    """Get only fields that can be modified after model creation."""
+    all_specs = get_field_specs()
+    return tuple(spec for spec in all_specs if spec.key not in STRUCTURAL_PARAMS)
+
+def get_conditional_sections(prior_type: str) -> List[str]:
+    """Get section IDs to show for the given prior type."""
+    # Always show these
+    base_sections = ["training", "loss_weights"]
+
+    # Conditionally add prior-specific section
+    if prior_type == "standard":
+        # No prior-specific section needed
+        pass
+    elif prior_type == "mixture":
+        base_sections.append("mixture_prior")
+    elif prior_type == "vamp":
+        base_sections.append("vamp_prior")
+    elif prior_type == "geometric_mog":
+        base_sections.append("geometric_prior")
+
+    # Always show advanced
+    base_sections.append("regularization")
+    base_sections.append("advanced")
+
+    return base_sections
+
+def get_section_specs_for_prior(prior_type: str) -> Tuple[SectionSpec, ...]:
+    """Get section specs filtered by prior type."""
+    all_sections = get_section_specs()
+    visible_ids = set(get_conditional_sections(prior_type))
+    return tuple(sec for sec in all_sections if sec.id in visible_ids)
+```
+
+**Update Section Definitions**:
+```python
+# Reorganized sections
+SECTION_SPECS = [
+    SectionSpec(
+        id="training",
+        title="Training Setup",
+        description="Core training parameters: learning rate, epochs, batch size",
+        field_keys=("max_epochs", "patience", "learning_rate", "batch_size", "random_seed"),
+    ),
+    SectionSpec(
+        id="loss_weights",
+        title="Loss Weights",
+        description="Weights for reconstruction, KL divergence, and label prediction",
+        field_keys=("recon_weight", "kl_weight", "label_weight", "sigma_min", "sigma_max"),
+    ),
+    SectionSpec(
+        id="mixture_prior",
+        title="Mixture Prior",
+        description="Configuration for mixture-of-Gaussians prior",
+        field_keys=(
+            "use_tau_classifier", "tau_smoothing_alpha",
+            "kl_c_weight", "kl_c_anneal_epochs",
+            "learnable_pi", "component_diversity_weight",
+            "dirichlet_alpha", "dirichlet_weight",
+            "top_m_gating", "soft_embedding_warmup_epochs",
+        ),
+    ),
+    SectionSpec(
+        id="vamp_prior",
+        title="VampPrior",
+        description="Variational Mixture of Posteriors prior configuration",
+        field_keys=(
+            "use_tau_classifier", "tau_smoothing_alpha",
+            "kl_c_weight", "kl_c_anneal_epochs",
+            "component_diversity_weight",
+            "vamp_num_samples_kl", "vamp_pseudo_lr_scale",
+        ),
+    ),
+    SectionSpec(
+        id="geometric_prior",
+        title="Geometric Prior",
+        description="Fixed geometric arrangement of mixture components",
+        field_keys=(
+            "use_tau_classifier", "tau_smoothing_alpha",
+            "kl_c_weight", "learnable_pi", "component_diversity_weight",
+        ),
+    ),
+    SectionSpec(
+        id="regularization",
+        title="Regularization",
+        description="Regularization techniques and constraints",
+        field_keys=("weight_decay", "grad_clip_norm", "dropout_rate", "use_contrastive", "contrastive_weight"),
+    ),
+    SectionSpec(
+        id="advanced",
+        title="Advanced",
+        description="Advanced options and experimental features",
+        field_keys=(...),  # Remaining modifiable params
+    ),
+]
+```
+
+**Update Field Labels** (terminology corrections):
+```python
+FieldSpec(
+    key="component_diversity_weight",
+    label="Usage Entropy Weight",  # ← Correct mathematical term
+    description="Entropy H[p̂_c]: negative = reward diversity",
+    # ... rest
+)
+```
+
+#### Update pages/training.py
+
+**Add Architecture Summary**:
+```python
+def build_training_config_page(model_id: Optional[str] = None) -> html.Div:
+    """Build full configuration page with conditional sections."""
+    # Get current model config to determine prior type
+    state = dashboard_state.state_manager.get_state()
+    if not state.active_model:
+        # Fallback: show all sections
+        sections = get_section_specs()
+    else:
+        prior_type = state.active_model.config.prior_type
+        sections = get_section_specs_for_prior(prior_type)
+
+    # Build tabs (only for visible sections)
+    tabs = [_build_section_tab(section) for section in sections]
+
+    # Add architecture summary at top
+    arch_summary = None
+    if state.active_model:
+        arch_summary = _build_architecture_summary(state.active_model.config)
+
+    return html.Div([
+        # Header with Cancel/Save buttons...
+
+        # Architecture summary
+        html.Div([arch_summary] if arch_summary else [], className="px-4 pt-3"),
+
+        # Tabs with conditional sections
+        html.Div([
+            dbc.Tabs(tabs, active_tab=sections[0].id, class_name="px-3"),
+            html.Div(id="config-feedback", style={"padding": "16px 32px 32px 32px"}),
+        ], style={"backgroundColor": "#fafafa"}),
+    ])
+
+def _build_architecture_summary(config: SSVAEConfig) -> html.Div:
+    """Build read-only architecture summary (reuse from training hub)."""
+    # Same implementation as training hub
+    # ...
+```
+
+**Filter Field Specs**:
+```python
+# At module level
+FIELD_SPECS: Sequence[FieldSpec] = get_modifiable_field_specs()  # ← Filter here
+SECTION_SPECS: Sequence[SectionSpec] = get_section_specs()
+```
+
+### Visual Design Updates
+
+**Architecture Summary** (same as training hub):
+- Background: `#fafafa`
+- Border: `1px solid #E6E6E6`
+- Padding: `16px`
+- Lock icon: 🔒
+- Compact layout (2-3 lines max)
+
+**Tab Styling** (maintain existing):
+- Active tab: Primary color underline
+- Hover: Subtle background change
+- Typography: 15px semi-bold
+
+**Field Organization**:
+- Full width inputs (12 columns) for main parameters
+- Two-column layout (6 + 6) for related pairs
+- Collapsible sections for advanced options within tabs
+
+### Testing Specifications
+
+**Manual Tests**:
+1. **Standard Prior Model**:
+   - Open full config page
+   - Verify architecture summary shows "Standard N(0,I)"
+   - Verify no "Mixture Prior", "VampPrior", or "Geometric Prior" tabs
+   - Verify only "Training Setup", "Loss Weights", "Regularization", "Advanced" tabs shown
+
+2. **Mixture Prior Model**:
+   - Open full config page
+   - Verify "Mixture Prior" tab is visible
+   - Verify tab contains τ-classifier, π, usage entropy fields
+   - Verify "Usage Entropy Weight" label (not "diversity")
+   - Verify no VampPrior or Geometric tabs
+
+3. **Change Parameters**:
+   - Modify learning rate → Save → Should succeed
+   - Try to modify `prior_type` → Should not be visible/editable
+   - Try to modify `latent_dim` → Should not be visible/editable
+
+4. **Save and Reload**:
+   - Change parameters → Save
+   - Return to training hub → Verify changes reflected
+   - Re-open config page → Verify values persisted
+
+---
+
 ## Implementation Roadmap
 
 ### Prerequisites
@@ -1002,7 +1365,56 @@ FieldSpec(
 - ✅ Regularization is collapsible
 - ✅ Mathematical terminology used correctly
 
-### Phase 4: UpdateConfigCommand Validation (1 day)
+### Phase 4: Full Configuration Page Redesign (2-3 days)
+
+**Goal**: Redesign full configuration page with conditional sections and filtered parameters
+
+**Files to Modify**:
+- `use_cases/dashboard/core/config_metadata.py`
+- `use_cases/dashboard/pages/training.py:143-217` (build_training_config_page)
+
+**Steps**:
+
+1. **Update config_metadata.py** (1 day)
+   - Add `STRUCTURAL_PARAMS` constant
+   - Add `get_modifiable_field_specs()` function
+   - Add `get_conditional_sections(prior_type)` function
+   - Add `get_section_specs_for_prior(prior_type)` function
+   - Reorganize `SECTION_SPECS` into logical tabs:
+     - "training" → "Training Setup"
+     - "loss_weights" → "Loss Weights"
+     - "mixture_prior" → "Mixture Prior" (conditional)
+     - "vamp_prior" → "VampPrior" (conditional)
+     - "geometric_prior" → "Geometric Prior" (conditional)
+     - "regularization" → "Regularization"
+     - "advanced" → "Advanced"
+   - Update field labels for mathematical terminology (Usage Entropy Weight, etc.)
+
+2. **Update pages/training.py** (1 day)
+   - Implement `_build_architecture_summary(config)` (reuse from training hub)
+   - Update `build_training_config_page()` to:
+     - Get prior_type from active model
+     - Filter sections with `get_section_specs_for_prior(prior_type)`
+     - Add architecture summary at top
+   - Filter field specs: `FIELD_SPECS = get_modifiable_field_specs()`
+   - Test with all 4 prior types
+
+3. **Testing** (0.5 day)
+   - Load standard prior model → Verify no mixture/vamp/geometric tabs
+   - Load mixture prior model → Verify "Mixture Prior" tab visible
+   - Verify architecture summary shows correct values
+   - Verify structural parameters not visible in any tab
+   - Save changes → Verify they persist
+
+**Acceptance Criteria**:
+- ✅ Only modifiable parameters shown (structural ones hidden)
+- ✅ Tabs shown/hidden based on prior type
+- ✅ Architecture summary at top with lock icon
+- ✅ Mathematical terminology used correctly
+- ✅ Changes save and persist correctly
+- ✅ Visual design matches specification
+
+### Phase 5: UpdateConfigCommand Validation (1 day)
 
 **Goal**: Prevent users from changing structural parameters
 
@@ -1043,7 +1455,7 @@ FieldSpec(
 - ✅ Changing modifiable params works normally
 - ✅ Error message explains what to do (create new model)
 
-### Phase 5: Polish & Documentation (1 day)
+### Phase 6: Polish & Documentation (1 day)
 
 **Goal**: Final polish and update documentation
 
