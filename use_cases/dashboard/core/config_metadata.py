@@ -738,6 +738,108 @@ def get_section_specs() -> Tuple[SectionSpec, ...]:
     return _SECTION_SPECS
 
 
+# ---------------------------------------------------------------------------
+# Structural vs. Modifiable Parameters
+# ---------------------------------------------------------------------------
+
+# Structural parameters are locked at model creation and cannot be changed
+_STRUCTURAL_PARAM_KEYS = frozenset({
+    "encoder_type",
+    "decoder_type",
+    "hidden_dims",
+    "latent_dim",
+    "reconstruction_loss",
+    "use_heteroscedastic_decoder",
+    "prior_type",
+    "num_components",
+    "component_embedding_dim",
+    "use_component_aware_decoder",
+})
+
+
+def is_structural_parameter(key: str) -> bool:
+    """Check if a parameter is structural (locked at creation)."""
+    return key in _STRUCTURAL_PARAM_KEYS
+
+
+def get_structural_field_specs() -> Tuple[FieldSpec, ...]:
+    """Get field specs for structural (locked) parameters."""
+    return tuple(spec for spec in _FIELD_SPECS if spec.key in _STRUCTURAL_PARAM_KEYS)
+
+
+def get_modifiable_field_specs() -> Tuple[FieldSpec, ...]:
+    """Get field specs for modifiable (editable) parameters."""
+    return tuple(spec for spec in _FIELD_SPECS if spec.key not in _STRUCTURAL_PARAM_KEYS)
+
+
+def get_prior_specific_params(prior_type: str) -> frozenset[str]:
+    """Get parameter keys that are specific to a given prior type.
+
+    Args:
+        prior_type: One of "standard", "mixture", "vamp", "geometric_mog"
+
+    Returns:
+        Set of parameter keys relevant only to this prior type
+    """
+    if prior_type == "standard":
+        return frozenset()
+    elif prior_type in ["mixture", "geometric_mog"]:
+        return frozenset({
+            "kl_c_weight",
+            "kl_c_anneal_epochs",
+            "component_diversity_weight",
+            "dirichlet_alpha",
+            "dirichlet_weight",
+            "learnable_pi",
+            "top_m_gating",
+            "soft_embedding_warmup_epochs",
+            "use_tau_classifier",
+            "tau_smoothing_alpha",
+        })
+    elif prior_type == "vamp":
+        return frozenset({
+            "kl_c_weight",
+            "kl_c_anneal_epochs",
+            "vamp_num_samples_kl",
+            "vamp_pseudo_lr_scale",
+            "vamp_pseudo_init_method",
+            "use_tau_classifier",
+            "tau_smoothing_alpha",
+        })
+    else:
+        return frozenset()
+
+
+def is_parameter_relevant(key: str, prior_type: str) -> bool:
+    """Check if a parameter is relevant for the given prior type.
+
+    Args:
+        key: Parameter key
+        prior_type: One of "standard", "mixture", "vamp", "geometric_mog"
+
+    Returns:
+        True if the parameter should be shown for this prior type
+    """
+    # Common parameters (always shown)
+    common_params = {
+        "batch_size", "learning_rate", "max_epochs", "patience",
+        "monitor_metric", "random_seed", "recon_weight", "kl_weight",
+        "grad_clip_norm", "weight_decay", "dropout_rate",
+        "use_contrastive", "contrastive_weight",
+    }
+
+    if key in common_params:
+        return True
+
+    # Structural parameters (shown in summary, not as editable fields)
+    if key in _STRUCTURAL_PARAM_KEYS:
+        return False
+
+    # Prior-specific parameters
+    prior_params = get_prior_specific_params(prior_type)
+    return key in prior_params
+
+
 def extract_initial_values(config_dict: Dict[str, Any] | None) -> List[Any]:
     current = config_dict or {}
     values: List[Any] = []
