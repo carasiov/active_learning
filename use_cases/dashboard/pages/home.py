@@ -425,12 +425,13 @@ def _build_model_card(metadata) -> html.Div:
 
 
 def _build_create_modal() -> dbc.Modal:
-    """Modal for creating new model."""
+    """Modal for creating new model with full architectural configuration."""
     return dbc.Modal(
         [
             dbc.ModalHeader(dbc.ModalTitle("Create New Model")),
             dbc.ModalBody(
                 [
+                    # Model Name
                     html.Div(
                         [
                             html.Label("Model Name (optional)", style={
@@ -454,8 +455,24 @@ def _build_create_modal() -> dbc.Modal:
                                 },
                             ),
                         ],
-                        style={"marginBottom": "20px"},
+                        style={"marginBottom": "24px"},
                     ),
+
+                    # Dataset Section Divider
+                    html.Div([
+                        html.Div(style={
+                            "borderTop": "2px solid #000000",
+                            "marginBottom": "8px",
+                        }),
+                        html.H4("Dataset", style={
+                            "fontSize": "15px",
+                            "fontWeight": "700",
+                            "color": "#000000",
+                            "marginBottom": "16px",
+                            "fontFamily": "'Open Sans', Verdana, sans-serif",
+                        }),
+                    ]),
+
                     html.Div(
                         [
                             html.Label("Total Samples", style={
@@ -482,17 +499,8 @@ def _build_create_modal() -> dbc.Modal:
                                     "fontFamily": "ui-monospace, monospace",
                                 },
                             ),
-                            html.Div(
-                                "Choose how many MNIST samples to include in this model's dataset.",
-                                style={
-                                    "fontSize": "12px",
-                                    "color": "#6F6F6F",
-                                    "marginTop": "6px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
-                            ),
                         ],
-                        style={"marginBottom": "20px"},
+                        style={"marginBottom": "16px"},
                     ),
                     html.Div(
                         [
@@ -520,17 +528,8 @@ def _build_create_modal() -> dbc.Modal:
                                     "fontFamily": "ui-monospace, monospace",
                                 },
                             ),
-                            html.Div(
-                                id="home-unlabeled-preview",
-                                style={
-                                    "fontSize": "12px",
-                                    "color": "#6F6F6F",
-                                    "marginTop": "6px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
-                            ),
                         ],
-                        style={"marginBottom": "20px"},
+                        style={"marginBottom": "16px"},
                     ),
                     html.Div(
                         [
@@ -556,8 +555,81 @@ def _build_create_modal() -> dbc.Modal:
                                     "fontFamily": "ui-monospace, monospace",
                                 },
                             ),
+                        ],
+                        style={"marginBottom": "24px"},
+                    ),
+
+                    # Architecture Section Divider
+                    html.Div([
+                        html.Div(style={
+                            "borderTop": "2px solid #000000",
+                            "marginBottom": "8px",
+                        }),
+                        html.H4("Model Architecture", style={
+                            "fontSize": "15px",
+                            "fontWeight": "700",
+                            "color": "#000000",
+                            "marginBottom": "4px",
+                            "fontFamily": "'Open Sans', Verdana, sans-serif",
+                        }),
+                        html.Div("(cannot be changed later)", style={
+                            "fontSize": "12px",
+                            "color": "#6F6F6F",
+                            "marginBottom": "16px",
+                            "fontFamily": "'Open Sans', Verdana, sans-serif",
+                        }),
+                    ]),
+
+                    # Encoder/Decoder Type
+                    html.Div(
+                        [
+                            html.Label("Encoder/Decoder", style={
+                                "fontSize": "14px",
+                                "fontWeight": "600",
+                                "marginBottom": "8px",
+                                "display": "block",
+                                "fontFamily": "'Open Sans', Verdana, sans-serif",
+                            }),
+                            dbc.RadioItems(
+                                id="home-encoder-type-radio",
+                                options=[
+                                    {"label": "Dense (MLP)", "value": "dense"},
+                                    {"label": "Convolutional", "value": "conv"},
+                                ],
+                                value="conv",
+                                inline=True,
+                                style={"fontFamily": "'Open Sans', Verdana, sans-serif"},
+                            ),
+                        ],
+                        style={"marginBottom": "16px"},
+                    ),
+
+                    # Hidden Layers (conditional on Dense)
+                    html.Div(
+                        [
+                            html.Label("Hidden Layers", style={
+                                "fontSize": "14px",
+                                "fontWeight": "600",
+                                "marginBottom": "6px",
+                                "display": "block",
+                                "fontFamily": "'Open Sans', Verdana, sans-serif",
+                            }),
+                            dcc.Input(
+                                id="home-hidden-dims-input",
+                                type="text",
+                                value="256,128,64",
+                                placeholder="e.g., 256,128,64",
+                                style={
+                                    "width": "100%",
+                                    "padding": "10px 12px",
+                                    "fontSize": "14px",
+                                    "border": "1px solid #C6C6C6",
+                                    "borderRadius": "6px",
+                                    "fontFamily": "ui-monospace, monospace",
+                                },
+                            ),
                             html.Div(
-                                "Use a fixed seed to reproduce dataset sampling across creations.",
+                                "Comma-separated layer sizes for Dense encoder",
                                 style={
                                     "fontSize": "12px",
                                     "color": "#6F6F6F",
@@ -566,13 +638,246 @@ def _build_create_modal() -> dbc.Modal:
                                 },
                             ),
                         ],
-                        style={"marginBottom": "20px"},
+                        id="home-hidden-layers-group",
+                        style={"marginBottom": "16px", "display": "none"},  # Hidden by default (conv selected)
                     ),
+
+                    # Latent Dimension
+                    html.Div(
+                        [
+                            html.Label("Latent Dimension", style={
+                                "fontSize": "14px",
+                                "fontWeight": "600",
+                                "marginBottom": "6px",
+                                "display": "block",
+                                "fontFamily": "'Open Sans', Verdana, sans-serif",
+                            }),
+                            dcc.Input(
+                                id="home-latent-dim-input",
+                                type="number",
+                                min=2,
+                                max=256,
+                                step=1,
+                                value=2,
+                                style={
+                                    "width": "100%",
+                                    "padding": "10px 12px",
+                                    "fontSize": "14px",
+                                    "border": "1px solid #C6C6C6",
+                                    "borderRadius": "6px",
+                                    "fontFamily": "ui-monospace, monospace",
+                                },
+                            ),
+                        ],
+                        style={"marginBottom": "16px"},
+                    ),
+
+                    # Reconstruction Loss
+                    html.Div(
+                        [
+                            html.Label("Reconstruction Loss", style={
+                                "fontSize": "14px",
+                                "fontWeight": "600",
+                                "marginBottom": "8px",
+                                "display": "block",
+                                "fontFamily": "'Open Sans', Verdana, sans-serif",
+                            }),
+                            dbc.RadioItems(
+                                id="home-recon-loss-radio",
+                                options=[
+                                    {"label": "BCE (binary)", "value": "bce"},
+                                    {"label": "MSE (continuous)", "value": "mse"},
+                                ],
+                                value="bce",
+                                inline=True,
+                                style={"fontFamily": "'Open Sans', Verdana, sans-serif"},
+                            ),
+                            html.Div(
+                                "BCE for binary images (MNIST), MSE for continuous",
+                                style={
+                                    "fontSize": "12px",
+                                    "color": "#6F6F6F",
+                                    "marginTop": "6px",
+                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                },
+                            ),
+                        ],
+                        style={"marginBottom": "16px"},
+                    ),
+
+                    # Heteroscedastic Decoder
+                    html.Div(
+                        [
+                            dbc.Checkbox(
+                                id="home-heteroscedastic-checkbox",
+                                label="Heteroscedastic Decoder",
+                                value=False,
+                                style={
+                                    "fontSize": "14px",
+                                    "fontWeight": "600",
+                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                },
+                            ),
+                            html.Div(
+                                "Learn per-image variance σ(x) for uncertainty quantification",
+                                style={
+                                    "fontSize": "12px",
+                                    "color": "#6F6F6F",
+                                    "marginTop": "6px",
+                                    "marginLeft": "24px",
+                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                },
+                            ),
+                        ],
+                        style={"marginBottom": "24px"},
+                    ),
+
+                    # Prior Configuration Section
+                    html.Div([
+                        html.Div(style={
+                            "borderTop": "1px solid #C6C6C6",
+                            "marginBottom": "8px",
+                        }),
+                        html.H4("Prior Configuration", style={
+                            "fontSize": "14px",
+                            "fontWeight": "700",
+                            "color": "#000000",
+                            "marginBottom": "16px",
+                            "fontFamily": "'Open Sans', Verdana, sans-serif",
+                        }),
+                    ]),
+
+                    # Prior Type
+                    html.Div(
+                        [
+                            html.Label("Prior Type", style={
+                                "fontSize": "14px",
+                                "fontWeight": "600",
+                                "marginBottom": "8px",
+                                "display": "block",
+                                "fontFamily": "'Open Sans', Verdana, sans-serif",
+                            }),
+                            dbc.RadioItems(
+                                id="home-prior-type-radio",
+                                options=[
+                                    {"label": "Standard", "value": "standard"},
+                                    {"label": "Mixture", "value": "mixture"},
+                                    {"label": "Vamp", "value": "vamp"},
+                                    {"label": "Geometric", "value": "geometric_mog"},
+                                ],
+                                value="mixture",
+                                style={"fontFamily": "'Open Sans', Verdana, sans-serif"},
+                            ),
+                        ],
+                        style={"marginBottom": "16px"},
+                    ),
+
+                    # Prior-Specific Options (conditional)
+                    html.Div(
+                        [
+                            html.Div(
+                                [
+                                    html.Label("Number of Components", style={
+                                        "fontSize": "14px",
+                                        "fontWeight": "600",
+                                        "marginBottom": "6px",
+                                        "display": "block",
+                                        "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                    }),
+                                    dcc.Input(
+                                        id="home-num-components-input",
+                                        type="number",
+                                        min=1,
+                                        max=64,
+                                        step=1,
+                                        value=10,
+                                        style={
+                                            "width": "100%",
+                                            "padding": "10px 12px",
+                                            "fontSize": "14px",
+                                            "border": "1px solid #C6C6C6",
+                                            "borderRadius": "6px",
+                                            "fontFamily": "ui-monospace, monospace",
+                                        },
+                                    ),
+                                ],
+                                style={"marginBottom": "16px"},
+                            ),
+                            html.Div(
+                                [
+                                    html.Label("Component Embedding Dim", style={
+                                        "fontSize": "14px",
+                                        "fontWeight": "600",
+                                        "marginBottom": "6px",
+                                        "display": "block",
+                                        "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                    }),
+                                    dcc.Input(
+                                        id="home-component-embedding-dim-input",
+                                        type="number",
+                                        min=1,
+                                        max=128,
+                                        step=1,
+                                        placeholder="auto (same as latent dim)",
+                                        style={
+                                            "width": "100%",
+                                            "padding": "10px 12px",
+                                            "fontSize": "14px",
+                                            "border": "1px solid #C6C6C6",
+                                            "borderRadius": "6px",
+                                            "fontFamily": "ui-monospace, monospace",
+                                        },
+                                    ),
+                                    html.Div(
+                                        "Default: same as latent dimension",
+                                        style={
+                                            "fontSize": "12px",
+                                            "color": "#6F6F6F",
+                                            "marginTop": "6px",
+                                            "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                        },
+                                    ),
+                                ],
+                                style={"marginBottom": "16px"},
+                            ),
+                            # Component-Aware Decoder (only for mixture/geometric)
+                            html.Div(
+                                [
+                                    dbc.Checkbox(
+                                        id="home-component-aware-decoder-checkbox",
+                                        label="Component-Aware Decoder",
+                                        value=True,
+                                        style={
+                                            "fontSize": "14px",
+                                            "fontWeight": "600",
+                                            "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                        },
+                                    ),
+                                    html.Div(
+                                        "Separate decoder pathways per component (recommended)",
+                                        style={
+                                            "fontSize": "12px",
+                                            "color": "#6F6F6F",
+                                            "marginTop": "6px",
+                                            "marginLeft": "24px",
+                                            "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                        },
+                                    ),
+                                ],
+                                id="home-component-aware-decoder-group",
+                                style={"marginBottom": "16px"},  # Will be shown/hidden by callback
+                            ),
+                        ],
+                        id="home-prior-options-group",
+                        style={"display": "block"},  # Shown by default (mixture selected)
+                    ),
+
                     html.Div(
                         id="home-create-feedback",
                         style={"fontSize": "14px", "marginTop": "12px"},
                     ),
-                ]
+                ],
+                style={"maxHeight": "70vh", "overflowY": "auto"},
             ),
             dbc.ModalFooter(
                 [
@@ -613,4 +918,5 @@ def _build_create_modal() -> dbc.Modal:
         id="home-create-modal",
         is_open=False,
         centered=True,
+        size="lg",  # Larger modal for more content
     )
