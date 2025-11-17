@@ -574,6 +574,36 @@ class UpdateModelConfigCommand(Command):
             return "No configuration changes detected."
 
         current_config = state.active_model.config
+
+        # Define structural parameters that cannot be changed after creation
+        structural_fields = {
+            "encoder_type",
+            "decoder_type",
+            "latent_dim",
+            "hidden_dims",
+            "prior_type",
+            "num_components",
+            "component_embedding_dim",
+            "use_component_aware_decoder",
+        }
+
+        # Check if any structural parameters are being changed
+        attempted_structural_changes = []
+        for field in structural_fields:
+            if field in self.updates:
+                current_value = getattr(current_config, field, None)
+                new_value = self.updates[field]
+                if current_value != new_value:
+                    attempted_structural_changes.append(field)
+
+        if attempted_structural_changes:
+            fields_list = ", ".join(attempted_structural_changes)
+            return (
+                f"Cannot modify structural parameters after model creation: {fields_list}. "
+                "These parameters are locked at creation and cannot be changed. "
+                "Please create a new model to use different architecture settings."
+            )
+
         config_data = {
             name: getattr(current_config, name)
             for name in current_config.__dataclass_fields__.keys()
@@ -603,27 +633,9 @@ class UpdateModelConfigCommand(Command):
         from use_cases.dashboard.core.model_manager import ModelManager
 
         current_model = state.active_model
-        current_config = current_model.config
         new_config = self._new_config
 
-        architecture_fields = {
-            "encoder_type",
-            "decoder_type",
-            "latent_dim",
-            "hidden_dims",
-            "prior_type",
-            "num_components",
-            "component_embedding_dim",
-            "use_component_aware_decoder",
-            "use_heteroscedastic_decoder",
-            "reconstruction_loss",
-        }
-        architecture_changed = any(
-            getattr(current_config, field) != getattr(new_config, field)
-            for field in architecture_fields
-            if hasattr(current_config, field)
-        )
-
+        # Update config in model and trainer instances
         model = current_model.model
         trainer = current_model.trainer
         model.config = new_config
@@ -631,22 +643,18 @@ class UpdateModelConfigCommand(Command):
         if hasattr(trainer, "_trainer"):
             trainer._trainer.config = new_config  # type: ignore[attr-defined]
 
+        # Update state with new config
         updated_model = current_model.with_config(new_config)
         updated_model = updated_model.with_updated_metadata(
             last_modified=datetime.utcnow().isoformat()
         )
 
+        # Persist to disk
         ModelManager.save_config(current_model.model_id, new_config)
         ModelManager.save_metadata(updated_model.metadata)
 
         new_state = state.with_active_model(updated_model)
-        if architecture_changed:
-            message = (
-                "Configuration saved. Structural changes require restarting the dashboard."
-            )
-        else:
-            message = "Configuration updated successfully."
-        return new_state, message
+        return new_state, "Configuration updated successfully."
 
 
 # ============================================================================

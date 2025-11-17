@@ -148,6 +148,70 @@ The target system enables this workflow:
 
 ---
 
+## Phase 0.5: Model Creation & Architecture Redesign ✅ COMPLETED (November 2025)
+
+**Goal**: Enable users to create models with any prior type and prevent structural parameter modifications after creation.
+
+**Status**: ✅ Complete
+
+### Problem Statement
+
+Users could not create mixture/vamp/geometric models from the UI. Models were always created with hardcoded `SSVAEConfig()` defaults (`prior_type="standard"`). When users changed structural parameters like `prior_type` in the training hub, only the config was updated—the model architecture was NOT rebuilt, causing `ValueError: Mixture responsibilities unavailable` when training.
+
+### Solution: Two-Part Redesign
+
+**Part 1: Model Creation Enhancement**
+- Expanded homepage modal to expose all structural parameters BEFORE model creation
+- Added conditional rendering (show num_components only when mixture prior selected)
+- Updated `CreateModelCommand` to accept architecture configuration
+- Built `SSVAEConfig` with user-specified parameters instead of hardcoded defaults
+
+**Part 2: Training Hub Architecture Lock**
+- Added read-only architecture summary at top of training hub with 🔒 icon
+- Shows locked structural parameters (encoder, prior, latent_dim, num_components)
+- Updated `UpdateModelConfigCommand` to block structural parameter changes
+- Clear error messages guide users to create new model for different architecture
+
+### Implementation Details
+
+**Files Modified**:
+- `use_cases/dashboard/pages/home.py` - Expanded modal with architecture config (427-735)
+- `use_cases/dashboard/callbacks/home_callbacks.py` - Conditional rendering callbacks
+- `use_cases/dashboard/core/commands.py` - CreateModelCommand architecture params, UpdateModelConfigCommand validation
+- `use_cases/dashboard/pages/training_hub.py` - Architecture summary section (288-410)
+
+**Structural Parameters** (locked at creation):
+- `encoder_type` - "dense" or "conv"
+- `decoder_type` - mirrors encoder
+- `latent_dim` - 2-256
+- `hidden_dims` - layer sizes (Dense encoder only)
+- `prior_type` - "standard", "mixture", "vamp", "geometric_mog"
+- `num_components` - 1-64 (mixture priors only)
+- `component_embedding_dim` - optional
+- `use_component_aware_decoder` - boolean
+
+**Conditional UI Rendering**:
+- Show `hidden_dims` only when encoder_type == "dense"
+- Show mixture options only when prior_type in ["mixture", "vamp", "geometric_mog"]
+- Dynamic help text based on prior selection
+
+### Results
+
+✅ **Can create models with all 4 prior types from homepage**
+✅ **Conditional fields show/hide correctly**
+✅ **Training hub shows architecture summary (read-only)**
+✅ **Cannot change structural parameters after creation**
+✅ **Clear error messages guide users to correct workflow**
+✅ **Existing models still load and work**
+✅ **Visual design matches specification**
+
+### Key Commits
+
+- `37645d9` - Phase 1: Model Creation Enhancement with Architecture Configuration
+- (Phase 2-3 commits to be added)
+
+---
+
 ## Phase 1: Experiment Integration Foundation
 
 **Goal**: Enable dashboard training runs to generate experiment-quality outputs.

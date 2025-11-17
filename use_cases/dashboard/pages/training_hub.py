@@ -285,6 +285,130 @@ def build_training_hub_layout() -> html.Div:
                 },
             ),
             
+            # Architecture Summary (Full-width, locked parameters)
+            html.Div(
+                [
+                    html.Div(
+                        [
+                            html.Span("Model Architecture ", style={
+                                "fontSize": "16px",
+                                "fontWeight": "700",
+                                "color": "#000000",
+                                "fontFamily": "'Open Sans', Verdana, sans-serif",
+                            }),
+                            html.Span("🔒", style={
+                                "fontSize": "16px",
+                                "marginLeft": "6px",
+                            }),
+                            html.Span("(locked at creation)", style={
+                                "fontSize": "13px",
+                                "color": "#6F6F6F",
+                                "marginLeft": "8px",
+                                "fontWeight": "400",
+                                "fontFamily": "'Open Sans', Verdana, sans-serif",
+                            }),
+                        ],
+                        style={
+                            "padding": "12px 24px",
+                            "borderBottom": "2px solid #C10A27",
+                            "backgroundColor": "#ffffff",
+                        },
+                    ),
+                    html.Div(
+                        [
+                            html.Div(
+                                [
+                                    # Encoder & Latent
+                                    html.Div(
+                                        [
+                                            html.Div("Encoder Type", style={
+                                                "fontSize": "12px",
+                                                "color": "#6F6F6F",
+                                                "marginBottom": "4px",
+                                                "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                            }),
+                                            html.Div(config.encoder_type.upper(), style={
+                                                "fontSize": "14px",
+                                                "fontWeight": "600",
+                                                "color": "#000000",
+                                                "fontFamily": "ui-monospace, monospace",
+                                            }),
+                                        ],
+                                        style={"flex": "1"},
+                                    ),
+                                    html.Div(
+                                        [
+                                            html.Div("Latent Dimension", style={
+                                                "fontSize": "12px",
+                                                "color": "#6F6F6F",
+                                                "marginBottom": "4px",
+                                                "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                            }),
+                                            html.Div(str(config.latent_dim), style={
+                                                "fontSize": "14px",
+                                                "fontWeight": "600",
+                                                "color": "#000000",
+                                                "fontFamily": "ui-monospace, monospace",
+                                            }),
+                                        ],
+                                        style={"flex": "1"},
+                                    ),
+                                    html.Div(
+                                        [
+                                            html.Div("Prior Type", style={
+                                                "fontSize": "12px",
+                                                "color": "#6F6F6F",
+                                                "marginBottom": "4px",
+                                                "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                            }),
+                                            html.Div(config.prior_type.replace("_", " ").title(), style={
+                                                "fontSize": "14px",
+                                                "fontWeight": "600",
+                                                "color": "#000000" if config.prior_type == "standard" else "#C10A27",
+                                                "fontFamily": "ui-monospace, monospace",
+                                            }),
+                                        ],
+                                        style={"flex": "1"},
+                                    ),
+                                    html.Div(
+                                        [
+                                            html.Div("Components", style={
+                                                "fontSize": "12px",
+                                                "color": "#6F6F6F",
+                                                "marginBottom": "4px",
+                                                "fontFamily": "'Open Sans', Verdana, sans-serif",
+                                            }),
+                                            html.Div(
+                                                str(config.num_components) if config.prior_type in ["mixture", "vamp", "geometric_mog"] else "N/A",
+                                                style={
+                                                    "fontSize": "14px",
+                                                    "fontWeight": "600",
+                                                    "color": "#000000",
+                                                    "fontFamily": "ui-monospace, monospace",
+                                                }
+                                            ),
+                                        ],
+                                        style={"flex": "1"},
+                                    ),
+                                ],
+                                style={"display": "flex", "gap": "24px"},
+                            ),
+                        ],
+                        style={
+                            "padding": "16px 24px",
+                            "backgroundColor": "#f5f5f5",
+                        },
+                    ),
+                ],
+                style={
+                    "margin": "0 32px 24px 32px",
+                    "backgroundColor": "#ffffff",
+                    "borderRadius": "8px",
+                    "overflow": "hidden",
+                    "border": "1px solid #C6C6C6",
+                },
+            ),
+
             # Main Content Area (2-column: Config left 40%, Progress right 60%)
             html.Div(
                 [
