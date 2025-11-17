@@ -32,14 +32,23 @@ This note captures the current status of the interactive dashboard and its suppo
 
 ## 2. Backend & Data Flow
 
-### 2.1 State Management
-- **Global state** (`use_cases/dashboard/core/state.py`)
-  - `AppState` holds the model registry, the active model, and a page-level cache.
-  - Synchronisation uses a module-level `state_lock` (`threading.RLock`).
-  - `CommandDispatcher` wraps all mutations, validates inputs, and records history.
-- **Model metadata** (`use_cases/dashboard/core/state_models.py`)
-  - `ModelMetadata` stores dataset size, labeled count, total epochs, latest loss, etc.
-  - `ModelState` snapshots the SSVAE instance, config, dataset preview, training status, and history.
+### 2.1 State Management (Refactored November 2025 - Phase 3)
+- **AppStateManager** (`use_cases/dashboard/core/state_manager.py`)
+  - Encapsulates `AppState` with internal `RLock` for thread-safe access
+  - Replaces global `app_state` and module-level `state_lock`
+  - Provides methods: `update_state()`, `initialize()`, `load_model()`, etc.
+  - Contains `CommandDispatcher` for all state mutations
+- **Service Layer** (`use_cases/dashboard/services/`)
+  - `ModelService`: Model CRUD operations, loading, persistence
+  - `TrainingService`: Training execution, validation
+  - `LabelingService`: Label persistence and updates
+  - Commands receive services via dependency injection
+- **State Models** (`use_cases/dashboard/core/state_models.py`)
+  - Immutable dataclasses using `@dataclass(frozen=True)`
+  - `AppState` holds model registry, active model, page-level cache
+  - `ModelState` snapshots SSVAE instance, config, dataset preview, training status, history
+  - `ModelMetadata` stores dataset size, labeled count, total epochs, latest loss
+- **Update Pattern**: Always use `state_manager.update_state(new_state)`, never direct assignment
 
 ### 2.2 Persistence Layer (`use_cases/dashboard/core/model_manager.py`)
 - Maintains a directory per model under `use_cases/artifacts/models/`.

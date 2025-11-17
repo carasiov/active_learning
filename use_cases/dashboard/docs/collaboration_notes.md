@@ -8,10 +8,17 @@ The fuller history, open issues, and roadmap live in [`dashboard_state_plan.md`]
 
 - **Entry point:** `use_cases/dashboard/app.py`
   - Configures logging via `DASHBOARD_LOG_LEVEL` (default INFO) and boots Dash routes.
-  - Global state resides in `use_cases.dashboard.core.state` (`app_state`, `metrics_queue`, `CommandDispatcher`).
+  - State management handled by `AppStateManager` in `use_cases/dashboard/core/state_manager.py`
+  - Service container provides `TrainingService`, `ModelService`, `LabelingService` instances
+- **Architecture (Phase 3 Refactoring - November 2025)**:
+  - `AppStateManager` encapsulates all state with internal lock, replaces global `app_state`
+  - Service layer (`services/`) handles domain logic (training, model I/O, labeling)
+  - Commands use dependency injection, receive `services` parameter
+  - Commands call `state_manager.update_state()` exclusively (never direct assignment)
 - **State mutations:** Commands in `use_cases/dashboard/core/commands.py` remain the sole way to mutate state.
-  - `LoadModelCommand` refuses model switches during active training and clears the metrics queue on activation.
-  - `StartTrainingCommand` validates hyperparameters before dispatching the background worker; `CompleteTrainingCommand` threads through mixture artefacts.
+  - `LoadModelCommand` uses `ModelService.load_model()` and refuses switches during active training
+  - `StartTrainingCommand` validates hyperparameters via `TrainingService` before dispatching worker
+  - `CompleteTrainingCommand` threads through mixture artifacts and generates experiment outputs
 - **Training worker:** `use_cases/dashboard/callbacks/training_callbacks.py::train_worker`
   - Background thread that logs structured start/stop/failure events and publishes metrics into `metrics_queue`.
   - Failures now emit full stack traces (see `/tmp/ssvae_dashboard.log`) and surface user-friendly status messages.
@@ -56,12 +63,26 @@ This keeps the loop tight and avoids regressions.
 
 ## Useful Reference Points
 
-- **Global state:** `use_cases/dashboard/core/state.py`
-- **Training status polling:** `use_cases/dashboard/callbacks/training_callbacks.py::poll_training_status`
-- **Model registry helpers:** `use_cases/dashboard/core/model_manager.py`
-- **Experiment utilities:** `use_cases/dashboard/pages/*`, `use_cases/dashboard/utils/`
+**Core Architecture**:
+- **State manager:** `use_cases/dashboard/core/state_manager.py` (AppStateManager class)
+- **State models:** `use_cases/dashboard/core/state_models.py` (immutable dataclasses)
+- **Service layer:** `use_cases/dashboard/services/` (TrainingService, ModelService, LabelingService)
+- **Commands:** `use_cases/dashboard/core/commands.py` (all state mutations)
+
+**Infrastructure**:
+- **Model persistence:** `use_cases/dashboard/core/model_manager.py`
+- **Run generation:** `use_cases/dashboard/core/run_generation.py` (experiment outputs)
 - **Checkpoint service:** `src/rcmvae/application/services/checkpoint_service.py`
-- **Extended roadmap/context:** [`dashboard_state_plan.md`](dashboard_state_plan.md)
+
+**UI Layer**:
+- **Training callbacks:** `use_cases/dashboard/callbacks/training_callbacks.py` (main dashboard)
+- **Training hub callbacks:** `use_cases/dashboard/callbacks/training_hub_callbacks.py` (training hub page)
+- **Pages:** `use_cases/dashboard/pages/` (layouts and UI components)
+- **Utilities:** `use_cases/dashboard/utils/` (visualization, logging)
+
+**Documentation**:
+- **Extended roadmap:** [`dashboard_state_plan.md`](dashboard_state_plan.md)
+- **Integration plan:** [`../ROADMAP.md`](../ROADMAP.md) (Phase 0-4 vision)
 - **Autonomous agent contract:** [`autonomous_agent_spec.md`](autonomous_agent_spec.md)
 
 ## Future Checklist Ideas
