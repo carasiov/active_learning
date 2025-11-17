@@ -4,6 +4,32 @@
 
 **Context**: This document bridges the gap between the CLI experiment workflow (`use_cases/experiments/`) and the interactive dashboard (`use_cases/dashboard/`), enabling the dashboard to generate experiment-quality outputs and visualizations.
 
+## 📚 Related Documentation
+
+**Before starting work**, review these guides for context:
+
+### Essential Reading
+- **[AGENTS.md](../../../AGENTS.md)** - How to navigate the documentation ecosystem and understand system architecture
+- **[Developer Guide](docs/DEVELOPER_GUIDE.md)** - Dashboard internals, backend integration points, debugging toolkit, extension workflow
+- **[Collaboration Notes](docs/collaboration_notes.md)** - Current system snapshot, debugging playbook, recent work
+- **[Dashboard README](README.md)** - Quick start, project structure, routes
+
+### Background Context
+- **[Experiments Guide](../../experiments/README.md)** - Experiment outputs (REPORT.md, figures), run directory structure
+- **[Conceptual Model](../../../docs/theory/conceptual_model.md)** - Mixture model theory, component specialization, τ-classifier, OOD scoring
+- **[Mathematical Specification](../../../docs/theory/mathematical_specification.md)** - Formal definitions of responsibilities, τ-matrix, uncertainty
+- **[Architecture Guide](../../../docs/development/architecture.md)** - Design patterns, service layer, state management
+
+### Implementation References
+- **[State Management Plan](docs/dashboard_state_plan.md)** - State architecture, AppStateManager design
+- **[Config Metadata](core/config_metadata.py)** - How training parameters are defined and validated
+- **[State Models](core/state_models.py)** - Immutable dataclasses representing app state
+
+### Quick References
+- **Extension Checklist**: [DEVELOPER_GUIDE.md §5](docs/DEVELOPER_GUIDE.md) - Step-by-step workflow for adding features
+- **Debugging Playbook**: [collaboration_notes.md §Debugging](docs/collaboration_notes.md) - Logs, tests, common issues
+- **Backend Touchpoints**: [DEVELOPER_GUIDE.md §2](docs/DEVELOPER_GUIDE.md) - Where dashboard interacts with SSVAE backend
+
 ---
 
 ## Executive Summary
@@ -130,6 +156,8 @@ The target system enables this workflow:
 
 **Background**: The function `use_cases/dashboard/core/run_generation.py::generate_dashboard_run()` already exists and creates full experiment outputs. It's called in `CompleteTrainingCommand` but outputs aren't surfaced in the UI.
 
+**See Also**: [Experiments Guide - Run Directory Layout](../../experiments/README.md) for output structure details
+
 **Current Flow**:
 ```python
 # In CompleteTrainingCommand.execute()
@@ -193,6 +221,11 @@ Training Hub
 - `tau_matrix_heatmap.png`: Component→label mapping visualization
 - π evolution plots
 
+**See Also**:
+- [Conceptual Model §How-We-Classify](../../../docs/theory/conceptual_model.md) - Component specialization theory
+- [Experiments Guide §Channel-Wise Latent Diagnostic](../../experiments/README.md) - Visualization details
+- [Mathematical Specification](../../../docs/theory/mathematical_specification.md) - Formal definition of τ-matrix
+
 **Tasks**:
 1. Create new "Component Analysis" tab in training hub
 2. Display τ-matrix heatmap (if mixture model)
@@ -235,6 +268,8 @@ OOD(x) = 1 - max_c [r_c(x) · max_y τ_{c,y}]
 ```
 
 This identifies points not well-owned by any labeled component.
+
+**See Also**: [Conceptual Model §How-We-Classify](../../../docs/theory/conceptual_model.md) - OOD scoring derivation and intuition
 
 **Tasks**:
 1. Add `compute_ood_scores()` to `ModelState` (uses responsibilities + τ)
@@ -602,10 +637,17 @@ When resuming work:
 
 ### Key Files to Reference
 
-- **Architecture**: `docs/development/architecture.md` - Design patterns
-- **Theory**: `docs/theory/conceptual_model.md` - Core mental model
-- **Experiments**: `use_cases/experiments/README.md` - CLI workflow
-- **State Models**: `use_cases/dashboard/core/state_models.py` - Data structures
+**Core Documentation**:
+- **[AGENTS.md](../../../AGENTS.md)** - Documentation navigation guide
+- **[Developer Guide](docs/DEVELOPER_GUIDE.md)** - Dashboard architecture, backend touchpoints
+- **[Architecture](../../../docs/development/architecture.md)** - Design patterns, service layer
+- **[Conceptual Model](../../../docs/theory/conceptual_model.md)** - Mixture models, τ-classifier, OOD theory
+
+**Implementation Details**:
+- **[Experiments Guide](../../experiments/README.md)** - CLI workflow, REPORT.md structure
+- **[State Models](core/state_models.py)** - Immutable dataclasses (AppState, ModelState, etc.)
+- **[Config Metadata](core/config_metadata.py)** - Training parameter definitions
+- **[Collaboration Notes](docs/collaboration_notes.md)** - Recent work, debugging playbook
 
 ### Debugging Tips
 

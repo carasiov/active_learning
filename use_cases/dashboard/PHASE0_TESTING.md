@@ -1,6 +1,19 @@
 # Phase 0 Stabilization - Testing Checklist
 
-This document provides a checklist for verifying Phase 0 stabilization work.
+This document provides a checklist for verifying Phase 0 stabilization work completed in [ROADMAP.md Phase 0](ROADMAP.md).
+
+## 📚 Before Testing
+
+**Familiarize yourself with**:
+- **[Dashboard README](README.md)** - Quick start instructions, routes, development tips
+- **[ROADMAP.md Phase 0](ROADMAP.md)** - Stabilization goals and implementation details
+- **[Collaboration Notes §Debugging](docs/collaboration_notes.md)** - How to capture logs and debug issues
+- **[Developer Guide §4](docs/DEVELOPER_GUIDE.md)** - Debugging toolkit (log levels, file locations)
+
+**Key Concepts Tested**:
+- **State Lifecycle**: [ROADMAP.md §0.1](ROADMAP.md) - State transitions, update patterns
+- **Error Handling**: [ROADMAP.md §0.3](ROADMAP.md) - Defensive error handling, model loading
+- **Mixture Support**: [ROADMAP.md §0.4](ROADMAP.md) - Mixture model predictions, responsibilities
 
 ## Test Environment Setup
 
@@ -184,6 +197,39 @@ This document provides a checklist for verifying Phase 0 stabilization work.
 - [ ] Log messages include model ID
 - [ ] Log messages include old and new state
 - [ ] Logs appear at correct times (when state changes)
+
+## Troubleshooting
+
+If tests fail, consult these resources:
+
+**Debugging Guide**:
+- **[Collaboration Notes §Debugging Playbook](docs/collaboration_notes.md)** - Step-by-step debugging workflow
+- **[Developer Guide §4 Debugging Toolkit](docs/DEVELOPER_GUIDE.md)** - Log locations, test commands
+- **[README §Development](README.md)** - Enabling DEBUG logs, runtime log location
+
+**Common Issues**:
+1. **Training stuck in RUNNING**: See [ROADMAP.md §Debugging Tips](ROADMAP.md) - Check state and thread status
+2. **Architecture mismatch errors**: See [ROADMAP.md §0.3](ROADMAP.md) - Should load gracefully with warnings
+3. **Missing mixture visualizations**: See [ROADMAP.md §0.4](ROADMAP.md) - Check `_predict_outputs()` implementation
+4. **State not resetting**: See [ROADMAP.md §Architecture Patterns](ROADMAP.md) - Must use `update_state()`
+
+**Log Collection**:
+```bash
+# Enable debug logs
+export DASHBOARD_LOG_LEVEL=DEBUG
+poetry run python use_cases/dashboard/app.py
+
+# Collect runtime logs
+tail -n 200 /tmp/ssvae_dashboard.log
+```
+
+**Report Issues**:
+When reporting test failures, include:
+- Test case number (e.g., TC1.1, TC2.3)
+- Terminal output (console logs)
+- Runtime logs (`/tmp/ssvae_dashboard.log`)
+- Screenshots showing the issue
+- Browser console errors (F12 → Console)
 
 ## Summary
 
