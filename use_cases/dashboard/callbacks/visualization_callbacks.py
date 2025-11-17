@@ -347,6 +347,7 @@ def register_visualization_callbacks(app: Dash) -> None:
     @app.callback(
         Output("color-mode-radio", "value"),
         Input("color-mode-radio", "value"),
+        prevent_initial_call=True,
     )
     def sync_color_mode(color_mode: str) -> str:
 
