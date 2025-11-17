@@ -10,11 +10,12 @@ Implement the SSVAE Dashboard model creation and training hub redesign according
 
 ## Context
 
-**Problem**: Users cannot create mixture/vamp/geometric models from the UI. Models are always created with hardcoded `SSVAEConfig()` defaults (prior_type="standard"). When users change structural parameters like `prior_type` in the training hub, only the config is updated—the model architecture is NOT rebuilt. This causes `ValueError: Mixture responsibilities unavailable` when training.
+**Problem**: Users cannot create mixture/vamp/geometric models from the UI. Models are always created with hardcoded `SSVAEConfig()` defaults (prior_type="standard"). When users change structural parameters like `prior_type` in the training hub or configuration page, only the config is updated—the model architecture is NOT rebuilt. This causes `ValueError: Mixture responsibilities unavailable` when training.
 
-**Solution**: Two-part redesign:
+**Solution**: Three-part redesign:
 1. **Model Creation**: Expand homepage modal to expose all structural parameters (encoder type, prior type, latent dim, etc.) BEFORE model creation
-2. **Training Hub**: Show only modifiable parameters after creation, with conditional sections based on prior type
+2. **Training Hub**: Show only modifiable parameters with quick controls, conditional sections based on prior type
+3. **Full Configuration Page**: Redesign advanced options to filter structural params and show conditional tabs based on prior type
 
 **Current Branch**: `claude/read-review-code-015t5G3dNEAWya6kiLQTvHSX`
 
@@ -24,6 +25,8 @@ Implement the SSVAE Dashboard model creation and training hub redesign according
 - `644f2e2` - UI refinements (removed advanced options)
 - `4c2849f` - Mathematical terminology corrections
 - `de1559b` - Consolidated implementation guide
+- `8ea13eb` - Kickstart prompt
+- `7d972a9` - Added Full Configuration Page redesign specs
 
 ## Your Mission
 
@@ -33,7 +36,7 @@ Implement the SSVAE Dashboard model creation and training hub redesign according
 use_cases/dashboard/docs/IMPLEMENTATION_GUIDE.md
 ```
 
-Then implement the redesign in 5 phases:
+Then implement the redesign in 6 phases:
 
 ### Phase 1: Model Creation Enhancement (3-5 days)
 - Expand `use_cases/dashboard/pages/home.py` modal with all structural parameters
@@ -52,12 +55,19 @@ Then implement the redesign in 5 phases:
 - Reorganize training hub with logical sections
 - **Files**: `pages/training_hub.py`, `core/config_metadata.py`
 
-### Phase 4: UpdateConfigCommand Validation (1 day)
+### Phase 4: Full Configuration Page Redesign (2-3 days)
+- Filter out structural parameters (show only modifiable ones)
+- Add conditional tabs based on prior type
+- Add architecture summary at top
+- Reorganize into logical sections/tabs
+- **Files**: `core/config_metadata.py`, `pages/training.py`
+
+### Phase 5: UpdateConfigCommand Validation (1 day)
 - Block changes to structural parameters after creation
 - Add clear error messages
 - **Files**: `core/commands.py`
 
-### Phase 5: Polish & Documentation (1 day)
+### Phase 6: Polish & Documentation (1 day)
 - Visual polish and consistency check
 - Update ROADMAP.md
 - **Files**: `ROADMAP.md`, `docs/collaboration_notes.md`
@@ -87,6 +97,8 @@ Then implement the redesign in 5 phases:
 - ✅ Conditional fields show/hide correctly
 - ✅ Training hub shows architecture summary (read-only)
 - ✅ Training hub shows correct prior-specific sections
+- ✅ Full configuration page filters structural parameters
+- ✅ Full configuration page shows conditional tabs based on prior type
 - ✅ Cannot change structural parameters after creation
 - ✅ Existing models still load and work
 - ✅ Mathematical terminology used correctly
@@ -103,7 +115,7 @@ Then implement the redesign in 5 phases:
    ```bash
    git status
    git log --oneline -5
-   # Should see: de1559b (consolidated guide), 4c2849f, 644f2e2, 38a5925, a65e7b4
+   # Should see: 7d972a9 (full config specs), 8ea13eb (kickstart), de1559b (guide)
    ```
 4. **Start with Phase 1**: Model creation enhancement
 5. **Test after each phase** before moving to next
@@ -120,7 +132,7 @@ Then implement the redesign in 5 phases:
 ## Questions?
 
 If anything is unclear:
-1. Check IMPLEMENTATION_GUIDE.md first (547 lines, very comprehensive)
+1. Check IMPLEMENTATION_GUIDE.md first (1935 lines, very comprehensive)
 2. Reference existing code patterns in the files mentioned
 3. Review conceptual model for terminology questions
 4. Ask user for clarification on design decisions
