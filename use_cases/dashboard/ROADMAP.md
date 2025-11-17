@@ -37,29 +37,42 @@
 ### Current State (As of November 2025)
 
 **✅ Completed**:
-- Service architecture refactoring (Phases 1-3)
+- **Phase 0: Stabilization** (Complete)
+  - Service architecture refactoring
   - `TrainingService`, `ModelService`, `LabelingService` abstractions
   - `AppStateManager` eliminates global state
-  - Commands use dependency injection (no backward compatibility)
-- Mixture model support in training workers
-  - Captures `responsibilities` and `pi_values`
-  - Enables component specialization analysis
-- Basic active learning loop
-  - Label samples via click → Train → See updated latent space
+  - Commands use dependency injection
+  - Training state lifecycle fixes
+  - Defensive error handling
 
-**⚠️ Stabilization Needed**:
-- Training state lifecycle bugs (partially fixed, needs testing)
-- UI inconsistencies (epochs input override, page navigation)
-- Missing error handling and validation
-- Incomplete mixture visualization integration
+- **Phase 1: Experiment Integration** (✅ Complete)
+  - **Phase 1.1 & 1.2** (commits `7ceec67`, `1aaf22c`)
+    - ✅ REPORT.md generation for dashboard runs
+    - ✅ Run records persisted to `ModelState.runs` and `runs.json`
+    - ✅ "Recent Runs" section in Training Hub (last 5 runs)
+    - ✅ Run Viewer page at `/model/{id}/run/{run_id}`
+    - ✅ Displays run metadata: epochs, labeled samples, metrics
+    - ⚠️ Image rendering in reports (known limitation, workaround provided)
 
-**❌ Missing**:
-- Experiment-quality outputs from dashboard training
-- τ-matrix (component→label mapping) visualizations
+  - **Phase 1.3: Mixture Diagnostics** (commits `7effff6`, `58b27eb`, `93761c2`)
+    - ✅ Added responsibilities and pi_values to DataState
+    - ✅ Component coloring mode in latent space visualization
+    - ✅ Mixture Diagnostics section with π values bar chart
+    - ✅ Auto-hides for non-mixture models
+    - ✅ Component visualization using tab20 colormap
+
+- **Active Learning Loop** (Fully Functional):
+  - Label samples via click → Train → See updated latent space → View run report → Analyze mixture components
+
+**🚧 Next Steps**:
+- Phase 2.1: Implement OOD scoring for strategic labeling
+- Phase 2.2: Strategic labeling suggestions
+
+**❌ Future Enhancements**:
+- τ-matrix (component→label mapping) live viewer (currently in REPORT.md)
 - π evolution tracking across training sessions
 - Uncertainty/OOD highlighting for strategic labeling
-- REPORT.md generation for dashboard runs
-- Component specialization diagnostics
+- Real-time mixture updates during training
 
 ### Vision: Dashboard as Active Learning Workbench
 
@@ -152,107 +165,212 @@ The target system enables this workflow:
 
 **Goal**: Enable dashboard training runs to generate experiment-quality outputs.
 
-### 1.1 Leverage `generate_dashboard_run()` Infrastructure
+### 1.1 Leverage `generate_dashboard_run()` Infrastructure ✅
 
-**Background**: The function `use_cases/dashboard/core/run_generation.py::generate_dashboard_run()` already exists and creates full experiment outputs. It's called in `CompleteTrainingCommand` but outputs aren't surfaced in the UI.
+**Status**: ✅ Complete (Pre-existing implementation verified November 2025)
+
+**Background**: The function `use_cases/dashboard/core/run_generation.py::generate_dashboard_run()` already exists and creates full experiment outputs. It's called in `CompleteTrainingCommand` and properly saves run records.
 
 **See Also**: [Experiments Guide - Run Directory Layout](../../experiments/README.md) for output structure details
 
-**Current Flow**:
-```python
-# In CompleteTrainingCommand.execute()
-run_record = generate_dashboard_run(
-    model_id=model_id,
-    config=state.active_model.config,
-    # ... metrics, diagnostics
-)
-# run_record created but not used!
-```
-
-**Tasks**:
-1. Read `use_cases/dashboard/core/run_generation.py` to understand output structure
-2. Verify `RunRecord` contains all necessary metadata (path to REPORT.md, figures, etc.)
-3. Add `run_record` to `ModelState.runs` tuple in `CompleteTrainingCommand`
-4. Update `ModelState` schema to include link to latest run's REPORT.md
+**Implementation Details**:
+- `CompleteTrainingCommand.execute()` (lines 453-483) calls `generate_dashboard_run()`
+- Run records are saved via `append_run_record()` to `{model_dir}/runs.json`
+- `ModelState.runs` is updated with the new run record (lines 470-473)
+- All metadata fields present: `run_id`, `timestamp`, `report_path`, `results_root`, `metrics`, etc.
 
 **Design Decision**:
-- Keep using `generate_dashboard_run()` - don't duplicate experiment infrastructure
-- Store run records in `ModelState.runs` for UI access
-- Link to generated REPORT.md instead of duplicating content
+- ✅ Using `generate_dashboard_run()` - no duplication of experiment infrastructure
+- ✅ Run records stored in `ModelState.runs` for UI access
+- ✅ Links to generated REPORT.md instead of duplicating content
 
 **Acceptance Criteria**:
-- After training, `ModelState.runs` contains new `RunRecord`
-- `RunRecord` includes paths to REPORT.md and figures
-- Training hub shows link to latest run's REPORT.md
+- ✅ After training, `ModelState.runs` contains new `RunRecord`
+- ✅ `RunRecord` includes paths to REPORT.md and figures
+- ✅ Ready for UI integration (completed in Phase 1.2)
 
-### 1.2 Surface Experiment Outputs in Training Hub
+### 1.2 Surface Experiment Outputs in Training Hub ✅
+
+**Status**: ✅ Complete (Implemented November 2025, commit `7ceec67`)
 
 **Goal**: Make REPORT.md and figures accessible from the UI.
 
-**Tasks**:
-1. Add "View Latest Report" button to training hub
-2. Create new route `/model/{id}/run/{run_id}` to display REPORT.md
-3. Render markdown with embedded image references
-4. Add "Recent Runs" section showing last 5 runs with thumbnails
+**Implementation**:
+1. ✅ Created `run_viewer.py` page to display REPORT.md content
+2. ✅ Added route `/model/{id}/run/{run_id}` in `app.py`
+3. ✅ Added "Recent Runs" section to training hub showing last 5 runs
+4. ✅ Each run displays: run ID, timestamp, epochs, labeled samples, validation loss
+5. ✅ "View Report →" button links to run viewer page
 
-**UI Design**:
+**Files Modified**:
+- `use_cases/dashboard/pages/run_viewer.py` (new)
+- `use_cases/dashboard/app.py` (routing)
+- `use_cases/dashboard/pages/training_hub.py` (Recent Runs section)
+
+**UI Design** (Implemented):
 ```
 Training Hub
 ├── Training Controls (existing)
 ├── Loss Curves (existing)
-└── Recent Runs (NEW)
-    ├── Run 1: 20251116_143022 [View Report] [Best val: 0.023]
-    ├── Run 2: 20251116_122801 [View Report] [Best val: 0.031]
-    └── ...
+└── Recent Runs (NEW) ✅
+    ├── Run {run_id} • {timestamp} [View Report →]
+    │   └── Epochs: {start}→{end} | Labeled: {count}/{total} | Val Loss: {loss}
+    └── Shows total run count, handles empty state gracefully
 ```
 
 **Acceptance Criteria**:
-- User can click "View Report" to see full REPORT.md
-- Images in report render correctly
-- Run metadata shows in UI (timestamp, epochs, best metrics)
+- ✅ User can click "View Report" to see full REPORT.md
+- ⚠️ Images in report: Not yet rendered (known limitation, see below)
+- ✅ Run metadata shows in UI (timestamp, epochs, best metrics)
 
-### 1.3 Expose Mixture Diagnostics in UI
+**Known Limitations**:
+- **Image Rendering**: REPORT.md references images with relative paths (e.g., `figures/core/loss_comparison.png`). These don't render in the web viewer because:
+  - Images are not served as static assets
+  - Dash's `dcc.Markdown` component can't resolve relative file paths
+- **Workaround**: Info banner displays the report file path for users to view locally
+- **Future Enhancement** (not in current roadmap):
+  - Option 1: Serve experiment results directories as static assets via Flask
+  - Option 2: Convert images to base64 and embed in HTML
+  - Option 3: Create custom image viewer component that reads from filesystem
+
+### 1.3 Expose Mixture Diagnostics in UI ✅
+
+**Status**: ✅ Complete (Implemented November 2025, commits `58b27eb`, `93761c2`)
 
 **Goal**: Surface component specialization information during and after training.
 
-**Background**: The experiment workflow generates:
-- `latent_by_component.png`: Latent scatter colored by component assignment
-- `responsibility_histogram.png`: Distribution of component ownership
-- `tau_matrix_heatmap.png`: Component→label mapping visualization
-- π evolution plots
+**Background**: The experiment workflow generates mixture-specific visualizations. This phase integrates component diagnostics into the dashboard UI.
 
 **See Also**:
 - [Conceptual Model §How-We-Classify](../../../docs/theory/conceptual_model.md) - Component specialization theory
 - [Experiments Guide §Channel-Wise Latent Diagnostic](../../experiments/README.md) - Visualization details
 - [Mathematical Specification](../../../docs/theory/mathematical_specification.md) - Formal definition of τ-matrix
 
-**Tasks**:
-1. Create new "Component Analysis" tab in training hub
-2. Display τ-matrix heatmap (if mixture model)
-3. Show latent space colored by component (not just by label)
-4. Add toggle: "Color by Label" vs "Color by Component"
-5. Display current π values as bar chart
+**Implementation**:
 
-**UI Layout**:
+1. ✅ **Component Coloring Mode** (commit `58b27eb`)
+   - Added "Component" as a color mode option in latent space visualization
+   - Colors based on argmax(responsibilities)
+   - Uses tab20 colormap for up to 20 components
+   - Legend shows number of components dynamically
+   - Gracefully handles non-mixture models
+
+2. ✅ **Mixture Diagnostics Section** (commit `93761c2`)
+   - Added dedicated section in left panel of dashboard
+   - Shows π (mixture weights) as bar chart
+   - Auto-hides when not a mixture model
+   - Updates automatically when model changes
+
+3. ✅ **Data Infrastructure** (commit `7effff6`)
+   - Added responsibilities and pi_values to DataState
+   - Captured during training in CompleteTrainingCommand
+   - Captured during initial load in ModelService
+
+**Files Modified**:
+- `core/commands.py` - Added "component" to valid color modes
+- `core/state_models.py` - Added responsibilities/pi_values fields
+- `services/model_service.py` - Capture mixture data on load
+- `callbacks/visualization_callbacks.py` - Component coloring + π chart
+- `utils/visualization.py` - _colorize_components() helper
+- `pages/layouts.py` - Added mixture diagnostics section
+
+**UI Features** (Implemented):
 ```
-Component Analysis Tab
-├── Component Assignment (Latent Space)
-│   └── Scatter plot colored by argmax(responsibilities)
-├── τ-Matrix Heatmap
-│   └── Shows which components map to which labels
-├── Mixture Weights (π)
-│   └── Bar chart of current component probabilities
-└── Responsibility Distribution
-    └── Histogram of max responsibilities (certainty measure)
+Main Dashboard
+├── Latent Space Visualization
+│   └── NEW: "Component" color mode option
+│       └── Colors by argmax(responsibilities)
+├── Left Panel
+│   └── NEW: "Mixture Diagnostics" section
+│       ├── π values bar chart (C0, C1, C2, ...)
+│       └── Auto-hides for non-mixture models
 ```
 
 **Acceptance Criteria**:
-- Mixture models show all component visualizations
-- Non-mixture models show message "Not a mixture model"
-- Visualizations update after each training run
-- Can toggle between label-colored and component-colored latent views
+- ✅ Mixture models show component coloring option
+- ✅ π values displayed as bar chart with component labels
+- ✅ Non-mixture models: section hidden automatically
+- ✅ Visualizations update after each training run
+- ✅ Can toggle between label/prediction/component coloring
 
-**Estimated Duration**: 3-4 days
+**Not Implemented** (out of scope for Phase 1.3):
+- τ-matrix heatmap in live UI (available in REPORT.md via Run Viewer)
+- Responsibility histogram visualization
+- Component-specific detailed analysis tab
+- These advanced diagnostics remain available in experiment REPORT.md files
+
+---
+
+## ⚠️ Known Issue: Model Creation Design Flaw (Discovered November 2025)
+
+**Status**: Bug mitigated with fallback fix (commit `a65e7b4`), comprehensive redesign planned
+
+### Problem
+
+**Root Cause**: Models are created with hardcoded `SSVAEConfig()` defaults, but training hub allows editing architectural parameters that require model recreation.
+
+**Impact**:
+- Homepage creates models with `prior_type="standard"` (default)
+- Users navigate to training hub and change `prior_type` to "mixture"
+- Config is updated but model architecture is NOT rebuilt
+- Model still has `DenseEncoder` (3 outputs) instead of `MixtureDenseEncoder` (4 outputs)
+- Training fails: `ValueError: Mixture responsibilities unavailable`
+
+**User Experience**:
+```
+1. Create model (gets standard prior by default)
+2. Go to Training Hub → Change prior_type to "mixture"
+3. Warning shown: "Structural changes require restarting dashboard"
+4. User ignores warning (easy to miss)
+5. Click "Train Model" → ERROR
+```
+
+### Current Mitigation (Temporary Fix)
+
+**Commit**: `a65e7b4` - "fix: Handle mixture data unavailability in training completion"
+
+Added graceful fallback in `training_callbacks.py`:
+```python
+except ValueError as e:
+    error_msg = str(e).lower()
+    if "mixture" in error_msg or "responsibilities" in error_msg:
+        logger.warning(f"Mixture data unavailable ({e}), falling back to non-mixture prediction")
+        latent_val, recon_val, preds, cert = model.predict_batched(data)
+        return latent_val, recon_val, preds, cert, None, None
+    raise
+```
+
+**Effect**: Prevents crashes, but mixture features don't work (responsibilities = None)
+
+### Comprehensive Solution Plan
+
+**See**: [`docs/MODEL_CREATION_REDESIGN.md`](docs/MODEL_CREATION_REDESIGN.md) for full specification
+
+**Key Changes**:
+
+1. **Structural vs Modifiable Parameters**
+   - **Structural** (locked after creation): prior_type, encoder_type, decoder_type, latent_dim, num_components, etc.
+   - **Modifiable** (safe to change): learning_rate, batch_size, loss weights, regularization, etc.
+
+2. **Enhanced Model Creation**
+   - Homepage modal expands to include architectural configuration
+   - Users configure prior type, encoder/decoder, latent dimension, etc. BEFORE creating model
+   - Provide presets: "Standard Baseline", "Mixture (10 components)", "VampPrior", "Custom"
+
+3. **Restricted Training Hub**
+   - Show current architecture (read-only) at top
+   - Remove structural parameters from editable config sections
+   - Only expose modifiable training hyperparameters
+
+4. **Implementation Phases**
+   - ✅ Phase 1: Prevent crashes with fallback (DONE - commit `a65e7b4`)
+   - Phase 2: Add prominent warnings when architecture mismatch detected
+   - Phase 3: Redesign model creation workflow with full config
+   - Phase 4: Restrict training hub to modifiable params only
+
+**Priority**: Medium (mitigated but not resolved)
+
+**Estimated Effort**: 3-5 days for full redesign implementation
 
 ---
 
@@ -707,6 +825,6 @@ When resuming work:
 
 ---
 
-**Last Updated**: November 2025
-**Status**: Phase 0 in progress
-**Next Milestone**: Complete stabilization, begin Phase 1
+**Last Updated**: November 17, 2025
+**Status**: Phase 0 ✅ Complete | Phase 1 (all) ✅ Complete
+**Next Milestone**: Begin Phase 2.1 (OOD Scoring for Strategic Labeling)

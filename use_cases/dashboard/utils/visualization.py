@@ -69,6 +69,38 @@ def _colorize_numeric(values: np.ndarray) -> List[str]:
     return _values_to_hex_viridis(values)
 
 
+def _colorize_components(responsibilities: np.ndarray) -> List[str]:
+    """Return colors for component assignments from responsibilities array.
+
+    Args:
+        responsibilities: (N, num_components) array of component probabilities
+
+    Returns:
+        List of hex color strings, one per sample
+    """
+    if responsibilities is None or responsibilities.size == 0:
+        return []
+
+    # Get component assignment as argmax of responsibilities
+    component_assignments = responsibilities.argmax(axis=1)
+    n_components = responsibilities.shape[1]
+
+    # Use tab20 colormap for up to 20 components, hsv for more
+    if n_components <= 20:
+        cmap = colormaps['tab20']
+    else:
+        cmap = colormaps['hsv']
+
+    colors = []
+    for c in component_assignments:
+        # Normalize component index to [0, 1] range for colormap
+        norm_val = float(c) / max(n_components, 1)
+        rgba = cmap(norm_val)
+        colors.append(mcolors.to_hex(rgba[:3]))
+
+    return colors
+
+
 def array_to_base64(arr: np.ndarray) -> str:
     """Convert a single-channel image array into a base64 encoded PNG data URI."""
     arr = np.array(arr)

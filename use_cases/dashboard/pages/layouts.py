@@ -191,6 +191,7 @@ def build_dashboard_layout() -> html.Div:
                                     _build_stats_section(),
                                     _build_run_history_section(model_id),
                                     _build_status_section(status_initial),
+                                    _build_mixture_diagnostics_section(),
 
                                     # Training section
                                     html.Div(
@@ -330,6 +331,7 @@ def build_dashboard_layout() -> html.Div:
                                                     {"label": "Predicted", "value": "pred_class"},
                                                     {"label": "True", "value": "true_class"},
                                                     {"label": "Confidence", "value": "certainty"},
+                                                    {"label": "Component", "value": "component"},
                                                 ],
                                                 value="user_labels",
                                                 inline=True,
@@ -926,4 +928,44 @@ def _build_status_section(status_messages: list) -> html.Div:
             ),
         ],
         style={"marginBottom": "24px"},
+    )
+
+
+def _build_mixture_diagnostics_section() -> html.Div:
+    """Build mixture diagnostics section showing π values bar chart.
+
+    Only displayed when mixture model data is available.
+    """
+    return html.Div(
+        [
+            html.Div("Mixture Diagnostics", style={
+                "fontSize": "15px",
+                "fontWeight": "700",
+                "color": "#000000",
+                "marginBottom": "12px",
+                "fontFamily": "'Open Sans', Verdana, sans-serif",
+            }),
+            html.Div(
+                id="mixture-pi-container",
+                children=[
+                    dcc.Graph(
+                        id="pi-values-chart",
+                        config={"displayModeBar": False},
+                        style={"height": "200px"},
+                    ),
+                ],
+                style={
+                    "backgroundColor": "#f5f5f5",
+                    "borderRadius": "6px",
+                    "padding": "12px",
+                },
+            ),
+        ],
+        id="mixture-diagnostics-section",
+        style={
+            "marginBottom": "24px",
+            "paddingBottom": "24px",
+            "borderBottom": "1px solid #C6C6C6",
+            "display": "none",  # Hidden by default, shown via callback when mixture data available
+        },
     )

@@ -251,6 +251,15 @@ def train_worker(num_epochs: int) -> None:
             latent_val, recon_val, preds, cert = model.predict_batched(data)
             return latent_val, recon_val, preds, cert, None, None
 
+        except ValueError as e:
+            # If mixture data is unavailable, fall back to non-mixture prediction
+            error_msg = str(e).lower()
+            if "mixture" in error_msg or "responsibilities" in error_msg:
+                logger.warning(f"Mixture data unavailable ({e}), falling back to non-mixture prediction")
+                latent_val, recon_val, preds, cert = model.predict_batched(data)
+                return latent_val, recon_val, preds, cert, None, None
+            raise
+
         except Exception as e:
             logger.exception(f"Error in _predict_outputs: {e}")
             raise

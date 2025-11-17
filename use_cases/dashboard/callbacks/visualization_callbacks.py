@@ -15,6 +15,7 @@ from use_cases.dashboard.utils.visualization import (
     _colorize_numeric,
     _colorize_user_labels,
     _colorize_discrete_classes,
+    _colorize_components,
     compute_ema_smoothing,
     INFOTEAM_PALETTE,
 )
@@ -33,6 +34,7 @@ def _compute_colors(
     pred_classes: np.ndarray,
     pred_certainty: np.ndarray,
     true_labels: np.ndarray | None,
+    responsibilities: np.ndarray | None = None,
 ) -> list[str]:
     if color_mode == "user_labels":
         return _colorize_user_labels(labels)
@@ -42,6 +44,8 @@ def _compute_colors(
         return _colorize_discrete_classes(true_labels.astype(np.int32))
     if color_mode == "certainty":
         return _colorize_numeric(pred_certainty)
+    if color_mode == "component" and responsibilities is not None:
+        return _colorize_components(responsibilities)
     return _colorize_discrete_classes(pred_classes)
 
 
@@ -165,14 +169,19 @@ def register_visualization_callbacks(app: Dash) -> None:
             pred_classes = np.array(dashboard_state.state_manager.state.active_model.data.pred_classes, dtype=np.int32)
             pred_certainty = np.array(dashboard_state.state_manager.state.active_model.data.pred_certainty, dtype=np.float64)
             hover_metadata = list(dashboard_state.state_manager.state.active_model.data.hover_metadata)
-            
+            responsibilities = (
+                np.array(dashboard_state.state_manager.state.active_model.data.responsibilities, dtype=np.float64)
+                if dashboard_state.state_manager.state.active_model.data.responsibilities is not None
+                else None
+            )
+
             # Get cache references under lock
             base_figure_cache = dashboard_state.state_manager.state.cache["base_figures"]
             color_cache = dashboard_state.state_manager.state.cache["colors"]
-            
+
             # Create figure cache key
             figure_cache_key = (latent_version, color_mode, label_version)
-            
+
             # FAST PATH: Check cached figure while holding lock
             cached_figure = base_figure_cache.get(figure_cache_key)
             if cached_figure is not None:
@@ -184,12 +193,12 @@ def register_visualization_callbacks(app: Dash) -> None:
                     cached_figure.data[1].visible = visible
                     cached_figure._last_selected_idx = selected_idx
                 return cached_figure
-            
+
             # Compute or retrieve colors (still under lock for consistency)
             cache_key = (latent_version, color_mode, label_version)
             colors = color_cache.get(cache_key)
             if colors is None:
-                colors = _compute_colors(color_mode, labels, pred_classes, pred_certainty, true_labels)
+                colors = _compute_colors(color_mode, labels, pred_classes, pred_certainty, true_labels, responsibilities)
                 color_cache[cache_key] = colors
                 # Limit color cache size
                 if len(color_cache) > 50:
@@ -317,7 +326,48 @@ def register_visualization_callbacks(app: Dash) -> None:
                     }
                 )
             )
-        
+
+        # Component mode - show dynamic legend based on actual number of components
+        if color_mode == "component":
+            # Read number of components from state
+            with dashboard_state.state_manager.state_lock:
+                if dashboard_state.state_manager.state.active_model and \
+                   dashboard_state.state_manager.state.active_model.data.responsibilities is not None:
+                    n_components = dashboard_state.state_manager.state.active_model.data.responsibilities.shape[1]
+                else:
+                    # No mixture data available
+                    return html.Div(
+                        "Component coloring unavailable (not a mixture model)",
+                        style={
+                            "fontSize": "14px",
+                            "color": "#6F6F6F",
+                            "fontStyle": "italic",
+                            "padding": "8px 0",
+                            "fontFamily": "'Open Sans', Verdana, sans-serif",
+                        }
+                    )
+
+            # Show message about components (coloring by argmax assignment)
+            return html.Div(
+                [
+                    html.Span(f"Colored by component assignment ", style={
+                        "fontSize": "14px",
+                        "color": "#4A4A4A",
+                        "fontFamily": "'Open Sans', Verdana, sans-serif",
+                    }),
+                    html.Span(f"({n_components} components)", style={
+                        "fontSize": "14px",
+                        "color": "#6F6F6F",
+                        "fontFamily": "'Open Sans', Verdana, sans-serif",
+                    }),
+                ],
+                style={
+                    "display": "flex",
+                    "gap": "4px",
+                    "padding": "8px 0",
+                }
+            )
+
         return html.Div(
             legend_items,
             style={
@@ -448,3 +498,74 @@ def register_visualization_callbacks(app: Dash) -> None:
         figure.update_xaxes(tickfont=dict(size=12))
         figure.update_yaxes(tickfont=dict(size=12))
         return figure
+
+    @app.callback(
+        Output("pi-values-chart", "figure"),
+        Output("mixture-diagnostics-section", "style"),
+        Input("latent-store", "data"),
+    )
+    def update_mixture_diagnostics(_latent_store: dict | None):
+        """Update π values bar chart and show/hide section based on mixture data availability."""
+        with dashboard_state.state_manager.state_lock:
+            if dashboard_state.state_manager.state.active_model is None:
+                # No model - hide section
+                empty_fig = go.Figure()
+                empty_fig.update_layout(template="plotly_white", margin=dict(l=0, r=0, t=0, b=0))
+                return empty_fig, {"display": "none"}
+
+            pi_values = dashboard_state.state_manager.state.active_model.data.pi_values
+
+            if pi_values is None or len(pi_values) == 0:
+                # Not a mixture model or no data - hide section
+                empty_fig = go.Figure()
+                empty_fig.update_layout(template="plotly_white", margin=dict(l=0, r=0, t=0, b=0))
+                return empty_fig, {"display": "none"}
+
+            # Copy data for use outside lock
+            pi_values = np.array(pi_values, dtype=np.float64)
+
+        # Create π values bar chart
+        n_components = len(pi_values)
+        component_labels = [f"C{i}" for i in range(n_components)]
+
+        figure = go.Figure()
+        figure.add_trace(
+            go.Bar(
+                x=component_labels,
+                y=pi_values,
+                marker=dict(
+                    color="#45717A",
+                    line=dict(color="#ffffff", width=1),
+                ),
+                text=[f"{val:.3f}" for val in pi_values],
+                textposition="outside",
+                textfont=dict(size=11, color="#4A4A4A"),
+                hovertemplate="Component %{x}<br>π = %{y:.4f}<extra></extra>",
+            )
+        )
+
+        figure.update_layout(
+            template="plotly_white",
+            xaxis=dict(
+                title=dict(text="Component", font=dict(size=13)),
+                tickfont=dict(size=11),
+            ),
+            yaxis=dict(
+                title=dict(text="Mixture Weight (π)", font=dict(size=13)),
+                tickfont=dict(size=11),
+                range=[0, max(pi_values) * 1.15],  # Add some headroom for text
+            ),
+            margin=dict(l=50, r=10, t=10, b=40),
+            font=dict(size=11),
+            showlegend=False,
+        )
+
+        # Show section with styling
+        section_style = {
+            "marginBottom": "24px",
+            "paddingBottom": "24px",
+            "borderBottom": "1px solid #C6C6C6",
+            "display": "block",
+        }
+
+        return figure, section_style

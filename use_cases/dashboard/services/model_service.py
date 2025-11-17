@@ -249,8 +249,21 @@ class ModelService:
 
             # Get predictions - with fallback for uninitialized/incompatible models
             prediction_error = None
+            responsibilities = None
+            pi_values = None
             try:
-                latent, recon, pred_classes, pred_certainty = model.predict(x_train)
+                # Try mixture prediction first if it's a mixture model
+                try:
+                    is_mixture = bool(config.is_mixture_based_prior())
+                except AttributeError:
+                    is_mixture = False
+
+                if is_mixture:
+                    latent, recon, pred_classes, pred_certainty, responsibilities, pi_values = model.predict_batched(
+                        x_train, return_mixture=True
+                    )
+                else:
+                    latent, recon, pred_classes, pred_certainty = model.predict(x_train)
                 hover_metadata = _build_hover_metadata(pred_classes, pred_certainty, labels_array, true_labels)
             except Exception as e:
                 # Prediction failed - create zero/dummy predictions
@@ -283,7 +296,9 @@ class ModelService:
                 pred_classes=pred_classes,
                 pred_certainty=pred_certainty,
                 hover_metadata=hover_metadata,
-                version=0
+                version=0,
+                responsibilities=responsibilities,
+                pi_values=pi_values,
             )
 
             # Build initial status messages with any errors/warnings
