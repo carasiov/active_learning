@@ -123,22 +123,35 @@ Two-part redesign:
 
 ---
 
-## Phase 4: Full Configuration Page Redesign ⏸️ DEFERRED
+## Phase 4: Full Configuration Page Redesign ✅ CORE COMPLETE
 
-**Status**: Not implemented (optional enhancement)
+**Commit**: `b64ef53`
+**Status**: Core functionality implemented, optional enhancements deferred
 
-### Planned Changes
-- Add architecture summary at top (same as Training Hub)
-- Show ALL modifiable parameters in editable tabs
-- Filter tabs to show only parameters relevant to prior type
-- Conditional tabs: hide mixture tab for standard prior, etc.
-- Apply mathematical terminology (Usage Entropy Weight H[p̂_c])
+### Changes Implemented
+- ✅ Add architecture summary at top (same as Training Hub)
+- ✅ Show ALL modifiable parameters in editable tabs
+- ✅ Filter configuration page to use only `get_modifiable_field_specs()`
+- ✅ Architecture summary populated via callback from config store
+- ✅ Consistent design with Training Hub architecture display
 
-### Why Deferred
-- Core problem is solved by Phases 1, 3, and 5
-- Training Hub already shows essential parameters
-- Full Configuration Page is an enhancement, not critical
+### Optional Enhancements Deferred
+- ⏸️ Filter tabs to show only parameters relevant to prior type
+- ⏸️ Conditional tabs: hide mixture tab for standard prior, etc.
+- ⏸️ Apply mathematical terminology (Usage Entropy Weight H[p̂_c])
+
+### Why Partial Implementation
+- Core problem is solved: Users can see locked parameters clearly
+- Configuration page now shows only editable (modifiable) parameters
+- Architecture summary provides quick reference to locked settings
+- Conditional tabs are nice-to-have but not critical for bug fix
 - Can be implemented later based on user feedback
+
+### User Impact
+✅ Configuration page shows only parameters that can actually be changed
+✅ Architecture summary clearly displays locked structural parameters
+✅ No confusion about which parameters are editable vs read-only
+✅ Consistent UX between Training Hub and Configuration Page
 
 ---
 
@@ -170,11 +183,12 @@ Two-part redesign:
 3. `use_cases/dashboard/callbacks/home_callbacks.py` - Conditional rendering callbacks
 4. `use_cases/dashboard/pages/training_hub.py` - Architecture summary component
 5. `use_cases/dashboard/core/config_metadata.py` - Parameter classification infrastructure
+6. `use_cases/dashboard/pages/training.py` - Full Configuration Page with architecture summary
 
 ### Total Changes
-- 5 files modified
-- ~700 lines added
-- 4 commits pushed
+- 6 files modified
+- ~800 lines added
+- 6 commits pushed
 
 ---
 
@@ -195,17 +209,18 @@ Two-part redesign:
 ### Code Quality ✅
 - ✅ All syntax checks pass
 - ✅ Clean separation: structural vs modifiable parameters
-- ✅ Infrastructure ready for future enhancements (Phase 4)
+- ✅ Full Configuration Page shows only modifiable parameters
+- ✅ Architecture summary consistent across Training Hub and Configuration Page
 - ✅ Comprehensive validation at all layers
 
 ---
 
 ## Next Steps (Optional Enhancements)
 
-1. **Phase 4 Implementation** (if needed)
-   - Full Configuration Page with conditional tabs
-   - Prior-specific parameter sections
-   - Mathematical terminology corrections
+1. **Phase 4 Remaining Features** (optional)
+   - Conditional tabs based on prior type (hide mixture tab for standard prior)
+   - Prior-specific parameter sections filtering
+   - Mathematical terminology corrections (Usage Entropy Weight H[p̂_c])
 
 2. **User Testing**
    - Gather feedback on modal usability
