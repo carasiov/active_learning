@@ -498,3 +498,74 @@ def register_visualization_callbacks(app: Dash) -> None:
         figure.update_xaxes(tickfont=dict(size=12))
         figure.update_yaxes(tickfont=dict(size=12))
         return figure
+
+    @app.callback(
+        Output("pi-values-chart", "figure"),
+        Output("mixture-diagnostics-section", "style"),
+        Input("latent-store", "data"),
+    )
+    def update_mixture_diagnostics(_latent_store: dict | None):
+        """Update π values bar chart and show/hide section based on mixture data availability."""
+        with dashboard_state.state_manager.state_lock:
+            if dashboard_state.state_manager.state.active_model is None:
+                # No model - hide section
+                empty_fig = go.Figure()
+                empty_fig.update_layout(template="plotly_white", margin=dict(l=0, r=0, t=0, b=0))
+                return empty_fig, {"display": "none"}
+
+            pi_values = dashboard_state.state_manager.state.active_model.data.pi_values
+
+            if pi_values is None or len(pi_values) == 0:
+                # Not a mixture model or no data - hide section
+                empty_fig = go.Figure()
+                empty_fig.update_layout(template="plotly_white", margin=dict(l=0, r=0, t=0, b=0))
+                return empty_fig, {"display": "none"}
+
+            # Copy data for use outside lock
+            pi_values = np.array(pi_values, dtype=np.float64)
+
+        # Create π values bar chart
+        n_components = len(pi_values)
+        component_labels = [f"C{i}" for i in range(n_components)]
+
+        figure = go.Figure()
+        figure.add_trace(
+            go.Bar(
+                x=component_labels,
+                y=pi_values,
+                marker=dict(
+                    color="#45717A",
+                    line=dict(color="#ffffff", width=1),
+                ),
+                text=[f"{val:.3f}" for val in pi_values],
+                textposition="outside",
+                textfont=dict(size=11, color="#4A4A4A"),
+                hovertemplate="Component %{x}<br>π = %{y:.4f}<extra></extra>",
+            )
+        )
+
+        figure.update_layout(
+            template="plotly_white",
+            xaxis=dict(
+                title=dict(text="Component", font=dict(size=13)),
+                tickfont=dict(size=11),
+            ),
+            yaxis=dict(
+                title=dict(text="Mixture Weight (π)", font=dict(size=13)),
+                tickfont=dict(size=11),
+                range=[0, max(pi_values) * 1.15],  # Add some headroom for text
+            ),
+            margin=dict(l=50, r=10, t=10, b=40),
+            font=dict(size=11),
+            showlegend=False,
+        )
+
+        # Show section with styling
+        section_style = {
+            "marginBottom": "24px",
+            "paddingBottom": "24px",
+            "borderBottom": "1px solid #C6C6C6",
+            "display": "block",
+        }
+
+        return figure, section_style
