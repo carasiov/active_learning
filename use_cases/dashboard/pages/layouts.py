@@ -330,6 +330,7 @@ def build_dashboard_layout() -> html.Div:
                                                     {"label": "Predicted", "value": "pred_class"},
                                                     {"label": "True", "value": "true_class"},
                                                     {"label": "Confidence", "value": "certainty"},
+                                                    {"label": "Component", "value": "component"},
                                                 ],
                                                 value="user_labels",
                                                 inline=True,

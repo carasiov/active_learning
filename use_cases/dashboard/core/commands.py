@@ -517,7 +517,7 @@ class ChangeColorModeCommand(Command):
         """Validate color mode."""
         if state.active_model is None:
             return "No model loaded"
-        valid_modes = {"user_labels", "pred_class", "true_class", "certainty"}
+        valid_modes = {"user_labels", "pred_class", "true_class", "certainty", "component"}
         if self.color_mode not in valid_modes:
             return f"Invalid color mode: {self.color_mode}"
         return None

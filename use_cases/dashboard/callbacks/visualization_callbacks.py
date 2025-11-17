@@ -15,6 +15,7 @@ from use_cases.dashboard.utils.visualization import (
     _colorize_numeric,
     _colorize_user_labels,
     _colorize_discrete_classes,
+    _colorize_components,
     compute_ema_smoothing,
     INFOTEAM_PALETTE,
 )
@@ -33,6 +34,7 @@ def _compute_colors(
     pred_classes: np.ndarray,
     pred_certainty: np.ndarray,
     true_labels: np.ndarray | None,
+    responsibilities: np.ndarray | None = None,
 ) -> list[str]:
     if color_mode == "user_labels":
         return _colorize_user_labels(labels)
@@ -42,6 +44,8 @@ def _compute_colors(
         return _colorize_discrete_classes(true_labels.astype(np.int32))
     if color_mode == "certainty":
         return _colorize_numeric(pred_certainty)
+    if color_mode == "component" and responsibilities is not None:
+        return _colorize_components(responsibilities)
     return _colorize_discrete_classes(pred_classes)
 
 
@@ -165,14 +169,19 @@ def register_visualization_callbacks(app: Dash) -> None:
             pred_classes = np.array(dashboard_state.state_manager.state.active_model.data.pred_classes, dtype=np.int32)
             pred_certainty = np.array(dashboard_state.state_manager.state.active_model.data.pred_certainty, dtype=np.float64)
             hover_metadata = list(dashboard_state.state_manager.state.active_model.data.hover_metadata)
-            
+            responsibilities = (
+                np.array(dashboard_state.state_manager.state.active_model.data.responsibilities, dtype=np.float64)
+                if dashboard_state.state_manager.state.active_model.data.responsibilities is not None
+                else None
+            )
+
             # Get cache references under lock
             base_figure_cache = dashboard_state.state_manager.state.cache["base_figures"]
             color_cache = dashboard_state.state_manager.state.cache["colors"]
-            
+
             # Create figure cache key
             figure_cache_key = (latent_version, color_mode, label_version)
-            
+
             # FAST PATH: Check cached figure while holding lock
             cached_figure = base_figure_cache.get(figure_cache_key)
             if cached_figure is not None:
@@ -184,12 +193,12 @@ def register_visualization_callbacks(app: Dash) -> None:
                     cached_figure.data[1].visible = visible
                     cached_figure._last_selected_idx = selected_idx
                 return cached_figure
-            
+
             # Compute or retrieve colors (still under lock for consistency)
             cache_key = (latent_version, color_mode, label_version)
             colors = color_cache.get(cache_key)
             if colors is None:
-                colors = _compute_colors(color_mode, labels, pred_classes, pred_certainty, true_labels)
+                colors = _compute_colors(color_mode, labels, pred_classes, pred_certainty, true_labels, responsibilities)
                 color_cache[cache_key] = colors
                 # Limit color cache size
                 if len(color_cache) > 50:
@@ -317,7 +326,48 @@ def register_visualization_callbacks(app: Dash) -> None:
                     }
                 )
             )
-        
+
+        # Component mode - show dynamic legend based on actual number of components
+        if color_mode == "component":
+            # Read number of components from state
+            with dashboard_state.state_manager.state_lock:
+                if dashboard_state.state_manager.state.active_model and \
+                   dashboard_state.state_manager.state.active_model.data.responsibilities is not None:
+                    n_components = dashboard_state.state_manager.state.active_model.data.responsibilities.shape[1]
+                else:
+                    # No mixture data available
+                    return html.Div(
+                        "Component coloring unavailable (not a mixture model)",
+                        style={
+                            "fontSize": "14px",
+                            "color": "#6F6F6F",
+                            "fontStyle": "italic",
+                            "padding": "8px 0",
+                            "fontFamily": "'Open Sans', Verdana, sans-serif",
+                        }
+                    )
+
+            # Show message about components (coloring by argmax assignment)
+            return html.Div(
+                [
+                    html.Span(f"Colored by component assignment ", style={
+                        "fontSize": "14px",
+                        "color": "#4A4A4A",
+                        "fontFamily": "'Open Sans', Verdana, sans-serif",
+                    }),
+                    html.Span(f"({n_components} components)", style={
+                        "fontSize": "14px",
+                        "color": "#6F6F6F",
+                        "fontFamily": "'Open Sans', Verdana, sans-serif",
+                    }),
+                ],
+                style={
+                    "display": "flex",
+                    "gap": "4px",
+                    "padding": "8px 0",
+                }
+            )
+
         return html.Div(
             legend_items,
             style={
