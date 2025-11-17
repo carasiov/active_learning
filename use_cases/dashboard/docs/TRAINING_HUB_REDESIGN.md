@@ -191,8 +191,8 @@ Redesign the Training Hub to provide a clean, organized, and contextually-aware 
 │ ☑ Learnable π                             │
 │ Allow mixture weights to adapt             │
 │                                            │
-│ Component Diversity      [-0.1 ▼]         │
-│ Entropy reward (negative = encourage use)  │
+│ Usage Entropy Weight     [-0.1 ▼]         │
+│ Entropy H[p̂_c]: negative = reward diversity │
 │                                            │
 │ ─── Advanced Mixture Options ▼ ───        │
 │                                            │
@@ -218,6 +218,8 @@ Redesign the Training Hub to provide a clean, organized, and contextually-aware 
 - `kl_c_anneal_epochs` (0-500, default: 0)
 - `learnable_pi` (boolean, default: True)
 - `component_diversity_weight` (-10.0 to 10.0, default: -0.1)
+  - Label: "Usage Entropy Weight"
+  - Description: "Entropy H[p̂_c]: negative = reward diversity"
 - **Advanced** (collapsible):
   - `dirichlet_alpha` (0.1-10.0 or blank, default: None)
   - `dirichlet_weight` (0.0-10.0, default: 1.0)
@@ -226,7 +228,7 @@ Redesign the Training Hub to provide a clean, organized, and contextually-aware 
 
 **Semantic Notes**:
 - Use terminology from conceptual model: "channels" = "components", "responsibilities" = r, "τ-classifier"
-- Explain that negative diversity weight = entropy reward (counterintuitive naming)
+- Usage entropy: H[p̂_c] where p̂_c is empirical component usage. Negative weight = entropy reward (encourage diverse usage)
 - Show component count from architecture summary
 
 #### 4C. VampPrior Settings
@@ -248,8 +250,8 @@ Redesign the Training Hub to provide a clean, organized, and contextually-aware 
 │ KL Anneal Epochs         [0    ▼]         │
 │ Ramp component KL from 0 over N epochs    │
 │                                            │
-│ Component Diversity      [-0.1 ▼]         │
-│ Entropy reward (negative = encourage use)  │
+│ Usage Entropy Weight     [-0.1 ▼]         │
+│ Entropy H[p̂_c]: negative = reward diversity │
 │                                            │
 │ ─── VampPrior-Specific ▼ ───              │
 │                                            │
@@ -271,6 +273,8 @@ Redesign the Training Hub to provide a clean, organized, and contextually-aware 
 - `kl_c_weight` (0.0-10.0, default: 1.0)
 - `kl_c_anneal_epochs` (0-500, default: 0)
 - `component_diversity_weight` (-10.0 to 10.0, default: -0.1)
+  - Label: "Usage Entropy Weight"
+  - Description: "Entropy H[p̂_c]: negative = reward diversity"
 - **VampPrior-Specific**:
   - `vamp_num_samples_kl` (1-10, default: 1)
   - `vamp_pseudo_lr_scale` (0.01-1.0, default: 0.1)
@@ -286,8 +290,6 @@ Redesign the Training Hub to provide a clean, organized, and contextually-aware 
 │ Geometric MoG Configuration                │
 ├────────────────────────────────────────────┤
 │                                            │
-│ ⚠️ Diagnostic Prior - Induces Topology    │
-│                                            │
 │ ☑ τ-Classifier                            │
 │ Use latent-only classification via r×τ     │
 │                                            │
@@ -300,11 +302,12 @@ Redesign the Training Hub to provide a clean, organized, and contextually-aware 
 │ ☑ Learnable π                             │
 │ Allow mixture weights to adapt             │
 │                                            │
-│ Component Diversity      [-0.1 ▼]         │
-│ Entropy reward (negative = encourage use)  │
+│ Usage Entropy Weight     [-0.1 ▼]         │
+│ Entropy H[p̂_c]: negative = reward diversity │
 │                                            │
-│ Note: Geometric arrangement (circle/grid)  │
-│ and radius are fixed at model creation.   │
+│ Note: Components arranged geometrically   │
+│ (circle/grid) with fixed spacing. See     │
+│ architecture summary for arrangement.      │
 │                                            │
 └────────────────────────────────────────────┘
 ```
@@ -315,10 +318,11 @@ Redesign the Training Hub to provide a clean, organized, and contextually-aware 
 - `kl_c_weight` (0.0-10.0, default: 1.0)
 - `learnable_pi` (boolean, default: True)
 - `component_diversity_weight` (-10.0 to 10.0, default: -0.1)
+  - Label: "Usage Entropy Weight"
+  - Description: "Entropy H[p̂_c]: negative = reward diversity"
 
-**Warning Box**:
-- Yellow highlight: "Diagnostic prior - induces topological structure"
-- Note that geometric arrangement and radius are structural (locked)
+**Info Note**:
+- Factual note about geometric arrangement being structural (locked at creation)
 
 ### 5. Regularization (Collapsible, Always Available)
 
@@ -391,6 +395,11 @@ Redesign the Training Hub to provide a clean, organized, and contextually-aware 
 
 ## Implementation Strategy
 
+**Note on Mockup Values**: The values shown in mockups (e.g., epochs=200, kl_weight=1.0) are recommendations for typical mixture model workflows. The actual implementation should:
+1. Pull current values from `ModelState.config` (the source of truth)
+2. Display the model's actual configured values, not hardcoded defaults
+3. Some config defaults (e.g., `recon_weight=500` for MSE) will differ from what's shown in mockups (which assume BCE)
+
 ### Phase 1: Architecture Summary & Parameter Grouping
 
 1. Add read-only architecture display at top of left panel
@@ -424,9 +433,9 @@ Redesign the Training Hub to provide a clean, organized, and contextually-aware 
 - Loss balance: recon_weight, kl_weight, label_weight
 
 ### Prior-Specific (Conditional)
-- **Mixture**: τ-classifier, component KL, diversity, learnable π
-- **VampPrior**: τ-classifier, component KL, diversity, pseudo-input LR
-- **Geometric**: τ-classifier, component KL, diversity (with warning)
+- **Mixture**: τ-classifier, component KL, usage entropy, learnable π
+- **VampPrior**: τ-classifier, component KL, usage entropy, pseudo-input LR
+- **Geometric**: τ-classifier, component KL, usage entropy, learnable π
 - **Standard**: (none - just a note)
 
 ### Advanced (Collapsible)
@@ -441,15 +450,15 @@ Redesign the Training Hub to provide a clean, organized, and contextually-aware 
 - ✅ "Component" or "Channel" (not "cluster" or "mode")
 - ✅ "Responsibilities" r (not "assignments")
 - ✅ "τ-Classifier" (channel→label map)
-- ✅ "Diversity" (usage entropy)
+- ✅ "Usage Entropy" H[p̂_c] (not "diversity")
 - ✅ "π" (mixture weights)
 - ✅ "Latent-only classification" (via r×τ)
 
 **Conceptual Guidance**:
 - Explain that τ-classifier uses responsibilities to classify
-- Note that negative diversity = entropy reward (encourage usage)
+- Note that usage entropy H[p̂_c]: negative weight = entropy reward (encourage diverse component usage)
 - Clarify that component-aware decoder was set at creation
-- Link parameters to objectives (KL on c, sparsity on π)
+- Link parameters to objectives (KL on c, entropy on usage)
 
 ## Visual Design Spec
 
