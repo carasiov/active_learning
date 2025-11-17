@@ -575,6 +575,22 @@ class UpdateModelConfigCommand(Command):
         if not self.updates:
             return "No configuration changes detected."
 
+        # Check for attempts to modify structural parameters
+        from use_cases.dashboard.core.config_metadata import is_structural_parameter
+
+        structural_changes = []
+        for key in self.updates.keys():
+            if is_structural_parameter(key):
+                structural_changes.append(key)
+
+        if structural_changes:
+            params_list = ", ".join(structural_changes)
+            return (
+                f"Cannot modify structural parameters: {params_list}. "
+                "These parameters are locked at model creation and define the architecture. "
+                "Create a new model if you need different structural settings."
+            )
+
         current_config = state.active_model.config
         config_data = {
             name: getattr(current_config, name)
@@ -595,7 +611,7 @@ class UpdateModelConfigCommand(Command):
         if not self.updates:
             return state, "No configuration changes detected."
         if self._new_config is None:
-            error = self.validate(state)
+            error = self.validate(state, services)
             if error:
                 return state, error
 
@@ -605,27 +621,10 @@ class UpdateModelConfigCommand(Command):
         from use_cases.dashboard.core.model_manager import ModelManager
 
         current_model = state.active_model
-        current_config = current_model.config
         new_config = self._new_config
 
-        architecture_fields = {
-            "encoder_type",
-            "decoder_type",
-            "latent_dim",
-            "hidden_dims",
-            "prior_type",
-            "num_components",
-            "component_embedding_dim",
-            "use_component_aware_decoder",
-            "use_heteroscedastic_decoder",
-            "reconstruction_loss",
-        }
-        architecture_changed = any(
-            getattr(current_config, field) != getattr(new_config, field)
-            for field in architecture_fields
-            if hasattr(current_config, field)
-        )
-
+        # Update config in model and trainer
+        # Note: Structural changes are blocked in validate(), so this is safe
         model = current_model.model
         trainer = current_model.trainer
         model.config = new_config
@@ -642,13 +641,7 @@ class UpdateModelConfigCommand(Command):
         ModelManager.save_metadata(updated_model.metadata)
 
         new_state = state.with_active_model(updated_model)
-        if architecture_changed:
-            message = (
-                "Configuration saved. Structural changes require restarting the dashboard."
-            )
-        else:
-            message = "Configuration updated successfully."
-        return new_state, message
+        return new_state, "Configuration updated successfully."
 
 
 # ============================================================================
