@@ -140,32 +140,30 @@ MODIFIABLE_PARAMS = {
 │  Model Architecture (cannot be changed later)   │
 │  ───────────────────────────────────────────   │
 │                                                  │
-│  Prior Type:                                    │
-│  ( ) Standard    ( ) Mixture    ( ) Vamp       │
-│  ( ) Geometric                                  │
-│                                                  │
-│  [if mixture/vamp/geometric selected:]          │
-│  Number of Components: [10  ▼]                 │
-│  ☑ Component-Aware Decoder                     │
-│                                                  │
 │  Encoder/Decoder:                               │
 │  ( ) Dense (MLP)    (•) Convolutional          │
 │                                                  │
+│  [if Dense selected:]                           │
+│  Hidden Layers: [256,128,64]                   │
+│                                                  │
 │  Latent Dimension:   [2     ▼]                 │
 │                                                  │
+│  ─── Prior Configuration ───                    │
+│                                                  │
+│  Prior Type:                                    │
+│  ( ) Standard    (•) Mixture    ( ) Vamp       │
+│  ( ) Geometric                                  │
+│                                                  │
+│  [if mixture/vamp/geometric selected:]          │
+│  Number of Components:   [10  ▼]               │
+│  Component Embedding Dim: [auto ▼] (default: latent_dim) │
+│  ☑ Component-Aware Decoder                     │
+│                                                  │
+│  ─── Advanced Options ───                       │
+│                                                  │
 │  [Advanced Architecture ▼]                      │
-│    Hidden Layers: [256,128,64]                 │
 │    ☐ Heteroscedastic Decoder                   │
-│    Component Embedding Dim: [auto]             │
-│    Reconstruction Loss: ( ) BCE (•) MSE        │
-│                                                  │
-│  ═══════════════════════════════════════════   │
-│  Quick Training Presets (can be changed later)  │
-│  ───────────────────────────────────────────   │
-│                                                  │
-│  Learning Rate:  [0.001  ▼]                    │
-│  Batch Size:     [128    ▼]                    │
-│  Max Epochs:     [200    ▼]                    │
+│    Reconstruction Loss: (•) BCE ( ) MSE        │
 │                                                  │
 │  [Cancel]                   [Create Model]     │
 │                                                  │
@@ -173,10 +171,23 @@ MODIFIABLE_PARAMS = {
 ```
 
 **Key Features**:
-1. **Clear separation**: "Architecture (cannot be changed later)" vs "Quick Training Presets"
-2. **Conditional fields**: Show mixture-specific options only when mixture prior selected
-3. **Collapsible advanced**: Most users can use defaults, advanced users can expand
-4. **Presets**: Common configs like "Baseline (Standard)", "Mixture (10 components)", "VampPrior"
+1. **Logical top-to-bottom flow**: Dataset → Core Architecture → Prior → Advanced
+2. **Core architecture first**: Encoder/decoder type and hidden layers at the top (fundamental choices)
+3. **Grouped related options**: Component count + component embedding dim together under Prior
+4. **Conditional fields**: Show mixture-specific options only when mixture prior selected
+5. **Collapsible advanced**: Heteroscedastic decoder and reconstruction loss for power users
+6. **No training presets**: Users will configure training parameters in Training Hub anyway
+
+**Rationale for Organization**:
+- **Dataset first**: Foundation for everything else
+- **Encoder/Decoder + Hidden Layers**: Most fundamental architectural choice - determines the base network structure
+- **Latent Dimension**: Core parameter that affects all downstream components
+- **Prior Configuration**: Builds on top of encoder architecture (determines encoder outputs)
+  - Component count and embedding dim are tightly coupled, shown together
+  - Component-aware decoder is a prior-specific architectural choice
+- **Advanced Options**: Specialized features for power users (heteroscedastic, reconstruction loss)
+
+This flow matches the actual dependency chain in model construction: Base network → Latent space → Prior structure → Advanced features.
 
 #### Stage 2: Training Hub (Restricted Config)
 
@@ -337,9 +348,9 @@ if architecture_mismatch:
    - Show warning if mismatch detected (shouldn't happen with new flow)
 
 5. **Update homepage**
-   - Replace simple modal with full creation wizard
-   - OR: Keep simple modal, add "Configure Architecture" button that opens wizard
-   - Provide quick presets: "Standard", "Mixture (10)", "VampPrior", "Custom"
+   - Expand the existing modal to include all structural parameters
+   - Use conditional rendering to show/hide fields based on selections
+   - Maintain single-page form (no multi-step wizard needed)
 
 ### Phase 4: Migration & Testing
 
@@ -352,47 +363,6 @@ if architecture_mismatch:
    - Verify training works without errors
    - Verify config changes only allow modifiable params
    - Test architecture mismatch detection
-
-## Configuration Presets
-
-Provide common starting points:
-
-```python
-PRESETS = {
-    "standard_baseline": SSVAEConfig(
-        prior_type="standard",
-        encoder_type="conv",
-        decoder_type="conv",
-        latent_dim=2,
-    ),
-    "mixture_10": SSVAEConfig(
-        prior_type="mixture",
-        num_components=10,
-        encoder_type="conv",
-        decoder_type="conv",
-        latent_dim=2,
-        use_component_aware_decoder=True,
-        use_tau_classifier=True,
-        learnable_pi=True,
-    ),
-    "vamp_prior": SSVAEConfig(
-        prior_type="vamp",
-        num_components=10,
-        encoder_type="conv",
-        decoder_type="conv",
-        latent_dim=2,
-        vamp_pseudo_init_method="kmeans",
-    ),
-    "geometric_diagnostic": SSVAEConfig(
-        prior_type="geometric_mog",
-        num_components=10,
-        encoder_type="conv",
-        decoder_type="conv",
-        latent_dim=2,
-        geometric_arrangement="circle",
-    ),
-}
-```
 
 ## Migration Notes
 
