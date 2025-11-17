@@ -148,6 +148,11 @@ MODIFIABLE_PARAMS = {
 │                                                  │
 │  Latent Dimension:   [2     ▼]                 │
 │                                                  │
+│  Reconstruction Loss:                           │
+│  (•) BCE (binary)    ( ) MSE (continuous)      │
+│                                                  │
+│  ☐ Heteroscedastic Decoder                     │
+│                                                  │
 │  ─── Prior Configuration ───                    │
 │                                                  │
 │  Prior Type:                                    │
@@ -159,35 +164,30 @@ MODIFIABLE_PARAMS = {
 │  Component Embedding Dim: [auto ▼] (default: latent_dim) │
 │  ☑ Component-Aware Decoder                     │
 │                                                  │
-│  ─── Advanced Options ───                       │
-│                                                  │
-│  [Advanced Architecture ▼]                      │
-│    ☐ Heteroscedastic Decoder                   │
-│    Reconstruction Loss: (•) BCE ( ) MSE        │
-│                                                  │
 │  [Cancel]                   [Create Model]     │
 │                                                  │
 └─────────────────────────────────────────────────┘
 ```
 
 **Key Features**:
-1. **Logical top-to-bottom flow**: Dataset → Core Architecture → Prior → Advanced
+1. **Logical top-to-bottom flow**: Dataset → Base Architecture → Loss Configuration → Prior
 2. **Core architecture first**: Encoder/decoder type and hidden layers at the top (fundamental choices)
-3. **Grouped related options**: Component count + component embedding dim together under Prior
-4. **Conditional fields**: Show mixture-specific options only when mixture prior selected
-5. **Collapsible advanced**: Heteroscedastic decoder and reconstruction loss for power users
+3. **Loss configuration visible**: Reconstruction loss and heteroscedastic decoder in main flow (not hidden)
+4. **Grouped related options**: Component count + component embedding dim together under Prior
+5. **Conditional fields**: Show mixture-specific options only when mixture prior selected
 6. **No training presets**: Users will configure training parameters in Training Hub anyway
 
 **Rationale for Organization**:
 - **Dataset first**: Foundation for everything else
 - **Encoder/Decoder + Hidden Layers**: Most fundamental architectural choice - determines the base network structure
 - **Latent Dimension**: Core parameter that affects all downstream components
+- **Reconstruction Loss**: Fundamental choice affecting decoder output activation (BCE for binary, MSE for continuous)
+- **Heteroscedastic Decoder**: Structural choice (decoder outputs mean+variance vs just mean)
 - **Prior Configuration**: Builds on top of encoder architecture (determines encoder outputs)
   - Component count and embedding dim are tightly coupled, shown together
   - Component-aware decoder is a prior-specific architectural choice
-- **Advanced Options**: Specialized features for power users (heteroscedastic, reconstruction loss)
 
-This flow matches the actual dependency chain in model construction: Base network → Latent space → Prior structure → Advanced features.
+This flow matches the actual dependency chain in model construction: Base network → Latent space → Loss structure → Prior structure.
 
 #### Stage 2: Training Hub (Restricted Config)
 
