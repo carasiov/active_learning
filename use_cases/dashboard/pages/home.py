@@ -425,154 +425,272 @@ def _build_model_card(metadata) -> html.Div:
 
 
 def _build_create_modal() -> dbc.Modal:
-    """Modal for creating new model."""
+    """Modal for creating new model with full architecture configuration."""
+
+    label_style = {
+        "fontSize": "14px",
+        "fontWeight": "600",
+        "marginBottom": "6px",
+        "display": "block",
+        "fontFamily": "'Open Sans', Verdana, sans-serif",
+    }
+
+    input_style = {
+        "width": "100%",
+        "padding": "10px 12px",
+        "fontSize": "14px",
+        "border": "1px solid #C6C6C6",
+        "borderRadius": "6px",
+        "fontFamily": "ui-monospace, monospace",
+    }
+
+    text_input_style = input_style.copy()
+    text_input_style["fontFamily"] = "'Open Sans', Verdana, sans-serif"
+
+    help_style = {
+        "fontSize": "12px",
+        "color": "#6F6F6F",
+        "marginTop": "6px",
+        "fontFamily": "'Open Sans', Verdana, sans-serif",
+    }
+
+    section_title_style = {
+        "fontSize": "16px",
+        "fontWeight": "700",
+        "color": "#000000",
+        "marginTop": "24px",
+        "marginBottom": "16px",
+        "fontFamily": "'Open Sans', Verdana, sans-serif",
+        "borderBottom": "2px solid #C10A27",
+        "paddingBottom": "8px",
+    }
+
     return dbc.Modal(
         [
             dbc.ModalHeader(dbc.ModalTitle("Create New Model")),
             dbc.ModalBody(
                 [
+                    # Dataset Configuration Section
+                    html.Div("Dataset Configuration", style=section_title_style),
+
                     html.Div(
                         [
-                            html.Label("Model Name (optional)", style={
-                                "fontSize": "14px",
-                                "fontWeight": "600",
-                                "marginBottom": "6px",
-                                "display": "block",
-                                "fontFamily": "'Open Sans', Verdana, sans-serif",
-                            }),
+                            html.Label("Model Name (optional)", style=label_style),
                             dcc.Input(
                                 id="home-model-name-input",
                                 type="text",
-                                placeholder="e.g., Baseline Experiment",
-                                style={
-                                    "width": "100%",
-                                    "padding": "10px 12px",
-                                    "fontSize": "14px",
-                                    "border": "1px solid #C6C6C6",
-                                    "borderRadius": "6px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
+                                placeholder="e.g., Mixture VAE Baseline",
+                                style=text_input_style,
                             ),
                         ],
-                        style={"marginBottom": "20px"},
+                        style={"marginBottom": "16px"},
                     ),
+
                     html.Div(
                         [
-                            html.Label("Total Samples", style={
-                                "fontSize": "14px",
-                                "fontWeight": "600",
-                                "marginBottom": "6px",
-                                "display": "block",
-                                "fontFamily": "'Open Sans', Verdana, sans-serif",
-                            }),
-                            dcc.Input(
-                                id="home-num-samples-input",
-                                type="number",
-                                min=32,
-                                max=70000,
-                                step=32,
-                                value=1024,
-                                placeholder="e.g., 1024",
-                                style={
-                                    "width": "100%",
-                                    "padding": "10px 12px",
-                                    "fontSize": "14px",
-                                    "border": "1px solid #C6C6C6",
-                                    "borderRadius": "6px",
-                                    "fontFamily": "ui-monospace, monospace",
-                                },
+                            html.Div(
+                                [
+                                    html.Label("Total Samples", style=label_style),
+                                    dcc.Input(
+                                        id="home-num-samples-input",
+                                        type="number",
+                                        min=32,
+                                        max=70000,
+                                        step=32,
+                                        value=1024,
+                                        placeholder="1024",
+                                        style=input_style,
+                                    ),
+                                ],
+                                style={"flex": "1", "marginRight": "12px"},
                             ),
                             html.Div(
-                                "Choose how many MNIST samples to include in this model's dataset.",
-                                style={
-                                    "fontSize": "12px",
-                                    "color": "#6F6F6F",
-                                    "marginTop": "6px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
+                                [
+                                    html.Label("Labeled Samples", style=label_style),
+                                    dcc.Input(
+                                        id="home-num-labeled-input",
+                                        type="number",
+                                        min=0,
+                                        max=70000,
+                                        step=1,
+                                        value=128,
+                                        placeholder="128",
+                                        style=input_style,
+                                    ),
+                                ],
+                                style={"flex": "1", "marginRight": "12px"},
+                            ),
+                            html.Div(
+                                [
+                                    html.Label("Sampling Seed", style=label_style),
+                                    dcc.Input(
+                                        id="home-seed-input",
+                                        type="number",
+                                        step=1,
+                                        value=0,
+                                        placeholder="0",
+                                        style=input_style,
+                                    ),
+                                ],
+                                style={"flex": "1"},
                             ),
                         ],
-                        style={"marginBottom": "20px"},
+                        style={"display": "flex", "marginBottom": "8px"},
                     ),
+
+                    html.Div(
+                        id="home-unlabeled-preview",
+                        style=help_style,
+                    ),
+
+                    # Model Architecture Section
+                    html.Div("Model Architecture", style=section_title_style),
+
                     html.Div(
                         [
-                            html.Label("Labeled Samples", style={
-                                "fontSize": "14px",
-                                "fontWeight": "600",
-                                "marginBottom": "6px",
-                                "display": "block",
-                                "fontFamily": "'Open Sans', Verdana, sans-serif",
-                            }),
-                            dcc.Input(
-                                id="home-num-labeled-input",
-                                type="number",
-                                min=0,
-                                max=70000,
-                                step=1,
-                                value=128,
-                                placeholder="e.g., 128",
-                                style={
-                                    "width": "100%",
-                                    "padding": "10px 12px",
-                                    "fontSize": "14px",
-                                    "border": "1px solid #C6C6C6",
-                                    "borderRadius": "6px",
-                                    "fontFamily": "ui-monospace, monospace",
-                                },
+                            html.Div(
+                                [
+                                    html.Label("Encoder Type", style=label_style),
+                                    dcc.Dropdown(
+                                        id="home-encoder-type",
+                                        options=[
+                                            {"label": "Dense (MLP)", "value": "dense"},
+                                            {"label": "Convolutional", "value": "conv"},
+                                        ],
+                                        value="conv",
+                                        clearable=False,
+                                        style={"fontSize": "14px"},
+                                    ),
+                                    html.Div("Conv recommended for MNIST", style=help_style),
+                                ],
+                                style={"flex": "1", "marginRight": "12px"},
                             ),
                             html.Div(
-                                id="home-unlabeled-preview",
-                                style={
-                                    "fontSize": "12px",
-                                    "color": "#6F6F6F",
-                                    "marginTop": "6px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
+                                [
+                                    html.Label("Latent Dimension", style=label_style),
+                                    dcc.Input(
+                                        id="home-latent-dim",
+                                        type="number",
+                                        min=2,
+                                        max=256,
+                                        value=2,
+                                        placeholder="2",
+                                        style=input_style,
+                                    ),
+                                    html.Div("Use 2 for visualization", style=help_style),
+                                ],
+                                style={"flex": "1"},
                             ),
                         ],
-                        style={"marginBottom": "20px"},
+                        style={"display": "flex", "marginBottom": "16px"},
                     ),
+
+                    # Hidden layers (conditional - only for Dense encoder)
                     html.Div(
                         [
-                            html.Label("Sampling Seed", style={
-                                "fontSize": "14px",
-                                "fontWeight": "600",
-                                "marginBottom": "6px",
-                                "display": "block",
-                                "fontFamily": "'Open Sans', Verdana, sans-serif",
-                            }),
+                            html.Label("Hidden Layers (Dense encoder only)", style=label_style),
                             dcc.Input(
-                                id="home-seed-input",
-                                type="number",
-                                step=1,
-                                value=0,
-                                placeholder="e.g., 42",
-                                style={
-                                    "width": "100%",
-                                    "padding": "10px 12px",
-                                    "fontSize": "14px",
-                                    "border": "1px solid #C6C6C6",
-                                    "borderRadius": "6px",
-                                    "fontFamily": "ui-monospace, monospace",
-                                },
+                                id="home-hidden-dims",
+                                type="text",
+                                value="256,128,64",
+                                placeholder="256,128,64",
+                                style=text_input_style,
+                            ),
+                            html.Div("Comma-separated layer sizes", style=help_style),
+                        ],
+                        id="home-hidden-dims-container",
+                        style={"marginBottom": "16px", "display": "none"},  # Hidden by default
+                    ),
+
+                    # Prior Configuration Section
+                    html.Div("Prior Configuration", style=section_title_style),
+
+                    html.Div(
+                        [
+                            html.Label("Prior Type", style=label_style),
+                            dcc.Dropdown(
+                                id="home-prior-type",
+                                options=[
+                                    {"label": "Standard (Gaussian N(0,I))", "value": "standard"},
+                                    {"label": "Mixture (Component-based)", "value": "mixture"},
+                                    {"label": "VampPrior (Learned pseudo-inputs)", "value": "vamp"},
+                                    {"label": "Geometric MoG (Fixed structure)", "value": "geometric_mog"},
+                                ],
+                                value="standard",
+                                clearable=False,
+                                style={"fontSize": "14px"},
                             ),
                             html.Div(
-                                "Use a fixed seed to reproduce dataset sampling across creations.",
-                                style={
-                                    "fontSize": "12px",
-                                    "color": "#6F6F6F",
-                                    "marginTop": "6px",
-                                    "fontFamily": "'Open Sans', Verdana, sans-serif",
-                                },
+                                id="home-prior-help",
+                                children="Simple Gaussian prior (no mixture structure)",
+                                style=help_style,
                             ),
                         ],
-                        style={"marginBottom": "20px"},
+                        style={"marginBottom": "16px"},
                     ),
+
+                    # Mixture-specific options (conditional)
+                    html.Div(
+                        [
+                            html.Div(
+                                [
+                                    html.Label("Number of Components", style=label_style),
+                                    dcc.Input(
+                                        id="home-num-components",
+                                        type="number",
+                                        min=1,
+                                        max=64,
+                                        value=10,
+                                        placeholder="10",
+                                        style=input_style,
+                                    ),
+                                    html.Div("Should be ≥ num_classes (10)", style=help_style),
+                                ],
+                                style={"flex": "1", "marginRight": "12px"},
+                            ),
+                            html.Div(
+                                [
+                                    html.Label("Component Embedding Dim (optional)", style=label_style),
+                                    dcc.Input(
+                                        id="home-component-embedding-dim",
+                                        type="number",
+                                        min=1,
+                                        max=128,
+                                        value="",
+                                        placeholder="(defaults to latent_dim)",
+                                        style=input_style,
+                                    ),
+                                    html.Div("Leave blank to use latent_dim", style=help_style),
+                                ],
+                                style={"flex": "1"},
+                            ),
+                        ],
+                        id="home-mixture-options",
+                        style={"display": "none", "marginBottom": "16px"},  # Hidden by default
+                    ),
+
+                    html.Div(
+                        [
+                            dbc.Checklist(
+                                id="home-use-component-aware-decoder",
+                                options=[
+                                    {"label": " Use Component-Aware Decoder (separate pathways per component)", "value": True}
+                                ],
+                                value=[True],
+                                style={"fontSize": "14px", "fontFamily": "'Open Sans', Verdana, sans-serif"},
+                            ),
+                            html.Div("Recommended for mixture priors", style=help_style),
+                        ],
+                        id="home-component-aware-container",
+                        style={"display": "none", "marginBottom": "16px"},  # Hidden by default
+                    ),
+
                     html.Div(
                         id="home-create-feedback",
-                        style={"fontSize": "14px", "marginTop": "12px"},
+                        style={"fontSize": "14px", "marginTop": "16px", "color": "#C10A27"},
                     ),
-                ]
+                ],
+                style={"maxHeight": "70vh", "overflowY": "auto"},
             ),
             dbc.ModalFooter(
                 [
@@ -613,4 +731,5 @@ def _build_create_modal() -> dbc.Modal:
         id="home-create-modal",
         is_open=False,
         centered=True,
+        size="lg",  # Larger modal for more content
     )

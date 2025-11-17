@@ -14,13 +14,20 @@ from use_cases.dashboard.utils.callback_utils import logged_callback
 
 def register_home_callbacks(app: Dash) -> None:
     """Register home page callbacks."""
-    
+
     @app.callback(
         Output("home-create-modal", "is_open"),
         Output("home-model-name-input", "value"),
         Output("home-num-samples-input", "value"),
         Output("home-num-labeled-input", "value"),
         Output("home-seed-input", "value"),
+        Output("home-encoder-type", "value"),
+        Output("home-latent-dim", "value"),
+        Output("home-hidden-dims", "value"),
+        Output("home-prior-type", "value"),
+        Output("home-num-components", "value"),
+        Output("home-component-embedding-dim", "value"),
+        Output("home-use-component-aware-decoder", "value"),
         Input("home-new-model-btn", "n_clicks"),
         Input("home-confirm-create", "n_clicks"),
         Input("home-cancel-create", "n_clicks"),
@@ -29,24 +36,38 @@ def register_home_callbacks(app: Dash) -> None:
     )
     @logged_callback("toggle_create_modal")
     def toggle_create_modal(new_clicks, confirm_clicks, cancel_clicks, is_open):
-        """Open/close create model modal."""
+        """Open/close create model modal and reset inputs."""
         ctx = dash.callback_context
         if not ctx.triggered:
             raise PreventUpdate
-        
+
         triggered_id = ctx.triggered[0]["prop_id"].split(".")[0]
-        
+
+        # Default values
+        defaults = (
+            "",           # name
+            1024,         # num_samples
+            128,          # num_labeled
+            0,            # seed
+            "conv",       # encoder_type
+            2,            # latent_dim
+            "256,128,64", # hidden_dims
+            "standard",   # prior_type
+            10,           # num_components
+            "",           # component_embedding_dim (blank = use latent_dim)
+            [True],       # use_component_aware_decoder
+        )
+
         if triggered_id == "home-new-model-btn":
-            # Open modal and reset inputs
-            return True, "", 1024, 128, 0
+            # Open modal and reset inputs to defaults
+            return (True,) + defaults
         elif triggered_id == "home-cancel-create":
             # Explicit cancel closes modal
-            return False, "", 1024, 128, 0
+            return (False,) + defaults
         elif triggered_id == "home-confirm-create":
             # Keep modal open; create callback will navigate on success
-            # or show feedback on failure
-            return is_open, "", 1024, 128, 0
-        
+            return (is_open,) + defaults
+
         raise PreventUpdate
     
     @app.callback(
@@ -57,34 +78,71 @@ def register_home_callbacks(app: Dash) -> None:
         State("home-num-samples-input", "value"),
         State("home-num-labeled-input", "value"),
         State("home-seed-input", "value"),
+        State("home-encoder-type", "value"),
+        State("home-latent-dim", "value"),
+        State("home-hidden-dims", "value"),
+        State("home-prior-type", "value"),
+        State("home-num-components", "value"),
+        State("home-component-embedding-dim", "value"),
+        State("home-use-component-aware-decoder", "value"),
         prevent_initial_call=True,
     )
-    def create_model(n_clicks, model_name, num_samples, num_labeled, seed):
-        """Create new model and navigate to it."""
+    def create_model(
+        n_clicks, model_name, num_samples, num_labeled, seed,
+        encoder_type, latent_dim, hidden_dims,
+        prior_type, num_components, component_embedding_dim,
+        use_component_aware_decoder
+    ):
+        """Create new model with architecture configuration and navigate to it."""
         if not n_clicks:
             raise PreventUpdate
+
+        # Parse hidden_dims
+        try:
+            if hidden_dims:
+                hidden_dims_tuple = tuple(int(x.strip()) for x in hidden_dims.split(",") if x.strip())
+            else:
+                hidden_dims_tuple = (256, 128, 64)
+        except ValueError:
+            return no_update, html.Div("Invalid hidden_dims format. Use comma-separated integers (e.g., 256,128,64)", style={"color": "#C10A27"})
+
+        # Parse component_embedding_dim (empty string means None)
+        comp_emb_dim = None
+        if component_embedding_dim not in (None, ""):
+            try:
+                comp_emb_dim = int(component_embedding_dim)
+            except ValueError:
+                return no_update, html.Div("Component embedding dim must be an integer or blank", style={"color": "#C10A27"})
 
         command = CreateModelCommand(
             name=model_name if model_name else None,
             num_samples=int(num_samples) if num_samples is not None else 1024,
             num_labeled=int(num_labeled) if num_labeled is not None else 128,
             seed=int(seed) if seed is not None else 0,
+            # Architecture configuration
+            encoder_type=encoder_type or "conv",
+            latent_dim=int(latent_dim) if latent_dim is not None else 2,
+            hidden_dims=hidden_dims_tuple,
+            prior_type=prior_type or "standard",
+            num_components=int(num_components) if num_components is not None else 10,
+            component_embedding_dim=comp_emb_dim,
+            use_component_aware_decoder=bool(use_component_aware_decoder),
         )
         success, model_id_or_error = dashboard_state.state_manager.dispatcher.execute(command)
-        
+
         if not success:
             return no_update, html.Div(model_id_or_error, style={"color": "#C10A27"})
-        
+
         # model_id_or_error is actually the model_id on success
         model_id = model_id_or_error
-        
+
         # Now load the model
         load_command = LoadModelCommand(model_id=model_id)
         load_success, load_message = dashboard_state.state_manager.dispatcher.execute(load_command)
-        
+
         if not load_success:
             return no_update, html.Div(f"Created but failed to load: {load_message}", style={"color": "#C10A27"})
-        
+
         # Navigate to model
         return f"/model/{model_id}", ""
 
@@ -111,7 +169,52 @@ def register_home_callbacks(app: Dash) -> None:
 
         unlabeled = total - labeled
         return f"Unlabeled samples: {unlabeled:,}"
-    
+
+    @app.callback(
+        Output("home-hidden-dims-container", "style"),
+        Input("home-encoder-type", "value"),
+        prevent_initial_call=False,
+    )
+    def toggle_hidden_dims(encoder_type):
+        """Show/hide hidden_dims input based on encoder type (Dense only)."""
+        if encoder_type == "dense":
+            return {"marginBottom": "16px", "display": "block"}
+        else:
+            return {"marginBottom": "16px", "display": "none"}
+
+    @app.callback(
+        Output("home-mixture-options", "style"),
+        Output("home-component-aware-container", "style"),
+        Output("home-prior-help", "children"),
+        Input("home-prior-type", "value"),
+        prevent_initial_call=False,
+    )
+    def toggle_mixture_options(prior_type):
+        """Show/hide mixture-specific options based on prior type."""
+        help_texts = {
+            "standard": "Simple Gaussian prior N(0,I) - no mixture structure",
+            "mixture": "Mixture of Gaussians with component-aware decoder. Enables τ-classifier.",
+            "vamp": "Variational Mixture of Posteriors - learned pseudo-inputs provide spatial separation",
+            "geometric_mog": "Fixed geometric mixture (circle/grid) - diagnostic tool only (WARNING: induces topology)",
+        }
+
+        help_text = help_texts.get(prior_type, "")
+
+        mixture_based = prior_type in ["mixture", "vamp", "geometric_mog"]
+
+        if mixture_based:
+            return (
+                {"display": "flex", "marginBottom": "16px"},  # mixture_options
+                {"display": "block", "marginBottom": "16px"},  # component_aware_container
+                help_text,  # help text
+            )
+        else:
+            return (
+                {"display": "none", "marginBottom": "16px"},
+                {"display": "none", "marginBottom": "16px"},
+                help_text,
+            )
+
     @app.callback(
         Output("url", "pathname", allow_duplicate=True),
         Input({"type": "home-open-model", "model_id": ALL}, "n_clicks"),

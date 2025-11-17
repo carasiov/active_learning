@@ -658,15 +658,27 @@ import pandas as pd
 
 @dataclass
 class CreateModelCommand(Command):
-    """Create a new model with fresh state."""
-    name: Optional[str] = None  # User-friendly name (optional)
+    """Create a new model with architecture configuration."""
+    # Dataset parameters
+    name: Optional[str] = None
     num_samples: int = 1024
     num_labeled: int = 128
     seed: Optional[int] = None
-    
+
+    # Architecture parameters (structural - cannot be changed after creation)
+    encoder_type: str = "conv"
+    latent_dim: int = 2
+    hidden_dims: Tuple[int, ...] = (256, 128, 64)
+    prior_type: str = "standard"
+    num_components: int = 10
+    component_embedding_dim: Optional[int] = None
+    use_component_aware_decoder: bool = True
+
     def validate(self, state: AppState, services: Any) -> Optional[str]:
-        """Validate dataset sizing inputs."""
+        """Validate dataset sizing and architecture inputs."""
         errors: List[str] = []
+
+        # Dataset validation
         total = self.num_samples
         labeled = self.num_labeled
         if total <= 0:
@@ -677,22 +689,53 @@ class CreateModelCommand(Command):
             errors.append("Total samples must be at most 70000 for MNIST")
         if labeled > total:
             errors.append("Labeled samples cannot exceed total samples")
+
+        # Architecture validation
+        if self.encoder_type not in ["dense", "conv"]:
+            errors.append("Encoder type must be 'dense' or 'conv'")
+        if self.latent_dim < 2 or self.latent_dim > 256:
+            errors.append("Latent dimension must be between 2 and 256")
+        if self.prior_type not in ["standard", "mixture", "vamp", "geometric_mog"]:
+            errors.append("Prior type must be one of: standard, mixture, vamp, geometric_mog")
+
+        # Mixture-specific validation
+        if self.prior_type in ["mixture", "vamp", "geometric_mog"]:
+            if self.num_components < 1 or self.num_components > 64:
+                errors.append("Number of components must be between 1 and 64")
+
         if errors:
             return "; ".join(errors)
         return None
-    
+
     def execute(self, state: AppState, services: Any) -> Tuple[AppState, str]:
-        """Create new model via ModelService, then add initial labels via LabelingService."""
+        """Create new model with architecture configuration via ModelService."""
         from rcmvae.domain.config import SSVAEConfig
         from use_cases.experiments.data.mnist.mnist import load_mnist_scaled
         from use_cases.dashboard.services.model_service import CreateModelRequest
         import numpy as np
 
-        # Create model via ModelService
+        # Build SSVAEConfig with architecture parameters
         rng_seed = int(self.seed if self.seed is not None else 0)
+
+        config = SSVAEConfig(
+            # Architecture (structural - cannot be changed after creation)
+            encoder_type=self.encoder_type,
+            decoder_type=self.encoder_type,  # Mirror encoder
+            latent_dim=self.latent_dim,
+            hidden_dims=self.hidden_dims,
+            prior_type=self.prior_type,
+            num_components=self.num_components,
+            component_embedding_dim=self.component_embedding_dim,
+            use_component_aware_decoder=self.use_component_aware_decoder,
+
+            # Defaults for modifiable training parameters
+            random_seed=rng_seed,
+        )
+
+        # Create model via ModelService
         request = CreateModelRequest(
             name=self.name or "Unnamed Model",
-            config=SSVAEConfig(),
+            config=config,
             dataset_total_samples=self.num_samples,
             dataset_seed=rng_seed,
         )
