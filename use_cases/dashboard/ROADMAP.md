@@ -37,29 +37,39 @@
 ### Current State (As of November 2025)
 
 **✅ Completed**:
-- Service architecture refactoring (Phases 1-3)
+- **Phase 0: Stabilization** (Complete)
+  - Service architecture refactoring
   - `TrainingService`, `ModelService`, `LabelingService` abstractions
   - `AppStateManager` eliminates global state
-  - Commands use dependency injection (no backward compatibility)
-- Mixture model support in training workers
-  - Captures `responsibilities` and `pi_values`
-  - Enables component specialization analysis
-- Basic active learning loop
-  - Label samples via click → Train → See updated latent space
+  - Commands use dependency injection
+  - Training state lifecycle fixes
+  - Defensive error handling
 
-**⚠️ Stabilization Needed**:
-- Training state lifecycle bugs (partially fixed, needs testing)
-- UI inconsistencies (epochs input override, page navigation)
-- Missing error handling and validation
-- Incomplete mixture visualization integration
+- **Phase 1.1 & 1.2: Experiment Integration** (Complete, commit `7ceec67`)
+  - ✅ REPORT.md generation for dashboard runs
+  - ✅ Run records persisted to `ModelState.runs` and `runs.json`
+  - ✅ "Recent Runs" section in Training Hub (last 5 runs)
+  - ✅ Run Viewer page at `/model/{id}/run/{run_id}`
+  - ✅ Displays run metadata: epochs, labeled samples, metrics
+  - ⚠️ Image rendering in reports (known limitation, workaround provided)
+
+- **Mixture Model Support**:
+  - Captures `responsibilities` and `pi_values` during training
+  - Enables component specialization analysis
+  - Data ready for visualization (Phase 1.3)
+
+- **Basic Active Learning Loop**:
+  - Label samples via click → Train → See updated latent space → View run report
+
+**🚧 In Progress**:
+- Phase 1.3: Expose Mixture Diagnostics in UI (Next)
 
 **❌ Missing**:
-- Experiment-quality outputs from dashboard training
-- τ-matrix (component→label mapping) visualizations
-- π evolution tracking across training sessions
+- τ-matrix (component→label mapping) visualizations in UI
+- π evolution tracking across training sessions in UI
 - Uncertainty/OOD highlighting for strategic labeling
-- REPORT.md generation for dashboard runs
-- Component specialization diagnostics
+- Component specialization diagnostics in UI
+- Real-time mixture updates during training
 
 ### Vision: Dashboard as Active Learning Workbench
 
@@ -152,64 +162,73 @@ The target system enables this workflow:
 
 **Goal**: Enable dashboard training runs to generate experiment-quality outputs.
 
-### 1.1 Leverage `generate_dashboard_run()` Infrastructure
+### 1.1 Leverage `generate_dashboard_run()` Infrastructure ✅
 
-**Background**: The function `use_cases/dashboard/core/run_generation.py::generate_dashboard_run()` already exists and creates full experiment outputs. It's called in `CompleteTrainingCommand` but outputs aren't surfaced in the UI.
+**Status**: ✅ Complete (Pre-existing implementation verified November 2025)
+
+**Background**: The function `use_cases/dashboard/core/run_generation.py::generate_dashboard_run()` already exists and creates full experiment outputs. It's called in `CompleteTrainingCommand` and properly saves run records.
 
 **See Also**: [Experiments Guide - Run Directory Layout](../../experiments/README.md) for output structure details
 
-**Current Flow**:
-```python
-# In CompleteTrainingCommand.execute()
-run_record = generate_dashboard_run(
-    model_id=model_id,
-    config=state.active_model.config,
-    # ... metrics, diagnostics
-)
-# run_record created but not used!
-```
-
-**Tasks**:
-1. Read `use_cases/dashboard/core/run_generation.py` to understand output structure
-2. Verify `RunRecord` contains all necessary metadata (path to REPORT.md, figures, etc.)
-3. Add `run_record` to `ModelState.runs` tuple in `CompleteTrainingCommand`
-4. Update `ModelState` schema to include link to latest run's REPORT.md
+**Implementation Details**:
+- `CompleteTrainingCommand.execute()` (lines 453-483) calls `generate_dashboard_run()`
+- Run records are saved via `append_run_record()` to `{model_dir}/runs.json`
+- `ModelState.runs` is updated with the new run record (lines 470-473)
+- All metadata fields present: `run_id`, `timestamp`, `report_path`, `results_root`, `metrics`, etc.
 
 **Design Decision**:
-- Keep using `generate_dashboard_run()` - don't duplicate experiment infrastructure
-- Store run records in `ModelState.runs` for UI access
-- Link to generated REPORT.md instead of duplicating content
+- ✅ Using `generate_dashboard_run()` - no duplication of experiment infrastructure
+- ✅ Run records stored in `ModelState.runs` for UI access
+- ✅ Links to generated REPORT.md instead of duplicating content
 
 **Acceptance Criteria**:
-- After training, `ModelState.runs` contains new `RunRecord`
-- `RunRecord` includes paths to REPORT.md and figures
-- Training hub shows link to latest run's REPORT.md
+- ✅ After training, `ModelState.runs` contains new `RunRecord`
+- ✅ `RunRecord` includes paths to REPORT.md and figures
+- ✅ Ready for UI integration (completed in Phase 1.2)
 
-### 1.2 Surface Experiment Outputs in Training Hub
+### 1.2 Surface Experiment Outputs in Training Hub ✅
+
+**Status**: ✅ Complete (Implemented November 2025, commit `7ceec67`)
 
 **Goal**: Make REPORT.md and figures accessible from the UI.
 
-**Tasks**:
-1. Add "View Latest Report" button to training hub
-2. Create new route `/model/{id}/run/{run_id}` to display REPORT.md
-3. Render markdown with embedded image references
-4. Add "Recent Runs" section showing last 5 runs with thumbnails
+**Implementation**:
+1. ✅ Created `run_viewer.py` page to display REPORT.md content
+2. ✅ Added route `/model/{id}/run/{run_id}` in `app.py`
+3. ✅ Added "Recent Runs" section to training hub showing last 5 runs
+4. ✅ Each run displays: run ID, timestamp, epochs, labeled samples, validation loss
+5. ✅ "View Report →" button links to run viewer page
 
-**UI Design**:
+**Files Modified**:
+- `use_cases/dashboard/pages/run_viewer.py` (new)
+- `use_cases/dashboard/app.py` (routing)
+- `use_cases/dashboard/pages/training_hub.py` (Recent Runs section)
+
+**UI Design** (Implemented):
 ```
 Training Hub
 ├── Training Controls (existing)
 ├── Loss Curves (existing)
-└── Recent Runs (NEW)
-    ├── Run 1: 20251116_143022 [View Report] [Best val: 0.023]
-    ├── Run 2: 20251116_122801 [View Report] [Best val: 0.031]
-    └── ...
+└── Recent Runs (NEW) ✅
+    ├── Run {run_id} • {timestamp} [View Report →]
+    │   └── Epochs: {start}→{end} | Labeled: {count}/{total} | Val Loss: {loss}
+    └── Shows total run count, handles empty state gracefully
 ```
 
 **Acceptance Criteria**:
-- User can click "View Report" to see full REPORT.md
-- Images in report render correctly
-- Run metadata shows in UI (timestamp, epochs, best metrics)
+- ✅ User can click "View Report" to see full REPORT.md
+- ⚠️ Images in report: Not yet rendered (known limitation, see below)
+- ✅ Run metadata shows in UI (timestamp, epochs, best metrics)
+
+**Known Limitations**:
+- **Image Rendering**: REPORT.md references images with relative paths (e.g., `figures/core/loss_comparison.png`). These don't render in the web viewer because:
+  - Images are not served as static assets
+  - Dash's `dcc.Markdown` component can't resolve relative file paths
+- **Workaround**: Info banner displays the report file path for users to view locally
+- **Future Enhancement** (not in current roadmap):
+  - Option 1: Serve experiment results directories as static assets via Flask
+  - Option 2: Convert images to base64 and embed in HTML
+  - Option 3: Create custom image viewer component that reads from filesystem
 
 ### 1.3 Expose Mixture Diagnostics in UI
 
@@ -707,6 +726,6 @@ When resuming work:
 
 ---
 
-**Last Updated**: November 2025
-**Status**: Phase 0 in progress
-**Next Milestone**: Complete stabilization, begin Phase 1
+**Last Updated**: November 17, 2025
+**Status**: Phase 0 ✅ Complete | Phase 1.1 & 1.2 ✅ Complete | Phase 1.3 🚧 In Progress
+**Next Milestone**: Complete Phase 1.3 (Mixture Diagnostics UI)
