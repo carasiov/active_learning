@@ -110,27 +110,38 @@ STRUCTURAL_PARAMS = {
 
 ## Solution Overview
 
-### Three-Part Solution
+### Two-Part Solution
 
 **Part 1: Model Creation Redesign**
 - Expand homepage modal to include all structural parameters
 - Users configure architecture BEFORE model creation
 - Parameters organized logically: Dataset → Architecture → Prior
 - Conditional rendering (show mixture params only for mixture priors)
+- Once created, structural parameters are **locked forever**
 
-**Part 2: Training Hub Redesign** (Quick Controls)
-- Show architecture summary (read-only) at top
-- Expose only essential modifiable parameters
-- Conditional sections based on prior type (contextually intelligent)
-- Group parameters by purpose, not alphabetically
-- Link to full configuration page for advanced parameters
+**Part 2: Training Configuration System Redesign**
 
-**Part 3: Full Configuration Page Redesign** (Advanced Options)
-- Complete parameter configuration accessible from training hub
-- Filter out structural parameters (show only modifiable ones)
-- Conditional sections/tabs based on prior type
-- Same design principles as training hub but more comprehensive
-- Organized into logical sections/tabs, not alphabetically
+A unified backend system with two UI interfaces:
+
+**Backend (shared by both interfaces)**:
+- Filter parameters: show structural params as **read-only**, modifiable params as **editable**
+- Conditional sections based on prior type
+- Mathematical terminology corrections (Usage Entropy Weight, etc.)
+- Logical organization (not alphabetical)
+
+**Two UI Interfaces** (same backend, different presentation):
+
+1. **Training Hub** (`training_hub.py`) - Quick Controls
+   - Architecture summary (read-only) at top
+   - Essential modifiable parameters only
+   - Conditional sections based on prior type
+   - Link to full configuration page
+
+2. **Full Configuration Page** (`training.py`) - Comprehensive Configuration
+   - Architecture summary (read-only) at top - **shows structural params with lock icon**
+   - ALL modifiable parameters in organized tabs
+   - Conditional tabs based on prior type
+   - Same design principles as training hub but more comprehensive
 
 ### Design Principles
 
@@ -913,14 +924,14 @@ SECTION_SPECS = [
 
 ### Problem with Current Approach
 
-1. **Shows Structural Parameters**: Users can see (and try to change) `prior_type`, `latent_dim`, etc.
+1. **Structural Parameters Appear Editable**: Users can see `prior_type`, `latent_dim`, etc. in editable form, but changing them breaks the model
 2. **No Conditional Rendering**: Shows VampPrior params even if using Standard prior
 3. **Alphabetical Organization**: Parameters not grouped by semantic relationship
-4. **Confusing UX**: Appears everything is editable, but some changes would break model
+4. **Confusing UX**: No visual distinction between locked vs modifiable parameters
 
 ### New Configuration Page Design
 
-**Goal**: Comprehensive configuration for all modifiable parameters with contextual intelligence.
+**Goal**: Show ALL parameters (structural + modifiable) with clear visual distinction between locked and editable.
 
 **Layout**:
 ```
@@ -960,13 +971,18 @@ SECTION_SPECS = [
 
 ### Redesign Principles
 
-1. **Filter Structural Parameters**: Only show modifiable parameters (use `get_modifiable_field_specs()`)
-2. **Conditional Tabs**: Show/hide entire tabs based on prior type
+1. **Show Structural Parameters as Read-Only**: Display architecture summary at top with lock icon 🔒
+   - Users can SEE what architecture they're working with
+   - Clear visual indication that these cannot be changed
+   - Compact, informative display
+2. **Filter Modifiable Parameters**: Only editable fields in tabs use `get_modifiable_field_specs()`
+   - Tabs contain ONLY parameters that can be changed after model creation
+   - Structural parameters are NOT in editable tabs (only in read-only summary)
+3. **Conditional Tabs**: Show/hide entire tabs based on prior type
    - Standard prior: Hide "Mixture Prior", "VampPrior", "Geometric" tabs
    - Mixture prior: Show "Mixture Prior" tab, hide others
    - VampPrior: Show "VampPrior" tab, hide others
    - Geometric: Show "Geometric Prior" tab, hide others
-3. **Architecture Summary**: Add read-only summary at top (reuse from training hub)
 4. **Logical Organization**: Group by purpose, not alphabetically
 5. **Mathematical Terminology**: Use correct terms (Usage Entropy, not diversity)
 

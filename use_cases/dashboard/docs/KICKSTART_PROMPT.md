@@ -12,10 +12,13 @@ Implement the SSVAE Dashboard model creation and training hub redesign according
 
 **Problem**: Users cannot create mixture/vamp/geometric models from the UI. Models are always created with hardcoded `SSVAEConfig()` defaults (prior_type="standard"). When users change structural parameters like `prior_type` in the training hub or configuration page, only the config is updated—the model architecture is NOT rebuilt. This causes `ValueError: Mixture responsibilities unavailable` when training.
 
-**Solution**: Three-part redesign:
-1. **Model Creation**: Expand homepage modal to expose all structural parameters (encoder type, prior type, latent dim, etc.) BEFORE model creation
-2. **Training Hub**: Show only modifiable parameters with quick controls, conditional sections based on prior type
-3. **Full Configuration Page**: Redesign advanced options to filter structural params and show conditional tabs based on prior type
+**Solution**: Two-part redesign:
+1. **Model Creation**: Expand homepage modal to expose all structural parameters (encoder type, prior type, latent dim, etc.) BEFORE model creation. Once created, these are locked forever.
+2. **Training Configuration System**: Unified backend redesign for both Training Hub (quick controls) and Full Configuration Page (comprehensive view):
+   - Show structural parameters as **read-only** with lock icon (architecture summary)
+   - Show ALL modifiable parameters as **editable** (filtered from structural ones)
+   - Conditional sections/tabs based on prior type
+   - Correct mathematical terminology throughout
 
 **Current Branch**: `claude/read-review-code-015t5G3dNEAWya6kiLQTvHSX`
 
@@ -56,10 +59,11 @@ Then implement the redesign in 6 phases:
 - **Files**: `pages/training_hub.py`, `core/config_metadata.py`
 
 ### Phase 4: Full Configuration Page Redesign (2-3 days)
-- Filter out structural parameters (show only modifiable ones)
+- Add architecture summary at top (read-only structural params with lock icon)
+- Show ALL modifiable parameters in editable tabs (use `get_modifiable_field_specs()`)
 - Add conditional tabs based on prior type
-- Add architecture summary at top
 - Reorganize into logical sections/tabs
+- Apply same backend logic as Training Hub (unified system)
 - **Files**: `core/config_metadata.py`, `pages/training.py`
 
 ### Phase 5: UpdateConfigCommand Validation (1 day)
@@ -94,12 +98,15 @@ Then implement the redesign in 6 phases:
 ## Success Criteria
 
 - ✅ Can create models with all 4 prior types from homepage
-- ✅ Conditional fields show/hide correctly
-- ✅ Training hub shows architecture summary (read-only)
-- ✅ Training hub shows correct prior-specific sections
-- ✅ Full configuration page filters structural parameters
-- ✅ Full configuration page shows conditional tabs based on prior type
-- ✅ Cannot change structural parameters after creation
+- ✅ Conditional fields show/hide correctly in model creation modal
+- ✅ Training hub shows architecture summary (read-only with lock icon)
+- ✅ Training hub shows only essential modifiable parameters
+- ✅ Training hub has conditional sections based on prior type
+- ✅ Full configuration page shows architecture summary (read-only with lock icon)
+- ✅ Full configuration page shows ALL modifiable parameters in editable tabs
+- ✅ Full configuration page has conditional tabs based on prior type
+- ✅ Structural parameters visible but clearly locked (not editable)
+- ✅ Cannot save changes to structural parameters
 - ✅ Existing models still load and work
 - ✅ Mathematical terminology used correctly
 - ✅ Visual design matches specification
