@@ -34,6 +34,7 @@ from use_cases.dashboard.pages.experiments import build_experiments_layout  # no
 from use_cases.dashboard.pages.training import build_training_config_page, register_config_page_callbacks  # noqa: E402
 from use_cases.dashboard.pages.training_hub import build_training_hub_layout  # noqa: E402
 from use_cases.dashboard.pages.home import build_home_layout  # noqa: E402
+from use_cases.dashboard.pages.run_viewer import build_run_viewer_layout  # noqa: E402
 from use_cases.dashboard.core import state as dashboard_state
 from use_cases.dashboard.core.state import initialize_model_and_data, initialize_app_state  # noqa: E402
 from use_cases.dashboard.core.validation import build_validation_layout  # noqa: E402
@@ -353,6 +354,11 @@ def create_app() -> Dash:
             elif sub_path == '/configure-training':
                 print(f"[ROUTING] Routing to config page")
                 return build_training_config_page(model_id=model_id), config_payload
+            elif sub_path.startswith('/run/'):
+                # Extract run_id from path like /run/{run_id}
+                run_id = sub_path[5:]  # Remove '/run/' prefix
+                print(f"[ROUTING] Routing to run viewer for run_id={run_id}")
+                return build_run_viewer_layout(model_id=model_id, run_id=run_id), config_payload
             else:  # Default to main dashboard
                 print(f"[ROUTING] Routing to main dashboard")
                 return build_dashboard_layout(), config_payload

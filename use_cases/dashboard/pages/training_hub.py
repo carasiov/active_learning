@@ -19,12 +19,181 @@ if str(ROOT_DIR) not in sys.path:
 from use_cases.dashboard.core import state as dashboard_state
 from use_cases.dashboard.core.model_manager import ModelManager
 from use_cases.dashboard.core.config_metadata import get_field_specs, FieldSpec
-from typing import Dict, Any
+from use_cases.dashboard.core.model_runs import load_run_records
+from typing import Dict, Any, List
 import dataclasses
 
 
 # Build a lookup for metadata fields by key
 _FIELD_BY_KEY: Dict[str, FieldSpec] = {spec.key: spec for spec in get_field_specs()}
+
+
+def _build_recent_runs_section(model_id: str) -> html.Div:
+    """Build the Recent Runs section showing last 5 training runs.
+
+    Args:
+        model_id: ID of the current model
+
+    Returns:
+        Dash layout for the recent runs section
+    """
+    # Load run records for this model
+    run_records = load_run_records(model_id)
+
+    if not run_records:
+        return html.Div(
+            [
+                html.Div("Recent Runs", style={
+                    "fontSize": "17px",
+                    "fontWeight": "700",
+                    "color": "#000000",
+                    "marginBottom": "16px",
+                    "fontFamily": "'Open Sans', Verdana, sans-serif",
+                }),
+                html.Div(
+                    "No training runs yet. Complete a training session to see run reports here.",
+                    style={
+                        "fontSize": "14px",
+                        "color": "#6F6F6F",
+                        "fontStyle": "italic",
+                        "textAlign": "center",
+                        "padding": "32px",
+                        "fontFamily": "'Open Sans', Verdana, sans-serif",
+                    },
+                ),
+            ],
+            style={
+                "padding": "24px",
+                "backgroundColor": "#ffffff",
+                "borderRadius": "8px",
+                "margin": "0 32px 32px 32px",
+                "border": "1px solid #C6C6C6",
+            },
+        )
+
+    # Take only the last 5 runs (they're already sorted by timestamp descending)
+    recent_runs = run_records[:5]
+
+    # Build run entries
+    run_entries = []
+    for run in recent_runs:
+        # Get best metric from the run
+        metrics = run.metrics
+        val_loss = metrics.get("val_loss", metrics.get("loss", 0.0))
+
+        # Format timestamp (just show date and time, not full ISO)
+        timestamp_display = run.timestamp[:16].replace("T", " ")  # YYYY-MM-DD HH:MM
+
+        run_entry = html.Div(
+            [
+                html.Div(
+                    [
+                        html.Div(
+                            [
+                                html.Div(
+                                    [
+                                        html.Span(f"Run {run.run_id}", style={
+                                            "fontSize": "14px",
+                                            "fontWeight": "700",
+                                            "color": "#000000",
+                                        }),
+                                        html.Span(f" • {timestamp_display}", style={
+                                            "fontSize": "13px",
+                                            "color": "#6F6F6F",
+                                            "marginLeft": "8px",
+                                        }),
+                                    ],
+                                    style={"marginBottom": "6px"},
+                                ),
+                                html.Div(
+                                    [
+                                        html.Span(f"Epochs: {run.start_epoch}→{run.end_epoch}", style={
+                                            "fontSize": "13px",
+                                            "color": "#4A4A4A",
+                                            "marginRight": "16px",
+                                        }),
+                                        html.Span(f"Labeled: {run.labeled_samples}/{run.total_samples}", style={
+                                            "fontSize": "13px",
+                                            "color": "#4A4A4A",
+                                            "marginRight": "16px",
+                                        }),
+                                        html.Span(f"Val Loss: {val_loss:.4f}", style={
+                                            "fontSize": "13px",
+                                            "color": "#4A4A4A",
+                                            "fontFamily": "ui-monospace, monospace",
+                                        }),
+                                    ],
+                                ),
+                            ],
+                            style={"flex": "1"},
+                        ),
+                        dcc.Link(
+                            "View Report →",
+                            href=f"/model/{model_id}/run/{run.run_id}",
+                            style={
+                                "fontSize": "13px",
+                                "color": "#45717A",
+                                "textDecoration": "none",
+                                "fontWeight": "600",
+                                "padding": "8px 16px",
+                                "border": "1px solid #45717A",
+                                "borderRadius": "6px",
+                                "backgroundColor": "#ffffff",
+                                "whiteSpace": "nowrap",
+                                "display": "inline-block",
+                            },
+                        ),
+                    ],
+                    style={
+                        "display": "flex",
+                        "alignItems": "center",
+                        "padding": "16px",
+                        "borderBottom": "1px solid #E6E6E6",
+                        "fontFamily": "'Open Sans', Verdana, sans-serif",
+                    },
+                ),
+            ],
+        )
+        run_entries.append(run_entry)
+
+    return html.Div(
+        [
+            html.Div(
+                [
+                    html.Span("Recent Runs", style={
+                        "fontSize": "17px",
+                        "fontWeight": "700",
+                        "color": "#000000",
+                        "fontFamily": "'Open Sans', Verdana, sans-serif",
+                    }),
+                    html.Span(f"{len(run_records)} total", style={
+                        "fontSize": "13px",
+                        "color": "#6F6F6F",
+                        "marginLeft": "12px",
+                        "fontFamily": "'Open Sans', Verdana, sans-serif",
+                    }),
+                ],
+                style={
+                    "padding": "16px 24px",
+                    "borderBottom": "2px solid #C10A27",
+                    "backgroundColor": "#ffffff",
+                },
+            ),
+            html.Div(
+                run_entries,
+                style={
+                    "backgroundColor": "#ffffff",
+                },
+            ),
+        ],
+        style={
+            "margin": "0 32px 32px 32px",
+            "backgroundColor": "#ffffff",
+            "borderRadius": "8px",
+            "overflow": "hidden",
+            "border": "1px solid #C6C6C6",
+        },
+    )
 
 
 def _render_quick_control(
@@ -638,6 +807,9 @@ def build_training_hub_layout() -> html.Div:
                     "border": "1px solid #C6C6C6",
                 },
             ),
+
+            # Recent Runs Section
+            _build_recent_runs_section(model_id),
         ],
         style={
             "fontFamily": "'Open Sans', Verdana, sans-serif",
