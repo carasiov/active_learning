@@ -104,7 +104,7 @@ class TrainingState(Enum):
 @dataclass(frozen=True)
 class DataState:
     """Immutable container for all dataset and model predictions.
-    
+
     Version increments whenever data changes (labels, latent, predictions).
     This single version replaces the separate labels_version and latent_version.
     """
@@ -117,6 +117,8 @@ class DataState:
     pred_certainty: np.ndarray
     hover_metadata: List[List[object]]
     version: int
+    responsibilities: Optional[np.ndarray] = None  # (N, num_components) for mixture models
+    pi_values: Optional[np.ndarray] = None  # (num_components,) mixture weights
     
     def with_updated_labels(
         self, 
@@ -137,7 +139,9 @@ class DataState:
         reconstructed: Union[np.ndarray, Tuple[np.ndarray, np.ndarray]],
         pred_classes: np.ndarray,
         pred_certainty: np.ndarray,
-        hover_metadata: List[List[object]]
+        hover_metadata: List[List[object]],
+        responsibilities: Optional[np.ndarray] = None,
+        pi_values: Optional[np.ndarray] = None
     ) -> DataState:
         """Create new state after training completes."""
         return replace(
@@ -147,6 +151,8 @@ class DataState:
             pred_classes=pred_classes,
             pred_certainty=pred_certainty,
             hover_metadata=hover_metadata,
+            responsibilities=responsibilities,
+            pi_values=pi_values,
             version=self.version + 1
         )
 
@@ -413,11 +419,14 @@ class ModelState:
         reconstructed: Union[np.ndarray, Tuple[np.ndarray, np.ndarray]],
         pred_classes: np.ndarray,
         pred_certainty: np.ndarray,
-        hover_metadata: List[List[object]]
+        hover_metadata: List[List[object]],
+        responsibilities: Optional[np.ndarray] = None,
+        pi_values: Optional[np.ndarray] = None
     ) -> ModelState:
         """Update after training completes - new predictions and training state."""
         new_data = self.data.with_updated_predictions(
-            latent, reconstructed, pred_classes, pred_certainty, hover_metadata
+            latent, reconstructed, pred_classes, pred_certainty, hover_metadata,
+            responsibilities, pi_values
         )
         new_training = self.training.with_complete()
         return replace(self, data=new_data, training=new_training)

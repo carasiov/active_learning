@@ -426,6 +426,8 @@ class CompleteTrainingCommand(Command):
             pred_classes=self.pred_classes,
             pred_certainty=self.pred_certainty,
             hover_metadata=self.hover_metadata,
+            responsibilities=self.responsibilities,
+            pi_values=self.pi_values,
         )
 
         total_epochs = len(updated_model.history.epochs)
