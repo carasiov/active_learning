@@ -39,9 +39,9 @@ experiment:
 data:
   dataset: "mnist"                  # Currently only MNIST is supported
   num_samples: 10000               # Total samples from dataset
-  num_labeled: 100                  # Labeled samples (rest are unlabeled)
+  num_labeled: 0                  # Labeled samples (rest are unlabeled)
   seed: 42                          # Random seed for data sampling
-  dataset_variant: "mnist"          # "mnist" (default) or "digits" to force fallback
+  dataset_variant: "digits"          # "mnist" (default) or "digits" to force fallback
 
 
 
@@ -63,11 +63,11 @@ model:
   num_classes: 10                   # Output classes (10 for MNIST digits)
   latent_dim: 2                     # Latent space dimensions (2D for visualization)
   
-  encoder_type: "conv"              # "conv" for images, "dense" for tabular
-  decoder_type: "conv"              # Should match encoder_type
+  encoder_type: "dense"              # "conv" for images, "dense" for tabular
+  decoder_type: "dense"              # Should match encoder_type
   classifier_type: "dense"          # Classifier architecture (currently only "dense")
   
-  hidden_dims: [128, 64]       # Layer sizes for dense encoder/decoder
+  hidden_dims: [256, 128, 64]       # Layer sizes for dense encoder/decoder
                                     # (ignored when using conv architecture)
 
   # ──────────────────────────────────────────────────────────────────────────
@@ -122,7 +122,7 @@ model:
                                     # - true: separate pathways z→Dense, e_c→Dense, then merge
                                     # Both receive embeddings; true enables specialization
                                     # Strongly recommended for mixture prior
-  component_embedding_dim: 2        # Embedding size for component conditioning (4-16)
+  component_embedding_dim: 8        # Embedding size for component conditioning (4-16)
 
   # VampPrior-specific settings (only used when prior_type="vamp")
   # VampPrior learns K pseudo-inputs and defines p(z) = Σ π_k q(z|u_k)
