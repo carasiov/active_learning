@@ -16,6 +16,7 @@ import numpy as np
 
 from ..utils import (
     _sanitize_model_name,
+    _build_label_palette,
     _prep_image,
     safe_save_plot,
     style_axes,
@@ -124,23 +125,56 @@ def plot_latent_spaces(
     else:
         axes = axes.flatten() if n_models > 1 else [axes]
 
+    try:
+        numeric_labels = np.asarray(y_true, dtype=float)
+    except (TypeError, ValueError):
+        numeric_labels = np.asarray(y_true)
+    label_indices = np.full(numeric_labels.shape, -1, dtype=int)
+    with np.errstate(invalid='ignore'):
+        finite_mask = np.isfinite(numeric_labels)
+    label_indices[finite_mask] = numeric_labels[finite_mask].astype(int, copy=False)
+
     for idx, (model_name, model) in enumerate(models.items()):
         ax = axes[idx]
 
         # Get latent representations (batched to avoid OOM with conv architectures)
         latent, _, _, _ = model.predict_batched(X_data)
 
-        # Plot each digit class
-        for digit in range(10):
-            mask = y_true == digit
-            if mask.sum() > 0:
+        valid_mask = label_indices >= 0
+        observed_labels = label_indices[valid_mask]
+        observed_count = (observed_labels.max() + 1) if observed_labels.size else 0
+        config_classes = getattr(getattr(model, "config", None), "num_classes", None)
+        configured_count = int(config_classes) if config_classes is not None else 0
+        num_classes = max(configured_count, observed_count, 1)
+        palette = _build_label_palette(num_classes)
+
+        # Match the per-channel palette so color semantics stay consistent across plots
+        for digit in range(num_classes):
+            mask = label_indices == digit
+            if mask.any():
                 ax.scatter(
                     latent[mask, 0],
                     latent[mask, 1],
                     label=str(digit),
                     alpha=0.75,
                     s=LATENT_POINT_SIZE,
+                    color=palette[digit],
+                    linewidths=0,
+                    edgecolors='none',
                 )
+
+        unknown_mask = label_indices < 0
+        if unknown_mask.any():
+            ax.scatter(
+                latent[unknown_mask, 0],
+                latent[unknown_mask, 1],
+                label='Unknown',
+                alpha=0.5,
+                s=LATENT_POINT_SIZE,
+                color=(0.5, 0.5, 0.5, 1.0),
+                linewidths=0,
+                edgecolors='none',
+            )
 
         style_axes(
             ax,

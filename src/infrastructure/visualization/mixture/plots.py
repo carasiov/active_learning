@@ -461,6 +461,7 @@ def plot_mixture_evolution(
             fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9.5, 7.5))
 
             K = pi_history.shape[1]
+            palette = _build_label_palette(max(K, 1))
 
             # π evolution
             for c in range(K):
@@ -470,6 +471,7 @@ def plot_mixture_evolution(
                     label=f"π_{c}",
                     alpha=0.8,
                     linewidth=1.6,
+                    color=palette[c % len(palette)],
                 )
             style_axes(
                 ax1,
@@ -492,6 +494,7 @@ def plot_mixture_evolution(
                     label=f"C_{c}",
                     alpha=0.8,
                     linewidth=1.6,
+                    color=palette[c % len(palette)],
                 )
             style_axes(
                 ax2,
