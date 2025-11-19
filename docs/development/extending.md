@@ -86,6 +86,7 @@ Component-aware decoding is already implemented for dense + conv stacks (and for
    - `component_embedding_dim`
    - `top_m_gating` (0 = use all responsibilities)
    - `soft_embedding_warmup_epochs`
+   - Conv variants keep **symmetric channel capacity** in the `z` and `e_c` pathways (currently 64/64 before fusion) to match the Section 3.3 contract; mirror that balance when you extend the architecture.
 4. **Network integration** — `SSVAENetwork.__call__()` handles responsibility-weighted reconstructions (including `(mean, sigma)` tuples). When you introduce a new decoder output shape, make sure `extras["recon_per_component"]` stays consistent because losses and diagnostics depend on it.
 5. **Testing** — reuse the coverage style from `tests/test_mixture_encoder.py`, `tests/test_mixture_losses.py`, and the heteroscedastic decoder session summary noted in the roadmap. Focus on shape invariants and on ensuring gradients flow through both the embedding path and the latent path.
 

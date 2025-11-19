@@ -11,11 +11,10 @@ The long-term goal is a [web application](use_cases/dashboard/app.py) that conne
 - visualization and diagnostics,
 - human-in-the-loop corrections (labeling, curriculum changes, active learning).
 
-### Primary goals
+## Active Learning Loop
 
-- Keep the conceptual model explicit and simple so architectural decisions stay obvious and extendable.
-- Make experimentation low-friction: swap priors, curricula, or architectures via [configuration](src/rcmvae/domain/config.py), not code edits.
-- Expose latent behavior directly through [visualizations](src/infrastructure/visualization) and experiment-management tooling.
+Our working proposal is to treat training as a sequence of deliberately staged regimes: first a reconstruction-focused warm-up (freeze KL terms, let the component-aware decoder find its footing), then a KL anneal phase where we gently pull the posteriors toward their priors, followed by a label-refinement window where τ supervision sharpens channel↔class alignment, and finally the full active-learning loop that injects human feedback. The human-in-the-loop workflow mirrors those phases—diagnose latent/component behavior, intervene with new labels or curricula, retrain with the adjusted objective mix, and re-visualize—so the experience feels like moving through acts of the same story rather than toggling isolated knobs. This sequencing is how we expect to keep channels class-aligned even as the decoder becomes more expressive, and it anchors the future dashboard UX (each phase gets its own “mode” in the app).
+
 
 ### End-user experience (target)
 
@@ -51,25 +50,14 @@ For more details on the underlying concepts (mixture-structured latents, respons
 - `docs/theory/conceptual_model.md`
 - `docs/theory/mathematical_specification.md`
 
-## Active Learning Loop
-
-The intended human-in-the-loop workflow is:
-
-1. **Diagnose**  
-   Use latent/component/τ plots plus uncertainty and reconstruction metrics to find ambiguous or interesting regions.
-
-2. **Intervene**  
-   Relabel points, flag OOD samples, or adjust curriculum parameters (weights, annealing schedules, sampling strategy).
-
-3. **Retrain**  
-   Run new experiments or fine-tune checkpoints with the updated supervision and curriculum.
-
-4. **Re-visualize**  
-   Inspect how component specialization, uncertainties, and cluster structure changed; repeat as needed.
-
-This loop is the core connection between model, curriculum, and UI.
 
 The roadmap in `docs/theory/implementation_roadmap.md` tracks which parts of this vision are implemented and which are still planned.
+
+### Primary goals
+
+- Keep the conceptual model explicit and simple so architectural decisions stay obvious and extendable.
+- Make experimentation low-friction: swap priors, curricula, or architectures via [configuration](src/rcmvae/domain/config.py), not code edits.
+- Expose latent behavior directly through [visualizations](src/infrastructure/visualization) and experiment-management tooling.
 
 
 # Project Structure
@@ -154,6 +142,32 @@ This project has a layered documentation structure (see [AGENTS.md](AGENTS.md) f
 **Usage Layer** (Workflows):
 - [Experiment Guide](use_cases/experiments/README.md) - Primary workflow (configuration → execution → interpretation) with modular CLI/pipeline/registry structure
 - [Dashboard Guide](use_cases/dashboard/README.md) - Interactive interface (future primary)
+
+---
+
+## Holistic System Map
+
+1. **Configuration surface**  
+   - Experiments declare intent via YAML under `use_cases/experiments/configs/`.  
+   - Each file is parsed into `SSVAEConfig` (`src/rcmvae/domain/config.py`), which exposes the stable knobs (architecture types, `num_components`, τ hooks, heteroscedastic settings, priors, etc.).
+
+2. **Factory wiring**  
+   - `build_encoder/decoder/classifier` in `src/rcmvae/domain/components/factory.py` consumes the config and instantiates the right modules.  
+   - Mixture-aware runs select `Mixture{Dense,Conv}Encoder` (`src/rcmvae/domain/components/encoders.py`) so the encoder emits component logits in addition to latent stats, while decoder selection toggles between dense/conv, component-aware, and heteroscedastic variants (`src/rcmvae/domain/components/decoders.py`).
+
+3. **Prior + loss pipeline**  
+   - Prior implementations in `src/rcmvae/domain/priors/` (mixture, Vamp, geometric) take the encoder outputs/extras and compute KL terms, usage sparsity penalties, Dirichlet regularizers, and weighted reconstructions.  
+   - `src/rcmvae/application/services/loss_pipeline.py` aggregates these into the full objective, including heteroscedastic helpers and diagnostic metrics.
+
+4. **Trainer + τ workflow**  
+   - `src/rcmvae/application/model_api.py` builds the `SSVAE`, registers τ classifier hooks, and hands execution to `src/rcmvae/application/services/training_service.py`.  
+   - `src/rcmvae/domain/components/tau_classifier.py` maintains the responsibility-weighted counts and τ matrix, while trainer hooks pass responsibilities back each batch so latent-only classification stays synchronized. Metrics (usage, π entropy, τ certainty) flow through the same pipeline.
+
+5. **Experiment runner + reports**  
+   - `use_cases/experiments/run_experiment.py` orchestrates data loading (`use_cases/experiments/README.md`), model construction, training, and evaluation, then writes timestamped run directories.  
+   - Each run emits `REPORT.md`, plots, and cached artifacts that the dashboard (future primary UI) and downstream analyses consume.
+
+This end-to-end path—config → factory → prior/loss pipeline → trainer/τ hooks → experiment reports—is the backbone of the system today, and the layered docs stay aligned with it so practitioners can move between theory, implementation, and workflow without gaps.
 
 ---
 

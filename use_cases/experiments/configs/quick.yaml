@@ -41,7 +41,7 @@ data:
   num_samples: 10000               # Total samples from dataset
   num_labeled: 0                  # Labeled samples (rest are unlabeled)
   seed: 42                          # Random seed for data sampling
-  dataset_variant: "digits"          # "mnist" (default) or "digits" to force fallback
+  dataset_variant: "mnist"          # "mnist" (default) or "digits" to force fallback
 
 
 
@@ -63,8 +63,8 @@ model:
   num_classes: 10                   # Output classes (10 for MNIST digits)
   latent_dim: 2                     # Latent space dimensions (2D for visualization)
   
-  encoder_type: "dense"              # "conv" for images, "dense" for tabular
-  decoder_type: "dense"              # Should match encoder_type
+  encoder_type: "conv"              # "conv" for images, "dense" for tabular
+  decoder_type: "conv"              # Should match encoder_type
   classifier_type: "dense"          # Classifier architecture (currently only "dense")
   
   hidden_dims: [256, 128, 64]       # Layer sizes for dense encoder/decoder
@@ -121,8 +121,7 @@ model:
                                     # - false: concat [z, e_c] as input (shared decoder weights)
                                     # - true: separate pathways z→Dense, e_c→Dense, then merge
                                     # Both receive embeddings; true enables specialization
-                                    # Strongly recommended for mixture prior
-  component_embedding_dim: 8        # Embedding size for component conditioning (4-16)
+  component_embedding_dim: 32        # Embedding size for component conditioning (4-16)
 
   # VampPrior-specific settings (only used when prior_type="vamp")
   # VampPrior learns K pseudo-inputs and defines p(z) = Σ π_k q(z|u_k)
@@ -140,18 +139,18 @@ model:
   geometric_radius: 2.0             # Spatial radius (1.5-3.0)
 
   # Mixture/VampPrior regularization (not used with standard/geometric_mog)
-  kl_c_weight: 0.1                  # Component assignment KL weight
+  kl_c_weight: 0.05                  # Component assignment KL weight
   kl_c_anneal_epochs: 50            # Anneal kl_c_weight from 0→1 over N epochs
                                     # (0 = no annealing, start at full weight)
   
-  component_diversity_weight: -0.10 # Entropy reward for diverse component usage
+  component_diversity_weight: -0.05 # Entropy reward for diverse component usage
                                     # NEGATIVE = encourage diversity (prevents collapse)
                                     # POSITIVE = discourage diversity (not recommended)
                                     # Typical range: -0.05 to -0.15
   
 
-  learnable_pi: true
-  dirichlet_alpha: 0.3             # Dirichlet prior strength (null = disabled)
+  learnable_pi: false
+  dirichlet_alpha: null             # Dirichlet prior strength (null = disabled)
                                     # When enabled, try values 2.0-5.0
   dirichlet_weight: 0.05            # Dirichlet regularization weight
 
@@ -167,7 +166,7 @@ model:
   # 1. τ-classifier: Latent-only via responsibilities (mixture/vamp only)
   # 2. Standard: Separate classifier head on latent z
   
-  use_tau_classifier: true          # Use τ-based latent-only classification
+  use_tau_classifier: false          # Use τ-based latent-only classification
                                     # Requires: num_components >= num_classes
                                     # Works with: mixture, vamp priors
   tau_smoothing_alpha: 1.0          # Laplace smoothing for τ counts (prevents zeros)
