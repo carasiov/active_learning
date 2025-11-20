@@ -39,7 +39,7 @@ experiment:
 data:
   dataset: "mnist"                  # Currently only MNIST is supported
   num_samples: 10000               # Total samples from dataset
-  num_labeled: 0                  # Labeled samples (rest are unlabeled)
+  num_labeled: 250                  # Labeled samples (rest are unlabeled)
   seed: 42                          # Random seed for data sampling
   dataset_variant: "mnist"          # "mnist" (default) or "digits" to force fallback
 
@@ -62,7 +62,7 @@ model:
   # ──────────────────────────────────────────────────────────────────────────
   num_classes: 10                   # Output classes (10 for MNIST digits)
   latent_dim: 2                     # Latent space dimensions (2D for visualization)
-  latent_layout: "shared"            # "shared" (legacy) or "decentralized" (one z per component)
+  latent_layout: "decentralized"            # "shared" (legacy) or "decentralized" (one z per component)
   
   encoder_type: "conv"              # "conv" for images, "dense" for tabular
   decoder_type: "conv"              # Should match encoder_type
@@ -123,12 +123,14 @@ model:
                                     # - true: separate pathways z→Dense, e_c→Dense, then merge
                                     # Both receive embeddings; true enables specialization
   component_embedding_dim: 32        # Embedding size for component conditioning (4-16)
-  use_film_decoder: false           # FiLM conditioning (dense/conv decoder)
+  use_film_decoder: true           # FiLM conditioning (dense/conv decoder)
 
   # Discrete routing controls (mixture / geometric)
-  use_gumbel_softmax: false         # If true, sample c via Gumbel-Softmax for decentralization experiments
+  use_gumbel_softmax: true         # If true, sample c via Gumbel-Softmax for decentralization experiments
   use_straight_through_gumbel: true # Straight-through one-hot for decoder selection
-  gumbel_temperature: 1.0           # Initial temperature for Gumbel-Softmax
+  gumbel_temperature: 2.0           # Initial temperature for Gumbel-Softmax
+  gumbel_temperature_min: 0.5
+  gumbel_temperature_anneal_epochs: 50
 
   # VampPrior-specific settings (only used when prior_type="vamp")
   # VampPrior learns K pseudo-inputs and defines p(z) = Σ π_k q(z|u_k)
@@ -146,18 +148,18 @@ model:
   geometric_radius: 2.0             # Spatial radius (1.5-3.0)
 
   # Mixture/VampPrior regularization (not used with standard/geometric_mog)
-  kl_c_weight: 0.05                  # Component assignment KL weight
+  kl_c_weight: 0.15                  # Component assignment KL weight
   kl_c_anneal_epochs: 50            # Anneal kl_c_weight from 0→1 over N epochs
                                     # (0 = no annealing, start at full weight)
   
-  component_diversity_weight: -0.05 # Entropy reward for diverse component usage
+  component_diversity_weight: -5.00 # Entropy reward for diverse component usage
                                     # NEGATIVE = encourage diversity (prevents collapse)
                                     # POSITIVE = discourage diversity (not recommended)
                                     # Typical range: -0.05 to -0.15
   
 
-  learnable_pi: false
-  dirichlet_alpha: null             # Dirichlet prior strength (null = disabled)
+  learnable_pi: true
+  dirichlet_alpha: 0.3             # Dirichlet prior strength (null = disabled)
                                     # When enabled, try values 2.0-5.0
   dirichlet_weight: 0.05            # Dirichlet regularization weight
 
@@ -173,7 +175,7 @@ model:
   # 1. τ-classifier: Latent-only via responsibilities (mixture/vamp only)
   # 2. Standard: Separate classifier head on latent z
   
-  use_tau_classifier: false          # Use τ-based latent-only classification
+  use_tau_classifier: true          # Use τ-based latent-only classification
                                     # Requires: num_components >= num_classes
                                     # Works with: mixture, vamp priors
   tau_smoothing_alpha: 1.0          # Laplace smoothing for τ counts (prevents zeros)

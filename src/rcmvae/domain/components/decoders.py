@@ -184,6 +184,15 @@ class FiLMConvDecoder(nn.Module):
     output_hw: Tuple[int, int]
     component_embedding_dim: int
 
+    def _apply_film(self, x: jnp.ndarray, component_embedding: jnp.ndarray, features: int, name: str) -> jnp.ndarray:
+        """Applies FiLM modulation to the feature map."""
+        gamma_beta = nn.Dense(2 * features, name=name)(component_embedding)
+        gamma, beta = jnp.split(gamma_beta, 2, axis=-1)
+        # Reshape for broadcasting: [B, 1, 1, C]
+        gamma = gamma[:, None, None, :]
+        beta = beta[:, None, None, :]
+        return x * gamma + beta
+
     @nn.compact
     def __call__(self, z: jnp.ndarray, component_embedding: jnp.ndarray) -> jnp.ndarray:
         """Decode latent vectors with FiLM modulation on the initial feature map."""
@@ -196,12 +205,8 @@ class FiLMConvDecoder(nn.Module):
         x = nn.Dense(7 * 7 * 128, name="projection")(z)
         x = x.reshape((-1, 7, 7, 128))
 
-        # FiLM parameters from component embedding applied to spatial feature map
-        gamma_beta = nn.Dense(2 * 128, name="film")(component_embedding)
-        gamma, beta = jnp.split(gamma_beta, 2, axis=-1)
-        gamma = gamma[:, None, None, :]
-        beta = beta[:, None, None, :]
-        x = x * gamma + beta
+        # FiLM on initial projection
+        x = self._apply_film(x, component_embedding, 128, "film_proj")
 
         x = nn.ConvTranspose(
             features=64,
@@ -210,6 +215,8 @@ class FiLMConvDecoder(nn.Module):
             padding="SAME",
             name="deconv_0",
         )(x)
+        # FiLM after first deconv
+        x = self._apply_film(x, component_embedding, 64, "film_0")
         x = nn.leaky_relu(x, negative_slope=0.2)
 
         x = nn.ConvTranspose(
@@ -219,6 +226,8 @@ class FiLMConvDecoder(nn.Module):
             padding="SAME",
             name="deconv_1",
         )(x)
+        # FiLM after second deconv
+        x = self._apply_film(x, component_embedding, 32, "film_1")
         x = nn.leaky_relu(x, negative_slope=0.2)
 
         x = nn.Conv(

@@ -95,12 +95,12 @@ def build_decoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = Non
         config.prior_type in {"mixture", "geometric_mog"} and
         config.use_component_aware_decoder
     )
+    use_heteroscedastic = config.use_heteroscedastic_decoder
     use_film_decoder = (
         config.prior_type in {"mixture", "geometric_mog"} and
         config.use_film_decoder and
         not use_heteroscedastic
     )
-    use_heteroscedastic = config.use_heteroscedastic_decoder
 
     if config.decoder_type == "dense":
         hidden_dims = _resolve_encoder_hidden_dims(config, resolved_hw)

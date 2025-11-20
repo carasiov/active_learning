@@ -197,7 +197,11 @@ class SSVAEConfig:
     sigma_min: float = 0.05  # Minimum allowed σ (prevents collapse)
     sigma_max: float = 0.5  # Maximum allowed σ (prevents explosion)
     use_gumbel_softmax: bool = False  # Sample c via Gumbel-Softmax when decentralized latents are active
-    gumbel_temperature: float = 1.0  # Temperature for Gumbel-Softmax
+    gumbel_temperature: float = 1.0  # Initial temperature for Gumbel-Softmax
+    gumbel_temperature_min: float = 0.5  # Minimum temperature after annealing
+    gumbel_temperature_decay: float = 0.0  # Decay rate per epoch (exponential) or linear step (if > 1, maybe epochs?)
+    # Let's use a simple linear annealing over N epochs for consistency with kl_c_anneal_epochs
+    gumbel_temperature_anneal_epochs: int = 0  # If >0, anneal from initial to min over this many epochs
     use_straight_through_gumbel: bool = True  # Use straight-through one-hot for decoder selection
 
     # ═════════════════════════════════════════════════════════════════════════

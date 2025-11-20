@@ -161,6 +161,7 @@ class SSVAENetwork(nn.Module):
         x: jnp.ndarray,
         *,
         training: bool,
+        gumbel_temperature: float | None = None,
     ) -> ForwardOutput:
         """Forward pass returning latent statistics, reconstructions, and classifier logits."""
         encoder_output = self.encoder(x, training=training)
@@ -179,16 +180,49 @@ class SSVAENetwork(nn.Module):
             use_decentralized = latent_layout == "decentralized" and self.config.prior_type != "vamp"
 
             def _component_selection():
-                if not (self.config.use_gumbel_softmax and self.has_rng("gumbel")):
-                    return responsibilities, False
-                gumbel_noise = random.gumbel(self.make_rng("gumbel"), component_logits.shape)
-                temp = float(self.config.gumbel_temperature)
-                gumbel_probs = softmax((component_logits + gumbel_noise) / temp, axis=-1)
-                if self.config.use_straight_through_gumbel:
-                    hard = one_hot(jnp.argmax(gumbel_probs, axis=-1), gumbel_probs.shape[-1])
-                    gumbel_probs = hard + jax.lax.stop_gradient(gumbel_probs - hard)
-                    return gumbel_probs, True
-                return gumbel_probs, False
+            # 1. Get component probabilities from encoder
+            # q_c_logits: [B, K]
+            
+            # Use provided temperature override or fall back to config
+                if gumbel_temperature is not None:
+                    temp = gumbel_temperature
+                else:
+                    temp = self.config.gumbel_temperature
+
+                if self.config.use_gumbel_softmax:
+                    # Gumbel-Softmax sampling
+                    # If hard=True, returns one-hot, but gradients flow through soft sample
+                    # We'll use the straight-through estimator manually if needed, or just soft
+                    
+                    # Sample Gumbel noise only during training
+                    if training and self.has_rng("gumbel"):
+                        gumbel_key = self.make_rng("gumbel")
+                        u = jax.random.uniform(gumbel_key, shape=component_logits.shape)
+                        g = -jnp.log(-jnp.log(u + 1e-20) + 1e-20)
+                    else:
+                        # No noise during evaluation (or if no RNG provided)
+                        g = 0.0
+                    
+                    # Softmax with temperature
+                    # y = softmax((logits + g) / temp)
+                    y_soft = nn.softmax((component_logits + g) / temp)
+                    
+                    if self.config.use_straight_through_gumbel:
+                        # Straight-through: forward is one-hot, backward is soft
+                        index = jnp.argmax(y_soft, axis=-1)
+                        y_hard = jax.nn.one_hot(index, self.config.num_components)
+                        # ST trick: y_hard - y_soft.stop_gradient + y_soft
+                        y = y_hard - jax.lax.stop_gradient(y_soft) + y_soft
+                        return y, True
+                    else:
+                        return y_soft, False
+                else:
+                # Standard categorical sampling (non-differentiable for gradients to encoder)
+                # This path is likely not what we want for "decentralized" learning unless using REINFORCE
+                # For now, just return softmax probabilities or hard sample without gradients?
+                # Let's stick to Gumbel-Softmax as the primary path for this architecture.
+                # Fallback: just return nn.softmax(component_logits) (soft assignment)
+                    return nn.softmax(component_logits), False
 
             component_selection, selection_is_hard = _component_selection()
 
@@ -242,7 +276,14 @@ class SSVAENetwork(nn.Module):
                 embed_tiled = jnp.broadcast_to(embeddings[None, :, :], (batch_size, num_components, embeddings.shape[-1]))
 
                 # Check if decoder is component-aware / FiLM
-                is_component_aware = self.config.use_component_aware_decoder or self.config.use_film_decoder
+                use_component_aware = self.config.prior_type in {"mixture", "geometric_mog"} and self.config.use_component_aware_decoder
+                use_heteroscedastic = self.config.use_heteroscedastic_decoder
+                use_film_decoder = (
+                    self.config.prior_type in {"mixture", "geometric_mog"} and
+                    self.config.use_film_decoder and
+                    not use_heteroscedastic
+                )
+                is_component_aware = use_component_aware or use_film_decoder
 
                 if is_component_aware:
                     # Component-aware decoder: pass z and component_embedding separately
