@@ -202,7 +202,14 @@ def weighted_heteroscedastic_reconstruction_loss(
 def kl_divergence(z_mean: jnp.ndarray, z_log: jnp.ndarray, weight: float) -> jnp.ndarray:
     """Return the KL divergence term scaled by ``weight``."""
     kl = -0.5 * (1.0 + z_log - jnp.square(z_mean) - jnp.exp(z_log))
-    return weight * jnp.mean(jnp.sum(kl, axis=1))
+    if kl.ndim == 2:
+        per_sample = jnp.sum(kl, axis=1)
+    elif kl.ndim == 3:
+        per_sample = jnp.sum(kl, axis=(1, 2))
+    else:
+        axes = tuple(range(1, kl.ndim))
+        per_sample = jnp.sum(kl, axis=axes)
+    return weight * jnp.mean(per_sample)
 
 
 def categorical_kl(

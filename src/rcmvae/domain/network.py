@@ -25,7 +25,7 @@ try:
     import jax
     import jax.numpy as jnp
     from jax import random
-    from jax.nn import softmax
+    from jax.nn import one_hot, softmax
     import optax
     from flax import linen as nn
     from flax import traverse_util
@@ -168,13 +168,44 @@ class SSVAENetwork(nn.Module):
 
         # Handle mixture-based priors (mixture, vamp, geometric_mog)
         if self.config.prior_type in ["mixture", "vamp", "geometric_mog"]:
-            component_logits, z_mean, z_log, z = encoder_output
+            component_logits, z_mean_raw, z_log_raw, z_raw = encoder_output
             if self.prior_module is None:
                 raise ValueError(f"{self.config.prior_type} prior selected but prior_module was not initialized.")
-            
+
             responsibilities = softmax(component_logits, axis=-1)
-            batch_size = z.shape[0]
+            batch_size = z_raw.shape[0]
             num_components = self.config.num_components
+            latent_layout = getattr(self.config, "latent_layout", "shared")
+            use_decentralized = latent_layout == "decentralized" and self.config.prior_type != "vamp"
+
+            def _component_selection():
+                if not (self.config.use_gumbel_softmax and self.has_rng("gumbel")):
+                    return responsibilities, False
+                gumbel_noise = random.gumbel(self.make_rng("gumbel"), component_logits.shape)
+                temp = float(self.config.gumbel_temperature)
+                gumbel_probs = softmax((component_logits + gumbel_noise) / temp, axis=-1)
+                if self.config.use_straight_through_gumbel:
+                    hard = one_hot(jnp.argmax(gumbel_probs, axis=-1), gumbel_probs.shape[-1])
+                    gumbel_probs = hard + jax.lax.stop_gradient(gumbel_probs - hard)
+                    return gumbel_probs, True
+                return gumbel_probs, False
+
+            component_selection, selection_is_hard = _component_selection()
+
+            if use_decentralized and z_raw.ndim == 3:
+                z_mean_per_component = z_mean_raw
+                z_log_per_component = z_log_raw
+                z_per_component = z_raw
+                z_mean = jnp.sum(component_selection[..., None] * z_mean_per_component, axis=1)
+                z_log = jnp.sum(component_selection[..., None] * z_log_per_component, axis=1)
+                z = jnp.sum(component_selection[..., None] * z_per_component, axis=1)
+            else:
+                z_mean_per_component = None
+                z_log_per_component = None
+                z_per_component = None
+                z_mean = z_mean_raw
+                z_log = z_log_raw
+                z = z_raw
 
             # Get prior-specific parameters
             if self.config.prior_type == "vamp":
@@ -191,34 +222,36 @@ class SSVAENetwork(nn.Module):
                 # VampPrior keeps π uniform today; expose it so diagnostics stay consistent.
                 extras["pi"] = jnp.ones((num_components,)) / num_components
 
-                # VampPrior doesn't use component embeddings, so decode directly from z.
                 recon = self.decoder(z)
                 extras["responsibilities"] = responsibilities
-
+                extras["component_selection"] = component_selection
             else:
                 # Mixture or Geometric MoG: Get embeddings and pi
                 embeddings, pi_logits = self.prior_module()
                 pi = softmax(pi_logits, axis=-1)
-                
+
                 # Stop gradients through π if not learnable
                 if not self.config.learnable_pi:
                     pi = jax.lax.stop_gradient(pi)
 
                 # Tile z and embeddings for all components
-                z_tiled = jnp.broadcast_to(z[:, None, :], (batch_size, num_components, self.latent_dim))
+                if use_decentralized and z_per_component is not None and z_per_component.ndim == 3:
+                    z_components = z_per_component
+                else:
+                    z_components = jnp.broadcast_to(z[:, None, :], (batch_size, num_components, self.latent_dim))
                 embed_tiled = jnp.broadcast_to(embeddings[None, :, :], (batch_size, num_components, embeddings.shape[-1]))
 
-                # Check if decoder is component-aware
-                is_component_aware = self.config.use_component_aware_decoder
+                # Check if decoder is component-aware / FiLM
+                is_component_aware = self.config.use_component_aware_decoder or self.config.use_film_decoder
 
                 if is_component_aware:
                     # Component-aware decoder: pass z and component_embedding separately
-                    z_flat = z_tiled.reshape((batch_size * num_components, -1))
+                    z_flat = z_components.reshape((batch_size * num_components, -1))
                     embed_flat = embed_tiled.reshape((batch_size * num_components, -1))
                     decoder_output_flat = self.decoder(z_flat, embed_flat)
                 else:
                     # Standard decoder: concatenate [z, e_c]
-                    decoder_inputs = jnp.concatenate([z_tiled, embed_tiled], axis=-1)
+                    decoder_inputs = jnp.concatenate([z_components, embed_tiled], axis=-1)
                     decoder_inputs_flat = decoder_inputs.reshape((batch_size * num_components, -1))
                     decoder_output_flat = self.decoder(decoder_inputs_flat)
 
@@ -230,17 +263,19 @@ class SSVAENetwork(nn.Module):
 
                     # Take expectation over components
                     expected_mean = jnp.sum(
-                        responsibilities[..., None, None] * mean_per_component,
+                        component_selection[..., None, None] * mean_per_component,
                         axis=1,
                     )
                     expected_sigma = jnp.sum(
-                        responsibilities * sigma_per_component,
+                        component_selection * sigma_per_component,
                         axis=1,
                     )
                     recon = (expected_mean, expected_sigma)
                     extras = {
                         "recon_per_component": (mean_per_component, sigma_per_component),
                         "responsibilities": responsibilities,
+                        "component_selection": component_selection,
+                        "selection_is_hard": jnp.array(selection_is_hard),
                         "pi_logits": pi_logits,
                         "pi": pi,
                         "component_embeddings": embeddings,
@@ -251,17 +286,26 @@ class SSVAENetwork(nn.Module):
                         (batch_size, num_components, *self.output_hw)
                     )
                     expected_recon = jnp.sum(
-                        responsibilities[..., None, None] * recon_per_component,
+                        component_selection[..., None, None] * recon_per_component,
                         axis=1,
                     )
                     recon = expected_recon
                     extras = {
                         "recon_per_component": recon_per_component,
                         "responsibilities": responsibilities,
+                        "component_selection": component_selection,
+                        "selection_is_hard": jnp.array(selection_is_hard),
                         "pi_logits": pi_logits,
                         "pi": pi,
                         "component_embeddings": embeddings,
                     }
+
+                if z_mean_per_component is not None:
+                    extras["z_mean_per_component"] = z_mean_per_component
+                if z_log_per_component is not None:
+                    extras["z_log_var_per_component"] = z_log_per_component
+                if z_per_component is not None:
+                    extras["z_samples_per_component"] = z_per_component
         else:
             # Standard prior
             z_mean, z_log, z = encoder_output

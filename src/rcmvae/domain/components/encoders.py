@@ -36,6 +36,7 @@ class MixtureDenseEncoder(nn.Module):
     hidden_dims: Tuple[int, ...]
     latent_dim: int
     num_components: int
+    latent_layout: str = "shared"
 
     @nn.compact
     def __call__(self, x: jnp.ndarray, *, training: bool) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
@@ -45,16 +46,31 @@ class MixtureDenseEncoder(nn.Module):
             x = nn.leaky_relu(x)
 
         component_logits = nn.Dense(self.num_components, name="component_logits")(x)
-        z_mean = nn.Dense(self.latent_dim, name="z_mean")(x)
-        z_log = nn.Dense(self.latent_dim, name="z_log")(x)
-        
+        decentralized = self.latent_layout == "decentralized"
+
+        if decentralized:
+            z_mean_flat = nn.Dense(self.latent_dim * self.num_components, name="z_mean")(x)
+            z_log_flat = nn.Dense(self.latent_dim * self.num_components, name="z_log")(x)
+            z_mean = z_mean_flat.reshape((x.shape[0], self.num_components, self.latent_dim))
+            z_log = z_log_flat.reshape((x.shape[0], self.num_components, self.latent_dim))
+
+            if self.has_rng("reparam"):
+                eps = random.normal(self.make_rng("reparam"), z_mean.shape)
+                z = z_mean + jnp.exp(0.5 * z_log) * eps
+            else:
+                z = z_mean
+            return component_logits, z_mean, z_log, z
+
+        z_mean_shared = nn.Dense(self.latent_dim, name="z_mean")(x)
+        z_log_shared = nn.Dense(self.latent_dim, name="z_log")(x)
+
         if self.has_rng("reparam"):
-            eps = random.normal(self.make_rng("reparam"), z_mean.shape)
-            z = z_mean + jnp.exp(0.5 * z_log) * eps
+            eps = random.normal(self.make_rng("reparam"), z_mean_shared.shape)
+            z_shared = z_mean_shared + jnp.exp(0.5 * z_log_shared) * eps
         else:
-            z = z_mean
-        
-        return component_logits, z_mean, z_log, z
+            z_shared = z_mean_shared
+
+        return component_logits, z_mean_shared, z_log_shared, z_shared
 
 
 class ConvEncoder(nn.Module):
@@ -89,6 +105,7 @@ class MixtureConvEncoder(nn.Module):
 
     latent_dim: int
     num_components: int
+    latent_layout: str = "shared"
 
     @nn.compact
     def __call__(
@@ -108,11 +125,26 @@ class MixtureConvEncoder(nn.Module):
         x = x.reshape((x.shape[0], -1))
 
         component_logits = nn.Dense(self.num_components, name="component_logits")(x)
-        z_mean = nn.Dense(self.latent_dim, name="z_mean")(x)
-        z_log = nn.Dense(self.latent_dim, name="z_log")(x)
+        decentralized = self.latent_layout == "decentralized"
+
+        if decentralized:
+            z_mean_flat = nn.Dense(self.latent_dim * self.num_components, name="z_mean")(x)
+            z_log_flat = nn.Dense(self.latent_dim * self.num_components, name="z_log")(x)
+            z_mean = z_mean_flat.reshape((x.shape[0], self.num_components, self.latent_dim))
+            z_log = z_log_flat.reshape((x.shape[0], self.num_components, self.latent_dim))
+
+            if self.has_rng("reparam"):
+                eps = random.normal(self.make_rng("reparam"), z_mean.shape)
+                z = z_mean + jnp.exp(0.5 * z_log) * eps
+            else:
+                z = z_mean
+            return component_logits, z_mean, z_log, z
+
+        z_mean_shared = nn.Dense(self.latent_dim, name="z_mean")(x)
+        z_log_shared = nn.Dense(self.latent_dim, name="z_log")(x)
         if self.has_rng("reparam"):
-            eps = random.normal(self.make_rng("reparam"), z_mean.shape)
-            z = z_mean + jnp.exp(0.5 * z_log) * eps
+            eps = random.normal(self.make_rng("reparam"), z_mean_shared.shape)
+            z_shared = z_mean_shared + jnp.exp(0.5 * z_log_shared) * eps
         else:
-            z = z_mean
-        return component_logits, z_mean, z_log, z
+            z_shared = z_mean_shared
+        return component_logits, z_mean_shared, z_log_shared, z_shared

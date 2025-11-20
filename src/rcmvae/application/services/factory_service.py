@@ -308,12 +308,12 @@ class ModelFactoryService:
         ):
             if key is None:
                 return _apply_fn_wrapper(params, batch_x, training=training)
-            reparam_key, dropout_key = random.split(key)
+            reparam_key, dropout_key, gumbel_key = random.split(key, 3)
             return _apply_fn_wrapper(
                 params,
                 batch_x,
                 training=training,
-                rngs={"reparam": reparam_key, "dropout": dropout_key},
+                rngs={"reparam": reparam_key, "dropout": dropout_key, "gumbel": gumbel_key},
             )
 
         def _loss_and_metrics(
@@ -383,12 +383,12 @@ class ModelFactoryService:
         ):
             if key is None:
                 return _apply_fn_wrapper(params, batch_x, training=training)
-            reparam_key, dropout_key = random.split(key)
+            reparam_key, dropout_key, gumbel_key = random.split(key, 3)
             return _apply_fn_wrapper(
                 params,
                 batch_x,
                 training=training,
-                rngs={"reparam": reparam_key, "dropout": dropout_key},
+                rngs={"reparam": reparam_key, "dropout": dropout_key, "gumbel": gumbel_key},
             )
 
         def _eval_metrics(

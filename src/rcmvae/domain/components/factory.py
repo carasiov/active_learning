@@ -13,6 +13,8 @@ from .decoders import (
     ComponentAwareHeteroscedasticDenseDecoder,
     ConvDecoder,
     DenseDecoder,
+    FiLMDenseDecoder,
+    FiLMConvDecoder,
     HeteroscedasticConvDecoder,
     HeteroscedasticDenseDecoder,
 )
@@ -46,11 +48,13 @@ def build_encoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = Non
                 hidden_dims=hidden_dims,
                 latent_dim=config.latent_dim,
                 num_components=config.num_components,
+                latent_layout=config.latent_layout,
             )
         if config.encoder_type == "conv":
             return MixtureConvEncoder(
                 latent_dim=config.latent_dim,
                 num_components=config.num_components,
+                latent_layout=config.latent_layout,
             )
         raise ValueError(f"Mixture-based prior ({config.prior_type}) not supported with encoder_type '{config.encoder_type}'")
 
@@ -91,6 +95,11 @@ def build_decoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = Non
         config.prior_type in {"mixture", "geometric_mog"} and
         config.use_component_aware_decoder
     )
+    use_film_decoder = (
+        config.prior_type in {"mixture", "geometric_mog"} and
+        config.use_film_decoder and
+        not use_heteroscedastic
+    )
     use_heteroscedastic = config.use_heteroscedastic_decoder
 
     if config.decoder_type == "dense":
@@ -98,6 +107,13 @@ def build_decoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = Non
         decoder_hidden_dims = tuple(reversed(hidden_dims)) or (config.latent_dim,)
 
         # Select decoder class based on features
+        if use_film_decoder:
+            return FiLMDenseDecoder(
+                hidden_dims=decoder_hidden_dims,
+                output_hw=resolved_hw,
+                component_embedding_dim=config.component_embedding_dim,
+                latent_dim=config.latent_dim,
+            )
         if use_component_aware and use_heteroscedastic:
             return ComponentAwareHeteroscedasticDenseDecoder(
                 hidden_dims=decoder_hidden_dims,
@@ -128,6 +144,14 @@ def build_decoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = Non
             )
 
     if config.decoder_type == "conv":
+        if use_film_decoder and use_heteroscedastic:
+            raise ValueError("FiLM conv decoder does not yet support heteroscedastic outputs.")
+        if use_film_decoder:
+            return FiLMConvDecoder(
+                latent_dim=config.latent_dim,
+                output_hw=resolved_hw,
+                component_embedding_dim=config.component_embedding_dim,
+            )
         # Select decoder class based on features
         if use_component_aware and use_heteroscedastic:
             return ComponentAwareHeteroscedasticConvDecoder(

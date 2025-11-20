@@ -37,6 +37,7 @@ INFORMATIVE_HPARAMETERS = (
     "classifier_type",
     "num_classes",
     "latent_dim",
+    "latent_layout",
     "hidden_dims",
     "learning_rate",
     "batch_size",
@@ -59,6 +60,7 @@ INFORMATIVE_HPARAMETERS = (
     "kl_c_anneal_epochs",
     "component_embedding_dim",
     "use_component_aware_decoder",
+    "use_film_decoder",
     "top_m_gating",
     "soft_embedding_warmup_epochs",
     "use_tau_classifier",
@@ -66,6 +68,9 @@ INFORMATIVE_HPARAMETERS = (
     "use_heteroscedastic_decoder",
     "sigma_min",
     "sigma_max",
+    "use_gumbel_softmax",
+    "gumbel_temperature",
+    "use_straight_through_gumbel",
     "vamp_num_samples_kl",
     "vamp_pseudo_lr_scale",
     "vamp_pseudo_init_method",
@@ -80,6 +85,9 @@ class SSVAEConfig:
     Attributes:
         num_classes: Number of output classes for the classifier head.
         latent_dim: Dimensionality of the latent representation.
+        latent_layout: Arrangement of latents when using mixture-style priors.
+            - "shared": single latent vector shared by all components (legacy behavior)
+            - "decentralized": one latent vector per component (Mixture of VAEs)
         hidden_dims: Dense layer sizes for the encoder; decoder mirrors in reverse (dense only).
         reconstruction_loss: Loss function for reconstruction term.
             - "mse": Mean squared error, treats pixels as continuous Gaussian.
@@ -139,10 +147,14 @@ class SSVAEConfig:
             Prevents variance collapse and ensures numerical stability.
         sigma_max: Maximum allowed standard deviation for heteroscedastic decoder (default: 0.5).
             Prevents variance explosion and keeps uncertainty estimates reasonable.
+        use_gumbel_softmax: Sample discrete components with Gumbel-Softmax (mixture/geometric priors).
+        gumbel_temperature: Temperature for Gumbel-Softmax routing.
+        use_straight_through_gumbel: Use straight-through one-hot for decoder selection.
     """
 
     num_classes: int = 10
     latent_dim: int = 2
+    latent_layout: str = "shared"
     hidden_dims: Tuple[int, ...] = (256, 128, 64)
     reconstruction_loss: str = "mse"
     recon_weight: float = 500.0
@@ -176,6 +188,7 @@ class SSVAEConfig:
     mixture_history_log_every: int = 1  # Track π and usage every N epochs
     component_embedding_dim: int | None = None  # Defaults to latent_dim if None
     use_component_aware_decoder: bool = True  # Enable by default for mixture prior
+    use_film_decoder: bool = False  # Optional FiLM-conditioned decoder (dense only)
     top_m_gating: int = 0  # 0 means use all components; >0 uses top-M
     soft_embedding_warmup_epochs: int = 0  # 0 means no warmup
     use_tau_classifier: bool = False  # Opt-in τ-classifier for mixture-based priors
@@ -183,6 +196,9 @@ class SSVAEConfig:
     use_heteroscedastic_decoder: bool = False  # Learn per-image variance σ(x)
     sigma_min: float = 0.05  # Minimum allowed σ (prevents collapse)
     sigma_max: float = 0.5  # Maximum allowed σ (prevents explosion)
+    use_gumbel_softmax: bool = False  # Sample c via Gumbel-Softmax when decentralized latents are active
+    gumbel_temperature: float = 1.0  # Temperature for Gumbel-Softmax
+    use_straight_through_gumbel: bool = True  # Use straight-through one-hot for decoder selection
 
     # ═════════════════════════════════════════════════════════════════════════
     # VampPrior Configuration (prior_type="vamp")
@@ -274,6 +290,12 @@ class SSVAEConfig:
                 UserWarning
             )
             # Note: Factory will handle fallback to standard decoder gracefully
+        if self.use_film_decoder and self.prior_type not in mixture_based_priors:
+            warnings.warn(
+                f"use_film_decoder requires mixture-based priors {mixture_based_priors} to supply component embeddings. "
+                f"Got prior_type='{self.prior_type}', FiLM conditioning will be skipped.",
+                UserWarning,
+            )
 
         # VampPrior validation
         if self.vamp_num_samples_kl < 1:
@@ -309,6 +331,12 @@ class SSVAEConfig:
                 "Use only for diagnostic/curriculum purposes, not production models.",
                 UserWarning
             )
+        if self.latent_layout not in {"shared", "decentralized"}:
+            raise ValueError(
+                f"latent_layout must be 'shared' or 'decentralized', got '{self.latent_layout}'."
+            )
+        if self.gumbel_temperature <= 0:
+            raise ValueError("gumbel_temperature must be positive")
 
     def get_informative_hyperparameters(self) -> Dict[str, object]:
         return {name: getattr(self, name) for name in INFORMATIVE_HPARAMETERS}

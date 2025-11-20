@@ -69,16 +69,25 @@ class MixtureGaussianPrior:
 
         responsibilities = encoder_output.extras.get("responsibilities")
         pi = encoder_output.extras.get("pi")
+        z_mean_per_component = encoder_output.extras.get("z_mean_per_component")
+        z_log_per_component = encoder_output.extras.get("z_log_var_per_component")
 
         if responsibilities is None or pi is None:
             raise ValueError("Mixture prior requires responsibilities and pi in extras")
 
         # KL divergence terms
-        kl_z = kl_divergence(
-            encoder_output.z_mean,
-            encoder_output.z_log_var,
-            weight=config.kl_weight,
-        )
+        if z_mean_per_component is not None and z_log_per_component is not None:
+            kl_z = kl_divergence(
+                z_mean_per_component,
+                z_log_per_component,
+                weight=config.kl_weight,
+            )
+        else:
+            kl_z = kl_divergence(
+                encoder_output.z_mean,
+                encoder_output.z_log_var,
+                weight=config.kl_weight,
+            )
 
         kl_c = categorical_kl(
             responsibilities,
@@ -145,6 +154,7 @@ class MixtureGaussianPrior:
             raise ValueError("Mixture prior requires extras with responsibilities")
 
         responsibilities = encoder_output.extras.get("responsibilities")
+        component_weights = encoder_output.extras.get("component_selection", responsibilities)
         if responsibilities is None:
             raise ValueError("Mixture prior requires responsibilities in extras")
 
@@ -155,7 +165,7 @@ class MixtureGaussianPrior:
                 x_true,
                 mean_components,
                 sigma_components,
-                responsibilities,
+                component_weights,
                 config.recon_weight,
             )
 
@@ -165,14 +175,14 @@ class MixtureGaussianPrior:
             return weighted_reconstruction_loss_mse(
                 x_true,
                 x_recon,
-                responsibilities,
+                component_weights,
                 config.recon_weight,
             )
         elif config.reconstruction_loss == "bce":
             return weighted_reconstruction_loss_bce(
                 x_true,
                 x_recon,
-                responsibilities,
+                component_weights,
                 config.recon_weight,
             )
         else:

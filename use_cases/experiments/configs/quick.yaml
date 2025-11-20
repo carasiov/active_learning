@@ -62,6 +62,7 @@ model:
   # ──────────────────────────────────────────────────────────────────────────
   num_classes: 10                   # Output classes (10 for MNIST digits)
   latent_dim: 2                     # Latent space dimensions (2D for visualization)
+  latent_layout: "shared"            # "shared" (legacy) or "decentralized" (one z per component)
   
   encoder_type: "conv"              # "conv" for images, "dense" for tabular
   decoder_type: "conv"              # Should match encoder_type
@@ -122,6 +123,12 @@ model:
                                     # - true: separate pathways z→Dense, e_c→Dense, then merge
                                     # Both receive embeddings; true enables specialization
   component_embedding_dim: 32        # Embedding size for component conditioning (4-16)
+  use_film_decoder: false           # FiLM conditioning (dense/conv decoder)
+
+  # Discrete routing controls (mixture / geometric)
+  use_gumbel_softmax: false         # If true, sample c via Gumbel-Softmax for decentralization experiments
+  use_straight_through_gumbel: true # Straight-through one-hot for decoder selection
+  gumbel_temperature: 1.0           # Initial temperature for Gumbel-Softmax
 
   # VampPrior-specific settings (only used when prior_type="vamp")
   # VampPrior learns K pseudo-inputs and defines p(z) = Σ π_k q(z|u_k)

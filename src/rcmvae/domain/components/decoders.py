@@ -148,6 +148,91 @@ class ComponentAwareConvDecoder(nn.Module):
 
 
 # ============================================================================
+# FiLM-Conditioned Decoders (dense)
+# ============================================================================
+
+class FiLMDenseDecoder(nn.Module):
+    """Dense decoder that modulates hidden activations via FiLM parameters from component embeddings."""
+
+    hidden_dims: Tuple[int, ...]
+    output_hw: Tuple[int, int]
+    component_embedding_dim: int
+    latent_dim: int
+
+    @nn.compact
+    def __call__(self, z: jnp.ndarray, component_embedding: jnp.ndarray) -> jnp.ndarray:
+        """Decode latent vectors with FiLM conditioning."""
+        x = z
+        for i, dim in enumerate(self.hidden_dims):
+            x = nn.Dense(dim, name=f"hidden_{i}")(x)
+
+            # Generate FiLM parameters from component embedding
+            gamma_beta = nn.Dense(2 * dim, name=f"film_{i}")(component_embedding)
+            gamma, beta = jnp.split(gamma_beta, 2, axis=-1)
+            x = x * gamma + beta
+            x = nn.leaky_relu(x)
+
+        h, w = self.output_hw
+        x = nn.Dense(h * w, name="projection")(x)
+        return x.reshape((-1, h, w))
+
+
+class FiLMConvDecoder(nn.Module):
+    """Convolutional decoder with FiLM conditioning from component embeddings."""
+
+    latent_dim: int
+    output_hw: Tuple[int, int]
+    component_embedding_dim: int
+
+    @nn.compact
+    def __call__(self, z: jnp.ndarray, component_embedding: jnp.ndarray) -> jnp.ndarray:
+        """Decode latent vectors with FiLM modulation on the initial feature map."""
+        if self.output_hw != (28, 28):
+            raise ValueError(
+                f"FiLMConvDecoder expects output_hw of (28, 28) but received {self.output_hw!r}"
+            )
+
+        # Base projection from z
+        x = nn.Dense(7 * 7 * 128, name="projection")(z)
+        x = x.reshape((-1, 7, 7, 128))
+
+        # FiLM parameters from component embedding applied to spatial feature map
+        gamma_beta = nn.Dense(2 * 128, name="film")(component_embedding)
+        gamma, beta = jnp.split(gamma_beta, 2, axis=-1)
+        gamma = gamma[:, None, None, :]
+        beta = beta[:, None, None, :]
+        x = x * gamma + beta
+
+        x = nn.ConvTranspose(
+            features=64,
+            kernel_size=(3, 3),
+            strides=(2, 2),
+            padding="SAME",
+            name="deconv_0",
+        )(x)
+        x = nn.leaky_relu(x, negative_slope=0.2)
+
+        x = nn.ConvTranspose(
+            features=32,
+            kernel_size=(3, 3),
+            strides=(2, 2),
+            padding="SAME",
+            name="deconv_1",
+        )(x)
+        x = nn.leaky_relu(x, negative_slope=0.2)
+
+        x = nn.Conv(
+            features=1,
+            kernel_size=(3, 3),
+            strides=(1, 1),
+            padding="SAME",
+            name="recon",
+        )(x)
+        x = x.squeeze(axis=-1)
+        return x
+
+
+# ============================================================================
 # Standard Decoders (Backward compatibility)
 # ============================================================================
 
