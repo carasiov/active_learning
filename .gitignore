@@ -45,7 +45,7 @@ use_cases/experiments/results/*
 # Devcontainer
 .devcontainer/.env
 .devcontainer/*.log
-.devcontainer/devcontainer.json
-devcontainer.json
+#.devcontainer/devcontainer.json
+#devcontainer.json
 
 tests
