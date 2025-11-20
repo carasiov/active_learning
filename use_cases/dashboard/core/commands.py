@@ -575,6 +575,22 @@ class UpdateModelConfigCommand(Command):
         if not self.updates:
             return "No configuration changes detected."
 
+        # Check for attempts to modify structural parameters
+        from use_cases.dashboard.core.config_metadata import is_structural_parameter
+
+        structural_changes = []
+        for key in self.updates.keys():
+            if is_structural_parameter(key):
+                structural_changes.append(key)
+
+        if structural_changes:
+            params_list = ", ".join(structural_changes)
+            return (
+                f"Cannot modify structural parameters: {params_list}. "
+                "These parameters are locked at model creation and define the architecture. "
+                "Create a new model if you need different structural settings."
+            )
+
         current_config = state.active_model.config
         config_data = {
             name: getattr(current_config, name)
@@ -595,7 +611,7 @@ class UpdateModelConfigCommand(Command):
         if not self.updates:
             return state, "No configuration changes detected."
         if self._new_config is None:
-            error = self.validate(state)
+            error = self.validate(state, services)
             if error:
                 return state, error
 
@@ -605,27 +621,10 @@ class UpdateModelConfigCommand(Command):
         from use_cases.dashboard.core.model_manager import ModelManager
 
         current_model = state.active_model
-        current_config = current_model.config
         new_config = self._new_config
 
-        architecture_fields = {
-            "encoder_type",
-            "decoder_type",
-            "latent_dim",
-            "hidden_dims",
-            "prior_type",
-            "num_components",
-            "component_embedding_dim",
-            "use_component_aware_decoder",
-            "use_heteroscedastic_decoder",
-            "reconstruction_loss",
-        }
-        architecture_changed = any(
-            getattr(current_config, field) != getattr(new_config, field)
-            for field in architecture_fields
-            if hasattr(current_config, field)
-        )
-
+        # Update config in model and trainer
+        # Note: Structural changes are blocked in validate(), so this is safe
         model = current_model.model
         trainer = current_model.trainer
         model.config = new_config
@@ -642,13 +641,7 @@ class UpdateModelConfigCommand(Command):
         ModelManager.save_metadata(updated_model.metadata)
 
         new_state = state.with_active_model(updated_model)
-        if architecture_changed:
-            message = (
-                "Configuration saved. Structural changes require restarting the dashboard."
-            )
-        else:
-            message = "Configuration updated successfully."
-        return new_state, message
+        return new_state, "Configuration updated successfully."
 
 
 # ============================================================================
@@ -660,15 +653,32 @@ import pandas as pd
 
 @dataclass
 class CreateModelCommand(Command):
-    """Create a new model with fresh state."""
+    """Create a new model with full architectural configuration."""
+    # Dataset parameters
     name: Optional[str] = None  # User-friendly name (optional)
     num_samples: int = 1024
     num_labeled: int = 128
     seed: Optional[int] = None
-    
+
+    # Architecture parameters
+    encoder_type: str = "conv"
+    decoder_type: str = "conv"
+    hidden_dims: Optional[str] = None  # Comma-separated string, e.g., "256,128,64"
+    latent_dim: int = 2
+    reconstruction_loss: str = "bce"
+    use_heteroscedastic_decoder: bool = False
+
+    # Prior configuration
+    prior_type: str = "mixture"
+    num_components: int = 10
+    component_embedding_dim: Optional[int] = None  # None means auto (same as latent_dim)
+    use_component_aware_decoder: bool = True
+
     def validate(self, state: AppState, services: Any) -> Optional[str]:
-        """Validate dataset sizing inputs."""
+        """Validate dataset sizing and architecture choices."""
         errors: List[str] = []
+
+        # Dataset validation
         total = self.num_samples
         labeled = self.num_labeled
         if total <= 0:
@@ -679,22 +689,83 @@ class CreateModelCommand(Command):
             errors.append("Total samples must be at most 70000 for MNIST")
         if labeled > total:
             errors.append("Labeled samples cannot exceed total samples")
+
+        # Architecture validation
+        if self.encoder_type not in ["dense", "conv"]:
+            errors.append("Encoder type must be 'dense' or 'conv'")
+        if self.decoder_type not in ["dense", "conv"]:
+            errors.append("Decoder type must be 'dense' or 'conv'")
+        if self.latent_dim < 2 or self.latent_dim > 256:
+            errors.append("Latent dimension must be between 2 and 256")
+        if self.reconstruction_loss not in ["bce", "mse"]:
+            errors.append("Reconstruction loss must be 'bce' or 'mse'")
+
+        # Validate hidden_dims if Dense encoder
+        if self.encoder_type == "dense" and self.hidden_dims:
+            try:
+                dims = [int(d.strip()) for d in self.hidden_dims.split(",")]
+                if not all(d > 0 for d in dims):
+                    errors.append("Hidden dimensions must be positive integers")
+            except ValueError:
+                errors.append("Hidden dimensions must be comma-separated integers")
+
+        # Prior validation
+        if self.prior_type not in ["standard", "mixture", "vamp", "geometric_mog"]:
+            errors.append("Invalid prior type")
+        if self.prior_type in ["mixture", "vamp", "geometric_mog"]:
+            if self.num_components < 1 or self.num_components > 64:
+                errors.append("Number of components must be between 1 and 64")
+            if self.component_embedding_dim is not None:
+                if self.component_embedding_dim < 1 or self.component_embedding_dim > 128:
+                    errors.append("Component embedding dim must be between 1 and 128")
+
         if errors:
             return "; ".join(errors)
         return None
-    
+
     def execute(self, state: AppState, services: Any) -> Tuple[AppState, str]:
-        """Create new model via ModelService, then add initial labels via LabelingService."""
+        """Create new model with user-specified architecture."""
         from rcmvae.domain.config import SSVAEConfig
         from use_cases.experiments.data.mnist.mnist import load_mnist_scaled
         from use_cases.dashboard.services.model_service import CreateModelRequest
         import numpy as np
 
+        # Parse hidden_dims
+        hidden_dims_tuple = None
+        if self.encoder_type == "dense" and self.hidden_dims:
+            hidden_dims_tuple = tuple(int(d.strip()) for d in self.hidden_dims.split(","))
+
+        # Build config from user choices
+        config = SSVAEConfig(
+            # Architecture
+            encoder_type=self.encoder_type,
+            decoder_type=self.decoder_type,
+            hidden_dims=hidden_dims_tuple or (256, 128, 64),  # Default if not specified
+            latent_dim=self.latent_dim,
+            reconstruction_loss=self.reconstruction_loss,
+            use_heteroscedastic_decoder=self.use_heteroscedastic_decoder,
+
+            # Prior
+            prior_type=self.prior_type,
+            num_components=self.num_components,
+            component_embedding_dim=self.component_embedding_dim,
+            use_component_aware_decoder=self.use_component_aware_decoder,
+
+            # Defaults for other parameters (modifiable in training hub)
+            batch_size=128,
+            learning_rate=1e-3,
+            max_epochs=200,
+            patience=20,
+            random_seed=42,
+            # Set appropriate recon_weight based on loss type
+            recon_weight=1.0 if self.reconstruction_loss == "bce" else 500.0,
+        )
+
         # Create model via ModelService
         rng_seed = int(self.seed if self.seed is not None else 0)
         request = CreateModelRequest(
             name=self.name or "Unnamed Model",
-            config=SSVAEConfig(),
+            config=config,  # Now uses user-specified config!
             dataset_total_samples=self.num_samples,
             dataset_seed=rng_seed,
         )

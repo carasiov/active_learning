@@ -235,6 +235,77 @@ def _render_quick_control(
     )
 
 
+def _build_architecture_summary(config: Any) -> html.Div:
+    """Build read-only architecture summary showing locked structural parameters.
+
+    Args:
+        config: SSVAEConfig instance
+
+    Returns:
+        Div containing the architecture summary
+    """
+    # Prior description
+    if config.prior_type == "standard":
+        prior_desc = "Standard N(0,I)"
+    elif config.prior_type in ["mixture", "vamp", "geometric_mog"]:
+        prior_name = config.prior_type.replace("_", " ").title()
+        prior_desc = f"{prior_name} ({config.num_components} components)"
+    else:
+        prior_desc = config.prior_type
+
+    # Encoder description
+    encoder_desc = "Convolutional" if config.encoder_type == "conv" else "Dense (MLP)"
+
+    # Decoder flags
+    component_aware = "Yes" if config.use_component_aware_decoder else "No"
+    heteroscedastic = "Yes" if config.use_heteroscedastic_decoder else "No"
+
+    # Reconstruction loss display
+    recon_loss_desc = config.reconstruction_loss.upper()
+
+    def _build_summary_row(label: str, value: str) -> html.Div:
+        """Build a single summary row."""
+        return html.Div([
+            html.Span(label, style={
+                "fontSize": "13px",
+                "color": "#6F6F6F",
+                "marginRight": "8px",
+                "fontFamily": "'Open Sans', Verdana, sans-serif",
+            }),
+            html.Span(value, style={
+                "fontSize": "13px",
+                "color": "#000000",
+                "fontWeight": "600",
+                "fontFamily": "'Open Sans', Verdana, sans-serif",
+            }),
+        ], style={"marginBottom": "6px"})
+
+    return html.Div([
+        html.Div("Architecture 🔒 (fixed at creation)", style={
+            "fontSize": "14px",
+            "fontWeight": "700",
+            "color": "#000000",
+            "marginBottom": "12px",
+            "fontFamily": "'Open Sans', Verdana, sans-serif",
+        }),
+        html.Div([
+            _build_summary_row("Prior:", prior_desc),
+            _build_summary_row("Encoder:", encoder_desc),
+            _build_summary_row("Latent Dim:", str(config.latent_dim)),
+            _build_summary_row("Recon Loss:", recon_loss_desc),
+            html.Div(style={"height": "8px"}),  # Spacer
+            _build_summary_row("Component-aware decoder:", component_aware),
+            _build_summary_row("Heteroscedastic decoder:", heteroscedastic),
+        ]),
+    ], style={
+        "padding": "16px",
+        "backgroundColor": "#fafafa",
+        "border": "1px solid #E6E6E6",
+        "borderRadius": "6px",
+        "marginBottom": "24px",
+    })
+
+
 def build_training_hub_layout() -> html.Div:
     """Build the Training Hub page layout."""
     dashboard_state.initialize_model_and_data()
@@ -462,6 +533,9 @@ def build_training_hub_layout() -> html.Div:
                         [
                             html.Div(
                                 [
+                                    # Architecture Summary (Read-Only)
+                                    _build_architecture_summary(config),
+
                                     html.Div("Training Configuration", style={
                                         "fontSize": "17px",
                                         "fontWeight": "700",
@@ -469,7 +543,7 @@ def build_training_hub_layout() -> html.Div:
                                         "marginBottom": "20px",
                                         "fontFamily": "'Open Sans', Verdana, sans-serif",
                                     }),
-                                    
+
                                     # Epochs input (metadata-driven)
                                     _render_quick_control(
                                         field_key="max_epochs",

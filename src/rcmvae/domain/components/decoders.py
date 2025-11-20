@@ -109,13 +109,13 @@ class ComponentAwareConvDecoder(nn.Module):
                 f"but received {self.output_hw!r}"
             )
 
-        # Separate pathways for z and component embedding
-        z_features = nn.Dense(7 * 7 * 96, name="z_pathway")(z)  # 96 channels for z
-        e_features = nn.Dense(7 * 7 * 32, name="component_pathway")(component_embedding)  # 32 for component
+        # Separate pathways for z and component embedding (symmetric capacity per §3.3)
+        z_features = nn.Dense(7 * 7 * 64, name="z_pathway")(z)  # 64 channels for z
+        e_features = nn.Dense(7 * 7 * 64, name="component_pathway")(component_embedding)  # 64 for component
 
         # Combine and reshape to spatial
         combined = jnp.concatenate([z_features, e_features], axis=-1)
-        x = combined.reshape((-1, 7, 7, 128))  # Total: 96 + 32 = 128 channels
+        x = combined.reshape((-1, 7, 7, 128))  # Total: 64 + 64 = 128 channels
 
         # Standard conv transpose layers
         x = nn.ConvTranspose(
@@ -452,8 +452,8 @@ class ComponentAwareHeteroscedasticConvDecoder(nn.Module):
     embeddings are combined in the spatial domain.
 
     Architecture:
-        z → Dense(7×7×96) → z_features
-        e_c → Dense(7×7×32) → e_features
+        z → Dense(7×7×64) → z_features
+        e_c → Dense(7×7×64) → e_features
         [z_features; e_features] → reshape → ConvTranspose layers → {mean, σ}
 
     Args:
@@ -497,16 +497,16 @@ class ComponentAwareHeteroscedasticConvDecoder(nn.Module):
                 f"but received {self.output_hw!r}"
             )
 
-        # Separate pathways for z and component embedding
-        z_features = nn.Dense(7 * 7 * 96, name="z_pathway")(z)
+        # Separate pathways for z and component embedding (symmetric capacity)
+        z_features = nn.Dense(7 * 7 * 64, name="z_pathway")(z)
         e_features = nn.Dense(
-            7 * 7 * 32,
+            7 * 7 * 64,
             name="component_pathway"
         )(component_embedding)
 
         # Combine and reshape to spatial
         combined = jnp.concatenate([z_features, e_features], axis=-1)
-        x = combined.reshape((-1, 7, 7, 128))  # Total: 96 + 32 = 128 channels
+        x = combined.reshape((-1, 7, 7, 128))  # Total: 64 + 64 = 128 channels
 
         # Mean head: standard conv decoder pathway
         mean = nn.ConvTranspose(
