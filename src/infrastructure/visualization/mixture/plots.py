@@ -205,6 +205,16 @@ def plot_channel_latent_responsibility(
             if z_mean_per_component is not None:
                 channel_latents = np.asarray(z_mean_per_component)
 
+            # Verify size match with X_data (if provided via y_true length proxy)
+            # We use y_true as a proxy for X_data length because X_data might be passed as different type/shape
+            if y_true is not None and resp.shape[0] != len(y_true):
+                print(f"Info: Discarding cached diagnostics for {model_name} due to size mismatch "
+                      f"(cached={resp.shape[0]}, current={len(y_true)}). Re-running prediction.")
+                latent_data = None
+                resp = None
+                channel_latents = None
+                labels = None
+
         if channel_latents is None:
             try:
                 latent, _, _, _, responsibilities, _ = model.predict_batched(
@@ -239,7 +249,11 @@ def plot_channel_latent_responsibility(
 
             channel_latents = channel_latents[idx]
             resp = resp[idx]
-            labels = labels[idx] if labels is not None else y_array[: resp.shape[0]]
+            # Prefer y_array (true labels) if available and matching size, otherwise fallback to cached labels
+            if y_array is not None and y_array.shape[0] >= resp.shape[0]:
+                 labels = y_array[idx]
+            else:
+                 labels = labels[idx] if labels is not None else y_array[: resp.shape[0]]
             flat_latent = channel_latents.reshape(-1, channel_latents.shape[-1])
             (x_lim, y_lim) = _compute_limits(flat_latent[:, :2])
         else:

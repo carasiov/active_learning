@@ -38,8 +38,8 @@ experiment:
 # ============================================================================
 data:
   dataset: "mnist"                  # Currently only MNIST is supported
-  num_samples: 10000               # Total samples from dataset
-  num_labeled: 250                  # Labeled samples (rest are unlabeled)
+  num_samples: 1000               # Total samples from dataset
+  num_labeled: 0                  # Labeled samples (rest are unlabeled)
   seed: 42                          # Random seed for data sampling
   dataset_variant: "mnist"          # "mnist" (default) or "digits" to force fallback
 
@@ -75,7 +75,7 @@ model:
   # Loss Configuration
   # ──────────────────────────────────────────────────────────────────────────
   reconstruction_loss: "bce"        # "bce" for binary/MNIST, "mse" for natural images
-  recon_weight: 1.0                 # Reconstruction term weight (1.0 for BCE, 500 for MSE)
+  recon_weight: 1.2                 # Reconstruction term weight (1.0 for BCE, 500 for MSE)
   kl_weight: 1.0                    # KL divergence weight (standard VAE β=1)
   label_weight: 1.0                 # Classification loss weight (currently unused)
 
@@ -130,7 +130,7 @@ model:
   use_straight_through_gumbel: true # Straight-through one-hot for decoder selection
   gumbel_temperature: 2.0           # Initial temperature for Gumbel-Softmax
   gumbel_temperature_min: 0.5
-  gumbel_temperature_anneal_epochs: 50
+  gumbel_temperature_anneal_epochs: 80
 
   # VampPrior-specific settings (only used when prior_type="vamp")
   # VampPrior learns K pseudo-inputs and defines p(z) = Σ π_k q(z|u_k)
@@ -152,16 +152,16 @@ model:
   kl_c_anneal_epochs: 50            # Anneal kl_c_weight from 0→1 over N epochs
                                     # (0 = no annealing, start at full weight)
   
-  component_diversity_weight: -5.00 # Entropy reward for diverse component usage
+  component_diversity_weight: -30.00 # Entropy reward for diverse component usage
                                     # NEGATIVE = encourage diversity (prevents collapse)
                                     # POSITIVE = discourage diversity (not recommended)
                                     # Typical range: -0.05 to -0.15
   
 
-  learnable_pi: true
-  dirichlet_alpha: 0.3             # Dirichlet prior strength (null = disabled)
+  learnable_pi: false
+  dirichlet_alpha: null             # Dirichlet prior strength (null = disabled)
                                     # When enabled, try values 2.0-5.0
-  dirichlet_weight: 0.05            # Dirichlet regularization weight
+  dirichlet_weight: 0.15            # Dirichlet regularization weight
 
 
 
@@ -175,7 +175,7 @@ model:
   # 1. τ-classifier: Latent-only via responsibilities (mixture/vamp only)
   # 2. Standard: Separate classifier head on latent z
   
-  use_tau_classifier: true          # Use τ-based latent-only classification
+  use_tau_classifier: false          # Use τ-based latent-only classification
                                     # Requires: num_components >= num_classes
                                     # Works with: mixture, vamp priors
   tau_smoothing_alpha: 1.0          # Laplace smoothing for τ counts (prevents zeros)
