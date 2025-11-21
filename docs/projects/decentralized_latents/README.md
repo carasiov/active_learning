@@ -20,7 +20,20 @@ This directory contains the complete specification for implementing **decentrali
 
 ---
 
-### 2. [implementation_spec.md](./implementation_spec.md)
+### 2. [baseline_experiment_analysis.md](./baseline_experiment_analysis.md)
+**Purpose**: Analysis of pre-refactor baseline experiment.
+
+**Contents**:
+- Confirmed configuration bug (silent FiLM override)
+- Evidence of latent specialization (and mode collapse)
+- Baseline performance metrics (Loss ~17.38)
+- Validation of need for curriculum training
+
+**For**: Understanding the starting point and current limitations.
+
+---
+
+### 3. [implementation_spec.md](./implementation_spec.md)
 **Purpose**: Complete implementation specification for AI agents.
 
 **Contents**:

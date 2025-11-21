@@ -38,7 +38,7 @@ experiment:
 # ============================================================================
 data:
   dataset: "mnist"                  # Currently only MNIST is supported
-  num_samples: 1000               # Total samples from dataset
+  num_samples: 3333               # Total samples from dataset
   num_labeled: 0                  # Labeled samples (rest are unlabeled)
   seed: 42                          # Random seed for data sampling
   dataset_variant: "mnist"          # "mnist" (default) or "digits" to force fallback
@@ -149,7 +149,7 @@ model:
 
   # Mixture/VampPrior regularization (not used with standard/geometric_mog)
   kl_c_weight: 0.15                  # Component assignment KL weight
-  kl_c_anneal_epochs: 50            # Anneal kl_c_weight from 0→1 over N epochs
+  kl_c_anneal_epochs: 100            # Anneal kl_c_weight from 0→1 over N epochs
                                     # (0 = no annealing, start at full weight)
   
   component_diversity_weight: -30.00 # Entropy reward for diverse component usage
@@ -158,8 +158,8 @@ model:
                                     # Typical range: -0.05 to -0.15
   
 
-  learnable_pi: false
-  dirichlet_alpha: null             # Dirichlet prior strength (null = disabled)
+  learnable_pi: true
+  dirichlet_alpha: 0.3             # Dirichlet prior strength (null = disabled)
                                     # When enabled, try values 2.0-5.0
   dirichlet_weight: 0.15            # Dirichlet regularization weight
 

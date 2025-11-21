@@ -70,6 +70,22 @@ README.md (entry point)
 
 **Code is authoritative** - When docs and code conflict, code is correct.
 
+### Active Project Specifications
+
+**Location**: `docs/projects/` - Self-contained specifications for major features in progress.
+
+**Structure**: Each project has:
+- `README.md` - Navigation and overview
+- `design_context.md` - High-level architectural vision  
+- `implementation_spec.md` - Complete implementation instructions
+
+**Currently Active**:
+- **Decentralized Latents** (`docs/projects/decentralized_latents/`)
+  - Transition from shared-latent to decentralized mixture-of-VAEs
+  - Includes modular decoder refactor as infrastructure
+
+**When to use**: Starting implementation of a major feature that has a dedicated project spec.
+
 ---
 
 ## 3. Implicit Knowledge (Not Obvious from Linear Reading)
@@ -146,6 +162,18 @@ Where to learn about them:
 1. Check `config.py` docstrings
 2. Look at example configs in `use_cases/experiments/configs/`
 3. Check roadmap.md for known interaction patterns
+
+### 3E. Known Issues & Current Limitations
+
+**Where to check**:
+- Active project specs in `docs/projects/` document known issues during refactors
+- `roadmap.md` for known behaviors and limitations
+
+**Current known issues** (see `docs/projects/decentralized_latents/implementation_spec.md` §Current-State-Audit):
+- Silent overrides in decoder factory (FiLM disabled when heteroscedastic enabled)
+- Configuration validation gaps (some incompatible flags allowed without warning)
+
+**When uncertain**: Test configurations on small scale before full experiments.
 
 ---
 
@@ -253,6 +281,7 @@ Where to learn about them:
 ## 7. Orientation Checklist for New Work
 
 **Before proposing changes:**
+- [ ] Check `docs/projects/` for active project specifications
 - [ ] Read `conceptual_model.md` to understand design vision
 - [ ] Check `roadmap.md` §Status to see current state
 - [ ] Verify in `architecture.md` that pattern exists or understand why new pattern needed
