@@ -24,7 +24,7 @@ Goal: a single model that (i) classifies from latent space; (ii) is uncertainty-
 
 ### 3.1 Latent Layouts & Priors
 
-The system supports two latent layouts (configured via `latent_layout`):
+The system supports two latent layouts (configured via `latent_layout` in [`config.py`](../../src/rcmvae/domain/config.py)):
 
 **1. Shared Layout (Legacy/Baseline):**
 Single global latent $z \in \mathbb{R}^D$. Components compete to explain data in this shared space.
@@ -40,22 +40,22 @@ $$
 Note: In decentralized mode, $z_c$ is the "active" latent selected by $c$.
 
 **Prior Modes (for $\pi$ and $z$ structure):**
-*   **Mixture:** Learned $\pi$, standard normal $z$.
-*   **VampPrior:** $p(z|c)$ defined by pseudo-inputs.
-*   **Geometric:** Fixed spatial arrangement of components.
+*   **Mixture:** Learned $\pi$, standard normal $z$ ([`mixture.py`](../../src/rcmvae/domain/priors/mixture.py)).
+*   **VampPrior:** $p(z|c)$ defined by pseudo-inputs ([`vamp.py`](../../src/rcmvae/domain/priors/vamp.py)).
+*   **Geometric:** Fixed spatial arrangement of components ([`geometric_mog.py`](../../src/rcmvae/domain/priors/geometric_mog.py)).
 
 ### 3.2 Approximate Posterior
 
 **Shared:**
 $$ q_\phi(c, z \mid x) = q_\phi(c \mid x) \, q_\phi(z \mid x) $$
-(Single encoder head for $z$).
+(Single encoder head for $z$, see [`encoders.py`](../../src/rcmvae/domain/components/encoders.py)).
 
 **Decentralized:**
 $$ q_\phi(c, Z \mid x) = q_\phi(c \mid x) \prod_{k=1}^K q_\phi(z_k \mid x) $$
 (Multi-head encoder outputting $[B, K, D]$).
 
 **Discrete Relaxation (Gumbel-Softmax):**
-To differentiate through component selection $c$, we use the Gumbel-Softmax trick:
+To differentiate through component selection $c$, we use the Gumbel-Softmax trick (implemented in [`network.py`](../../src/rcmvae/domain/network.py)):
 $$ y_k = \frac{\exp((\log \pi_k + g_k) / \tau)}{\sum_j \exp((\log \pi_j + g_j) / \tau)} $$
 where $g_k \sim \mathrm{Gumbel}(0, 1)$ and $\tau$ is temperature.
 *   **Training:** Use soft samples $y$ (or straight-through hard samples) to weight decoder inputs/losses.
@@ -63,17 +63,19 @@ where $g_k \sim \mathrm{Gumbel}(0, 1)$ and $\tau$ is temperature.
 
 ### 3.3 Decoder Architectures
 
-**Standard (concatenated):** Embed component $c$ as $e_c$, then concatenate with $z$: $\tilde z=[z; e_c]$, so $p_\theta(x\mid z,c)=p_\theta(x\mid \tilde z)$ with shared decoder weights.
+Implemented in [`decoders.py`](../../src/rcmvae/domain/components/decoders.py) using modules from [`decoder_modules/`](../../src/rcmvae/domain/components/decoder_modules/).
+
+**Standard (concatenated):** Embed component $c$ as $e_c$, then concatenate with $z$: $\tilde z=[z; e_c]$, so $p_\theta(x\mid z,c)=p_\theta(x\mid \tilde z)$ with shared decoder weights ([`ConcatConditioner`](../../src/rcmvae/domain/components/decoder_modules/conditioning.py)).
 
 **Component-aware:** Separate transformation pathways for $z$ and $e_c$ before fusion:
 $$z_{\text{path}} = W_z(z), \quad e_{\text{path}} = W_e(e_c), \quad \tilde z = [z_{\text{path}}; e_{\text{path}}], \quad p_\theta(x\mid z,c)=p_\theta(x\mid \tilde z).$$
 This enables component-specific feature learning while both architectures receive embedding context.
 
-**FiLM conditioning (current):** Generate affine parameters from embedding: $(\gamma,\beta)=g_\theta(e_c)$, apply feature-wise modulation $h'=\gamma\odot h + \beta$ inside the decoder. This strictly dominates concatenation when component embeddings are available.
+**FiLM conditioning (current):** Generate affine parameters from embedding: $(\gamma,\beta)=g_\theta(e_c)$, apply feature-wise modulation $h'=\gamma\odot h + \beta$ inside the decoder ([`FiLMLayer`](../../src/rcmvae/domain/components/decoder_modules/conditioning.py)). This strictly dominates concatenation when component embeddings are available.
 
 **Conditioning policy:** Train by evaluating the reconstruction term as a **weighted sum over channels** (expectation under $q(c\mid x)$); for efficiency we enable **Top-$M$ gating (default $M{=}5$)** and keep $\mathrm{KL}_c$ (if used) over all $K$. Optional: a short **soft-embedding warm-up** (replace $e_c$ by $\sum_c q(c\mid x)e_c$) in the first epochs; at **generation** time, sample a hard $c$ and decode with $e_c$.
 
-**Heteroscedastic output (current):** Decoder emits $(\mu,\sigma)$ with $\sigma = \operatorname{clip}\big(\sigma_{\min} + \operatorname{softplus}(s),\, \sigma_{\min},\, \sigma_{\max}\big)$ for stability; likelihood term uses $\|x-\mu\|^2/(2\sigma^2)+\log\sigma$.
+**Heteroscedastic output (current):** Decoder emits $(\mu,\sigma)$ with $\sigma = \operatorname{clip}\big(\sigma_{\min} + \operatorname{softplus}(s),\, \sigma_{\min},\, \sigma_{\max}\big)$ for stability ([`HeteroscedasticHead`](../../src/rcmvae/domain/components/decoder_modules/outputs.py)); likelihood term uses $\|x-\mu\|^2/(2\sigma^2)+\log\sigma$.
 
 ---
 
@@ -81,7 +83,7 @@ This enables component-specific feature learning while both architectures receiv
 
 **Convention.** We minimize losses; all regularizers are written as positive penalties.
 
-Per-example objective (ELBO):
+Per-example objective (ELBO) (implemented in [`loss_pipeline.py`](../../src/rcmvae/application/services/loss_pipeline.py)):
 $$
 \mathcal L(x) = \underbrace{-\mathbb{E}_{q_\phi(c\mid x)}\big[\mathbb{E}_{q_\phi(z\mid x,c)}[\log p_\theta(x\mid z,c)]\big]}_{\text{Recon}} + \text{KL}_z + \underbrace{\beta_c\,\mathrm{KL}\big(q_\phi(c\mid x)\,\|\,\pi\big)}_{\text{$c$-KL}}.
 $$
@@ -97,6 +99,7 @@ $$
 $$
 \mathcal L_{\text{sup}}(x,y)=-\log\sum_c q_\phi(c\mid x)\,\tau_{c,y}.
 $$
+(See [`TauClassifier`](../../src/rcmvae/domain/components/tau_classifier.py)).
 
 **Channel-usage sparsity (EMA $\hat p$):**
 $$

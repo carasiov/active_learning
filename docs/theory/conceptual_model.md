@@ -102,11 +102,11 @@ We freeze the core symbols: $c$ (channel), $z$ (latent), $r$ (responsibilities),
 
 ### Decoder Conditioning Methods (current system)
 
-1. **No conditioning** — standard decoder ignores component identity (NoopConditioner).  
-2. **Concatenation** — append component embedding to latent/features (ConcatConditioner).  
-3. **FiLM (Feature-wise Linear Modulation)** — embed component → $(\gamma,\beta)$ → feature-wise affine modulation (FiLMLayer).  
+1.  **No conditioning** — standard decoder ignores component identity ([`NoopConditioner`](../../src/rcmvae/domain/components/decoder_modules/conditioning.py)).
+2.  **Concatenation** — append component embedding to latent/features ([`ConcatConditioner`](../../src/rcmvae/domain/components/decoder_modules/conditioning.py)).
+3.  **FiLM (Feature-wise Linear Modulation)** — embed component → $(\gamma,\beta)$ → feature-wise affine modulation ([`FiLMLayer`](../../src/rcmvae/domain/components/decoder_modules/conditioning.py)).
 
-Outputs: standard mean-only or heteroscedastic $(\mu,\sigma)$ with $\sigma$ clamped for stability. All combinations are supported; FiLM + heteroscedastic is enabled.
+Outputs: standard mean-only or heteroscedastic $(\mu,\sigma)$ ([`HeteroscedasticHead`](../../src/rcmvae/domain/components/decoder_modules/outputs.py)) with $\sigma$ clamped for stability. All combinations are supported; FiLM + heteroscedastic is enabled.
 
 ---
 
