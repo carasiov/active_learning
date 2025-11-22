@@ -1,18 +1,85 @@
 from __future__ import annotations
 
-from typing import Tuple
+from typing import Tuple, TypeVar, Callable
+import functools
+import warnings
 
 import jax
 import jax.numpy as jnp
 from flax import linen as nn
+
+from rcmvae.domain.components.decoder_modules import (
+    ConcatConditioner,
+    ConvBackbone,
+    DenseBackbone,
+    FiLMLayer,
+    HeteroscedasticHead,
+    NoopConditioner,
+    StandardHead,
+)
+
+T = TypeVar("T")
+
+
+def deprecated(message: str) -> Callable[[T], T]:
+    """Decorator to emit deprecation warnings on module call."""
+    def decorator(cls: T) -> T:
+        original_call = getattr(cls, "__call__", None)
+
+        if original_call is None:
+            return cls
+
+        @functools.wraps(original_call)
+        def wrapped(self, *args, **kwargs):
+            warnings.warn(message, DeprecationWarning, stacklevel=2)
+            return original_call(self, *args, **kwargs)
+
+        setattr(cls, "__call__", wrapped)
+        return cls
+
+    return decorator
+
+
+# ============================================================================
+# Modular Decoders (Composable conditioning + backbone + output head)
+# ============================================================================
+
+
+class ModularConvDecoder(nn.Module):
+    """Composable convolutional decoder for mixture-of-VAEs."""
+
+    conditioner: nn.Module
+    backbone: nn.Module
+    output_head: nn.Module
+
+    @nn.compact
+    def __call__(self, z: jnp.ndarray, component_embedding: jnp.ndarray | None = None):
+        features = self.backbone(z)
+        conditioned = self.conditioner(features, component_embedding)
+        return self.output_head(conditioned)
+
+
+class ModularDenseDecoder(nn.Module):
+    """Composable dense decoder for mixture-of-VAEs."""
+
+    conditioner: nn.Module
+    backbone: nn.Module
+    output_head: nn.Module
+
+    @nn.compact
+    def __call__(self, z: jnp.ndarray, component_embedding: jnp.ndarray | None = None):
+        features = self.backbone(z)
+        conditioned = self.conditioner(features, component_embedding)
+        return self.output_head(conditioned)
 
 
 # ============================================================================
 # Component-Aware Decoders (Separate processing for z and component embeddings)
 # ============================================================================
 
+@deprecated("Deprecated: use ModularDenseDecoder with ConcatConditioner and StandardHead.")
 class ComponentAwareDenseDecoder(nn.Module):
-    """Component-aware dense decoder that processes z and component embeddings separately.
+    """Deprecated. Use ModularDenseDecoder with ConcatConditioner + StandardHead.
 
     This decoder enables functional specialization per component by:
     1. Processing z through its own pathway
@@ -68,8 +135,9 @@ class ComponentAwareDenseDecoder(nn.Module):
         return x.reshape((-1, h, w))
 
 
+@deprecated("Deprecated: use ModularConvDecoder with ConcatConditioner and StandardHead.")
 class ComponentAwareConvDecoder(nn.Module):
-    """Component-aware convolutional decoder for MNIST (28x28).
+    """Deprecated. Use ModularConvDecoder with ConcatConditioner + StandardHead.
 
     This decoder processes z and component embeddings separately before
     combining them in the spatial feature maps.
@@ -151,8 +219,9 @@ class ComponentAwareConvDecoder(nn.Module):
 # FiLM-Conditioned Decoders (dense)
 # ============================================================================
 
+@deprecated("Deprecated: use ModularDenseDecoder with FiLMLayer and StandardHead.")
 class FiLMDenseDecoder(nn.Module):
-    """Dense decoder that modulates hidden activations via FiLM parameters from component embeddings."""
+    """Deprecated. Use ModularDenseDecoder with FiLMLayer + StandardHead."""
 
     hidden_dims: Tuple[int, ...]
     output_hw: Tuple[int, int]
@@ -177,8 +246,9 @@ class FiLMDenseDecoder(nn.Module):
         return x.reshape((-1, h, w))
 
 
+@deprecated("Deprecated: use ModularConvDecoder with FiLMLayer and StandardHead (heteroscedastic now supported).")
 class FiLMConvDecoder(nn.Module):
-    """Convolutional decoder with FiLM conditioning from component embeddings."""
+    """Deprecated. Use ModularConvDecoder with FiLMLayer + StandardHead (or HeteroscedasticHead)."""
 
     latent_dim: int
     output_hw: Tuple[int, int]
@@ -245,8 +315,9 @@ class FiLMConvDecoder(nn.Module):
 # Standard Decoders (Backward compatibility)
 # ============================================================================
 
+@deprecated("Deprecated: use ModularDenseDecoder with NoopConditioner and StandardHead.")
 class DenseDecoder(nn.Module):
-    """Dense decoder projecting latent vectors back to image space."""
+    """Deprecated. Use ModularDenseDecoder with NoopConditioner + StandardHead."""
 
     hidden_dims: Tuple[int, ...]
     output_hw: Tuple[int, int]
@@ -262,8 +333,9 @@ class DenseDecoder(nn.Module):
         return x.reshape((-1, h, w))
 
 
+@deprecated("Deprecated: use ModularConvDecoder with NoopConditioner and StandardHead.")
 class ConvDecoder(nn.Module):
-    """Convolutional decoder reconstructing images from latent vectors."""
+    """Deprecated. Use ModularConvDecoder with NoopConditioner + StandardHead."""
 
     latent_dim: int
     output_hw: Tuple[int, int]
@@ -288,8 +360,9 @@ class ConvDecoder(nn.Module):
 # Heteroscedastic Decoders (Learned per-input variance for aleatoric uncertainty)
 # ============================================================================
 
+@deprecated("Deprecated: use ModularDenseDecoder with NoopConditioner and HeteroscedasticHead.")
 class HeteroscedasticDenseDecoder(nn.Module):
-    """Dense decoder with learned per-image variance for aleatoric uncertainty.
+    """Deprecated. Use ModularDenseDecoder with NoopConditioner + HeteroscedasticHead.
 
     Outputs both mean reconstruction and variance σ²(x) to model observation noise.
     This enables proper probabilistic modeling: p(x|z) = N(x; μ(z), σ²(z)I).
@@ -352,8 +425,9 @@ class HeteroscedasticDenseDecoder(nn.Module):
         return mean, sigma
 
 
+@deprecated("Deprecated: use ModularConvDecoder with NoopConditioner and HeteroscedasticHead.")
 class HeteroscedasticConvDecoder(nn.Module):
-    """Convolutional decoder with learned per-image variance.
+    """Deprecated. Use ModularConvDecoder with NoopConditioner + HeteroscedasticHead.
 
     Similar to HeteroscedasticDenseDecoder but uses convolutional architecture
     for spatial feature processing. The variance head uses global pooling to
@@ -457,8 +531,9 @@ class HeteroscedasticConvDecoder(nn.Module):
         return mean, sigma
 
 
+@deprecated("Deprecated: use ModularDenseDecoder with ConcatConditioner and HeteroscedasticHead.")
 class ComponentAwareHeteroscedasticDenseDecoder(nn.Module):
-    """Component-aware dense decoder with learned per-image variance.
+    """Deprecated. Use ModularDenseDecoder with ConcatConditioner + HeteroscedasticHead.
 
     Combines component-aware decoding (separate z and embedding pathways) with
     heteroscedastic variance modeling. Each component can learn its own uncertainty
@@ -538,8 +613,9 @@ class ComponentAwareHeteroscedasticDenseDecoder(nn.Module):
         return mean, sigma
 
 
+@deprecated("Deprecated: use ModularConvDecoder with ConcatConditioner and HeteroscedasticHead.")
 class ComponentAwareHeteroscedasticConvDecoder(nn.Module):
-    """Component-aware convolutional decoder with learned per-image variance.
+    """Deprecated. Use ModularConvDecoder with ConcatConditioner + HeteroscedasticHead.
 
     Combines component-aware decoding with heteroscedastic variance modeling
     in a convolutional architecture. Separate pathways for z and component

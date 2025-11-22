@@ -247,6 +247,19 @@ class SSVAEConfig:
         if self.soft_embedding_warmup_epochs < 0:
             raise ValueError("soft_embedding_warmup_epochs must be >= 0")
 
+        # Conditioning conflicts and prerequisites
+        if self.use_film_decoder and self.use_component_aware_decoder:
+            warnings.warn(
+                "Both use_film_decoder and use_component_aware_decoder are True; FiLM will take priority.",
+                UserWarning,
+            )
+        mixture_condition_priors = {"mixture", "geometric_mog"}
+        if (self.use_film_decoder or self.use_component_aware_decoder) and self.prior_type not in mixture_condition_priors:
+            raise ValueError(
+                f"FiLM/component-aware decoders require mixture-like priors {mixture_condition_priors}; "
+                f"got prior_type='{self.prior_type}'."
+            )
+
         # τ-classifier validation
         mixture_based_priors = {"mixture", "vamp", "geometric_mog"}
         if self.use_tau_classifier and self.prior_type not in mixture_based_priors:
@@ -255,16 +268,12 @@ class SSVAEConfig:
                 RuntimeWarning,
             )
         if self.use_tau_classifier:
-            if self.prior_type in {"mixture", "vamp"} and self.num_components < self.num_classes:
+            if self.prior_type not in {"mixture", "geometric_mog"}:
+                raise ValueError("τ-classifier requires mixture/geometric priors that emit component responsibilities.")
+            if self.num_components < self.num_classes:
                 raise ValueError(
-                    "num_components must be >= num_classes when use_tau_classifier=True for mixture/vamp priors. "
+                    "num_components must be >= num_classes when use_tau_classifier=True for mixture/geometric priors. "
                     f"Got num_components={self.num_components}, num_classes={self.num_classes}."
-                )
-            if self.prior_type == "geometric_mog" and self.num_components < self.num_classes:
-                warnings.warn(
-                    "Geometric MoG τ-classifier typically benefits from num_components >= num_classes. "
-                    f"Got num_components={self.num_components}, num_classes={self.num_classes}.",
-                    RuntimeWarning,
                 )
         if self.tau_smoothing_alpha <= 0:
             raise ValueError("tau_smoothing_alpha must be positive")
@@ -280,10 +289,7 @@ class SSVAEConfig:
 
         # Learnable π validation
         if self.learnable_pi and self.prior_type not in ["mixture", "geometric_mog"]:
-            warnings.warn(
-                f"Prior '{self.prior_type}' doesn't use mixture weights, so learnable_pi has no effect.",
-                UserWarning,
-            )
+            raise ValueError("learnable_pi requires mixture or geometric_mog priors.")
 
         # Component-aware decoder validation
         mixture_based_priors = {"mixture", "vamp", "geometric_mog"}
@@ -339,8 +345,20 @@ class SSVAEConfig:
             raise ValueError(
                 f"latent_layout must be 'shared' or 'decentralized', got '{self.latent_layout}'."
             )
+        if self.latent_layout == "decentralized" and self.prior_type not in {"mixture", "geometric_mog"}:
+            raise ValueError("latent_layout='decentralized' requires a mixture/geometric prior.")
+        if self.latent_layout == "decentralized" and self.num_components <= 1:
+            raise ValueError(
+                f"latent_layout='decentralized' requires num_components > 1, got {self.num_components}."
+            )
         if self.gumbel_temperature <= 0:
             raise ValueError("gumbel_temperature must be positive")
+        if self.use_gumbel_softmax and self.prior_type not in {"mixture", "geometric_mog"}:
+            raise ValueError("use_gumbel_softmax requires a mixture/geometric prior.")
+        if self.use_gumbel_softmax and self.gumbel_temperature < self.gumbel_temperature_min:
+            raise ValueError(
+                f"gumbel_temperature ({self.gumbel_temperature}) must be >= gumbel_temperature_min ({self.gumbel_temperature_min})."
+            )
 
     def get_informative_hyperparameters(self) -> Dict[str, object]:
         return {name: getattr(self, name) for name in INFORMATIVE_HPARAMETERS}

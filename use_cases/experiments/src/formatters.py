@@ -241,8 +241,16 @@ def _format_decoder_type(model_config: Dict[str, Any]) -> str:
 
     features = []
 
-    # Component-aware decoder
-    if model_config.get("use_component_aware_decoder", False):
+    # Conditioning: FiLM > Concat > Noop (mirror factory priority)
+    prior_type = model_config.get("prior_type", "standard")
+    is_mixture_based = prior_type in {"mixture", "geometric_mog"}
+    use_film = is_mixture_based and model_config.get("use_film_decoder", False)
+    use_concat = is_mixture_based and model_config.get("use_component_aware_decoder", False)
+
+    if use_film:
+        embed_dim = model_config.get("component_embedding_dim", 8)
+        features.append(f"FiLM (embed={embed_dim})")
+    elif use_concat:
         embed_dim = model_config.get("component_embedding_dim", 8)
         features.append(f"component-aware (embed={embed_dim})")
 

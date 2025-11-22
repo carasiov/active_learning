@@ -4,20 +4,18 @@ from typing import Tuple
 
 from flax import linen as nn
 
+from rcmvae.domain.components.decoder_modules import (
+    ConcatConditioner,
+    ConvBackbone,
+    DenseBackbone,
+    FiLMLayer,
+    HeteroscedasticHead,
+    NoopConditioner,
+    StandardHead,
+)
 from rcmvae.domain.config import SSVAEConfig
 from .classifier import Classifier
-from .decoders import (
-    ComponentAwareConvDecoder,
-    ComponentAwareDenseDecoder,
-    ComponentAwareHeteroscedasticConvDecoder,
-    ComponentAwareHeteroscedasticDenseDecoder,
-    ConvDecoder,
-    DenseDecoder,
-    FiLMDenseDecoder,
-    FiLMConvDecoder,
-    HeteroscedasticConvDecoder,
-    HeteroscedasticDenseDecoder,
-)
+from .decoders import ModularConvDecoder, ModularDenseDecoder
 from .encoders import ConvEncoder, DenseEncoder, MixtureConvEncoder, MixtureDenseEncoder
 
 
@@ -67,118 +65,49 @@ def build_encoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = Non
 
 
 def build_decoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = None) -> nn.Module:
-    """Build decoder based on configuration.
-
-    Selects decoder variant based on:
-    - decoder_type: "dense" or "conv"
-    - use_component_aware_decoder: Component-aware processing (mixture prior)
-    - use_heteroscedastic_decoder: Learned per-image variance σ(x)
-
-    Returns one of 8 possible decoder types:
-        Dense:
-            - DenseDecoder
-            - HeteroscedasticDenseDecoder
-            - ComponentAwareDenseDecoder
-            - ComponentAwareHeteroscedasticDenseDecoder
-        Conv:
-            - ConvDecoder
-            - HeteroscedasticConvDecoder
-            - ComponentAwareConvDecoder
-            - ComponentAwareHeteroscedasticConvDecoder
-    """
+    """Build decoder using modular composition with no silent overrides."""
     resolved_hw = _resolve_input_hw(config, input_hw)
 
-    # Determine decoder features
-    # Component-aware decoder: Used by mixture prior and geometric_mog (NOT vamp)
-    # VampPrior relies on spatial separation, doesn't need component embeddings
-    use_component_aware = (
-        config.prior_type in {"mixture", "geometric_mog"} and
-        config.use_component_aware_decoder
-    )
+    use_film = config.prior_type in {"mixture", "geometric_mog"} and config.use_film_decoder
+    use_concat = config.prior_type in {"mixture", "geometric_mog"} and config.use_component_aware_decoder
     use_heteroscedastic = config.use_heteroscedastic_decoder
-    use_film_decoder = (
-        config.prior_type in {"mixture", "geometric_mog"} and
-        config.use_film_decoder and
-        not use_heteroscedastic
-    )
 
-    if config.decoder_type == "dense":
-        hidden_dims = _resolve_encoder_hidden_dims(config, resolved_hw)
-        decoder_hidden_dims = tuple(reversed(hidden_dims)) or (config.latent_dim,)
-
-        # Select decoder class based on features
-        if use_film_decoder:
-            return FiLMDenseDecoder(
-                hidden_dims=decoder_hidden_dims,
-                output_hw=resolved_hw,
-                component_embedding_dim=config.component_embedding_dim,
-                latent_dim=config.latent_dim,
-            )
-        if use_component_aware and use_heteroscedastic:
-            return ComponentAwareHeteroscedasticDenseDecoder(
-                hidden_dims=decoder_hidden_dims,
-                output_hw=resolved_hw,
-                component_embedding_dim=config.component_embedding_dim,
-                latent_dim=config.latent_dim,
-                sigma_min=config.sigma_min,
-                sigma_max=config.sigma_max,
-            )
-        elif use_component_aware:
-            return ComponentAwareDenseDecoder(
-                hidden_dims=decoder_hidden_dims,
-                output_hw=resolved_hw,
-                component_embedding_dim=config.component_embedding_dim,
-                latent_dim=config.latent_dim,
-            )
-        elif use_heteroscedastic:
-            return HeteroscedasticDenseDecoder(
-                hidden_dims=decoder_hidden_dims,
-                output_hw=resolved_hw,
-                sigma_min=config.sigma_min,
-                sigma_max=config.sigma_max,
-            )
-        else:
-            return DenseDecoder(
-                hidden_dims=decoder_hidden_dims,
-                output_hw=resolved_hw
-            )
+    if use_film:
+        conditioner: nn.Module = FiLMLayer(component_embedding_dim=config.component_embedding_dim)
+    elif use_concat:
+        conditioner = ConcatConditioner()
+    else:
+        conditioner = NoopConditioner()
 
     if config.decoder_type == "conv":
-        if use_film_decoder and use_heteroscedastic:
-            raise ValueError("FiLM conv decoder does not yet support heteroscedastic outputs.")
-        if use_film_decoder:
-            return FiLMConvDecoder(
-                latent_dim=config.latent_dim,
-                output_hw=resolved_hw,
-                component_embedding_dim=config.component_embedding_dim,
-            )
-        # Select decoder class based on features
-        if use_component_aware and use_heteroscedastic:
-            return ComponentAwareHeteroscedasticConvDecoder(
-                latent_dim=config.latent_dim,
-                output_hw=resolved_hw,
-                component_embedding_dim=config.component_embedding_dim,
-                sigma_min=config.sigma_min,
-                sigma_max=config.sigma_max,
-            )
-        elif use_component_aware:
-            return ComponentAwareConvDecoder(
-                latent_dim=config.latent_dim,
-                output_hw=resolved_hw,
-                component_embedding_dim=config.component_embedding_dim,
-            )
-        elif use_heteroscedastic:
-            return HeteroscedasticConvDecoder(
-                latent_dim=config.latent_dim,
-                output_hw=resolved_hw,
-                sigma_min=config.sigma_min,
-                sigma_max=config.sigma_max,
-            )
-        else:
-            return ConvDecoder(
-                latent_dim=config.latent_dim,
-                output_hw=resolved_hw
-            )
+        backbone: nn.Module = ConvBackbone(latent_dim=config.latent_dim, output_hw=resolved_hw)
+    elif config.decoder_type == "dense":
+        hidden_dims = _resolve_encoder_hidden_dims(config, resolved_hw)
+        decoder_hidden_dims = tuple(reversed(hidden_dims)) or (config.latent_dim,)
+        backbone = DenseBackbone(hidden_dims=decoder_hidden_dims)
+    else:
+        raise ValueError(f"Unknown decoder type: {config.decoder_type}")
+
+    if use_heteroscedastic:
+        output_head: nn.Module = HeteroscedasticHead(
+            output_hw=resolved_hw,
+            sigma_min=config.sigma_min,
+            sigma_max=config.sigma_max,
+        )
+    else:
+        output_head = StandardHead(output_hw=resolved_hw)
+
+    if config.decoder_type == "conv":
+        return ModularConvDecoder(
+            conditioner=conditioner,
+            backbone=backbone,
+            output_head=output_head,
+        )
+    return ModularDenseDecoder(
+        conditioner=conditioner,
+        backbone=backbone,
+        output_head=output_head,
+    )
 
     raise ValueError(f"Unknown decoder type: {config.decoder_type}")
 

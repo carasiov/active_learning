@@ -275,26 +275,10 @@ class SSVAENetwork(nn.Module):
                     z_components = jnp.broadcast_to(z[:, None, :], (batch_size, num_components, self.latent_dim))
                 embed_tiled = jnp.broadcast_to(embeddings[None, :, :], (batch_size, num_components, embeddings.shape[-1]))
 
-                # Check if decoder is component-aware / FiLM
-                use_component_aware = self.config.prior_type in {"mixture", "geometric_mog"} and self.config.use_component_aware_decoder
-                use_heteroscedastic = self.config.use_heteroscedastic_decoder
-                use_film_decoder = (
-                    self.config.prior_type in {"mixture", "geometric_mog"} and
-                    self.config.use_film_decoder and
-                    not use_heteroscedastic
-                )
-                is_component_aware = use_component_aware or use_film_decoder
-
-                if is_component_aware:
-                    # Component-aware decoder: pass z and component_embedding separately
-                    z_flat = z_components.reshape((batch_size * num_components, -1))
-                    embed_flat = embed_tiled.reshape((batch_size * num_components, -1))
-                    decoder_output_flat = self.decoder(z_flat, embed_flat)
-                else:
-                    # Standard decoder: concatenate [z, e_c]
-                    decoder_inputs = jnp.concatenate([z_components, embed_tiled], axis=-1)
-                    decoder_inputs_flat = decoder_inputs.reshape((batch_size * num_components, -1))
-                    decoder_output_flat = self.decoder(decoder_inputs_flat)
+                # Decoder handles conditioning internally (FiLM / concat / noop)
+                z_flat = z_components.reshape((batch_size * num_components, -1))
+                embed_flat = embed_tiled.reshape((batch_size * num_components, -1))
+                decoder_output_flat = self.decoder(z_flat, embed_flat)
 
                 # Handle heteroscedastic decoder (returns tuple)
                 if isinstance(decoder_output_flat, tuple):
