@@ -33,7 +33,33 @@ This directory contains the complete specification for implementing **decentrali
 
 ---
 
-### 3. [implementation_spec.md](./implementation_spec.md)
+### 3. [refactor_validation_report.md](./refactor_validation_report.md)
+**Purpose**: Validation results of the modular decoder refactor.
+
+**Contents**:
+- FiLM + Heteroscedastic performance (Loss ~54.6, 29% improvement)
+- Tau classifier accuracy analysis (59% → need curriculum)
+- Comparison with baseline experiment
+- Next steps (curriculum training)
+
+**For**: Understanding the refactor's impact and validated improvements.
+
+---
+
+### 4. [documentation_update_spec.md](./documentation_update_spec.md)
+**Purpose**: Specification for updating codebase documentation post-refactor.
+
+**Contents**:
+- File-by-file update plan (architecture.md, implementation.md, etc.)
+- Specific sections to add/modify
+- Code references and execution plan
+- Success criteria
+
+**For**: Delegating documentation updates to AI agents.
+
+---
+
+### 5. [implementation_spec.md](./implementation_spec.md)
 **Purpose**: Complete implementation specification for AI agents.
 
 **Contents**:

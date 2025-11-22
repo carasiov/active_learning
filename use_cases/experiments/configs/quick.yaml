@@ -38,7 +38,7 @@ experiment:
 # ============================================================================
 data:
   dataset: "mnist"                  # Currently only MNIST is supported
-  num_samples: 3333               # Total samples from dataset
+  num_samples: 15000               # Total samples from dataset
   num_labeled: 333                  # Labeled samples (rest are unlabeled)
   seed: 42                          # Random seed for data sampling
   dataset_variant: "mnist"          # "mnist" (default) or "digits" to force fallback
@@ -152,7 +152,7 @@ model:
   kl_c_anneal_epochs: 100            # Anneal kl_c_weight from 0→1 over N epochs
                                     # (0 = no annealing, start at full weight)
   
-  component_diversity_weight: -5.00 # Entropy reward for diverse component usage
+  component_diversity_weight: -10.00 # Entropy reward for diverse component usage
                                     # NEGATIVE = encourage diversity (prevents collapse)
                                     # POSITIVE = discourage diversity (not recommended)
                                     # Typical range: -0.05 to -0.15
