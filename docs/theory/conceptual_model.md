@@ -44,13 +44,21 @@ Our generative story is simple: data come from a small set of **global modes** a
 
 ## Core Mental Model (Stable Invariants)
 
-Sampling is $c\sim\pi,\ z\sim\mathcal N(0,I_d),\ x\sim p_\theta(x\mid z,c)$. Inference provides **responsibilities** $r_c(x)=q_\phi(c\mid x)$. We keep a **latent-only classifier** by accumulating soft counts from labeled data into $s_{c,y}$ and normalizing to $\tau_{c,y}$; predictions are
+Sampling is $c\sim\pi$. The latent structure depends on the **Latent Layout**:
+1.  **Shared Layout:** Single global latent $z\sim p(z|c)$. Components compete in one space.
+2.  **Decentralized Layout:** Set of independent latents $Z=\{z_1,\dots,z_K\}$ where $z_k\sim \mathcal{N}(0,I)$. Components own private spaces.
+
+Inference provides **responsibilities** $r_c(x)=q_\phi(c\mid x)$. We keep a **latent-only classifier** by accumulating soft counts from labeled data into $s_{c,y}$ and normalizing to $\tau_{c,y}$; predictions are
 $$
 p(y\mid x)=\sum_c q_\phi(c\mid x)\cdot\tau_{c,y}.
 $$
 Aleatoric uncertainty lives in a **heteroscedastic** decoder variance $\sigma^2(x)$ (clamped for stability). We prefer **parsimony**: use only as many channels as needed (sparse $\pi$, usage penalties), allow multiple channels per label (multimodality), and keep **free channels** for new labels or OOD. Optional priors (fixed MoG, VampPrior, flows) may shape $p(z)$; the default is $p(z\mid c)=\mathcal N(0,I)$ with conditioning in the decoder.
 
-**On decoder architectures:** Both receive component embeddings $e_c$. *Standard*: concatenate $[z;e_c]$ into shared decoder weights. *Component-aware*: separate Dense pathways for $z$ and $e_c$ before fusion, enabling component-specific feature learning. Both expose component structure; specialization requires dedicated transformation pathways.
+**On decoder architectures:** Both receive component embeddings $e_c$.
+*   **Standard**: concatenate $[z;e_c]$ into shared decoder weights.
+*   **Component-aware**: separate Dense pathways for $z$ and $e_c$ before fusion, enabling component-specific feature learning.
+*   **FiLM**: feature-wise affine modulation via $e_c$.
+All expose component structure; specialization requires dedicated transformation pathways.
 
 ## How We Classify and Detect OOD
 
@@ -89,6 +97,16 @@ We freeze the core symbols: $c$ (channel), $z$ (latent), $r$ (responsibilities),
 **Decoder variance.** Default is a per-image $\sigma(x)$ (clamped) for stability; a per-pixel head is optional and can be enabled later.
 
 **Product-of-Experts (PoE).** A tempered PoE prior is experimental and may be ablated later; we default to mixtures/channels for stability.
+
+---
+
+### Decoder Conditioning Methods (current system)
+
+1. **No conditioning** — standard decoder ignores component identity (NoopConditioner).  
+2. **Concatenation** — append component embedding to latent/features (ConcatConditioner).  
+3. **FiLM (Feature-wise Linear Modulation)** — embed component → $(\gamma,\beta)$ → feature-wise affine modulation (FiLMLayer).  
+
+Outputs: standard mean-only or heteroscedastic $(\mu,\sigma)$ with $\sigma$ clamped for stability. All combinations are supported; FiLM + heteroscedastic is enabled.
 
 ---
 

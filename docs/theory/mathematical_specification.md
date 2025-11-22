@@ -22,25 +22,44 @@ Goal: a single model that (i) classifies from latent space; (ii) is uncertainty-
 
 ## 3. Model
 
-### 3.1 Prior Modes (Interchangeable)
+### 3.1 Latent Layouts & Priors
 
-**(A) K-channels (Default):**
-$$
-c\sim\mathrm{Cat}(\pi),\quad z\mid c\sim\mathcal N(0,I_d),\quad x\mid z,c\sim p_\theta(x\mid z,c),\quad \pi_c\equiv 1/K.
-$$
+The system supports two latent layouts (configured via `latent_layout`):
 
-**(B) VampPrior:** learn pseudo-inputs $u_1,\dots,u_K\in\mathcal X$ and define
+**1. Shared Layout (Legacy/Baseline):**
+Single global latent $z \in \mathbb{R}^D$. Components compete to explain data in this shared space.
 $$
-p(c)=\mathrm{Cat}(\pi),\quad p(z\mid c)=q_\phi(z\mid u_c),\quad p(z)=\sum_{c=1}^K \pi_c\, q_\phi(z\mid u_c),\quad x\mid z,c\sim p_\theta(x\mid z,c).
+c \sim \mathrm{Cat}(\pi), \quad z \mid c \sim \mathcal{N}(0, I), \quad x \sim p_\theta(x \mid z, c)
 $$
 
-**(C) Fixed geometric MoG :** centers arranged on circle/grid, uniform $\pi$; 
+**2. Decentralized Layout (Target):**
+Set of $K$ independent latents $Z = \{z_1, \dots, z_K\}$ where $z_k \in \mathbb{R}^D$. Each component owns a private latent space.
+$$
+c \sim \mathrm{Cat}(\pi), \quad z_k \sim \mathcal{N}(0, I) \;\forall k, \quad x \sim p_\theta(x \mid z_c, c)
+$$
+Note: In decentralized mode, $z_c$ is the "active" latent selected by $c$.
+
+**Prior Modes (for $\pi$ and $z$ structure):**
+*   **Mixture:** Learned $\pi$, standard normal $z$.
+*   **VampPrior:** $p(z|c)$ defined by pseudo-inputs.
+*   **Geometric:** Fixed spatial arrangement of components.
 
 ### 3.2 Approximate Posterior
 
-$$
-q_\phi(c,z\mid x)=q_\phi(c\mid x)\,q_\phi(z\mid x,c),\quad q_\phi(z\mid x,c)=\mathcal{N}\big(\mu_\phi(x,c),\operatorname{diag}(\sigma_\phi^2(x,c))\big).
-$$
+**Shared:**
+$$ q_\phi(c, z \mid x) = q_\phi(c \mid x) \, q_\phi(z \mid x) $$
+(Single encoder head for $z$).
+
+**Decentralized:**
+$$ q_\phi(c, Z \mid x) = q_\phi(c \mid x) \prod_{k=1}^K q_\phi(z_k \mid x) $$
+(Multi-head encoder outputting $[B, K, D]$).
+
+**Discrete Relaxation (Gumbel-Softmax):**
+To differentiate through component selection $c$, we use the Gumbel-Softmax trick:
+$$ y_k = \frac{\exp((\log \pi_k + g_k) / \tau)}{\sum_j \exp((\log \pi_j + g_j) / \tau)} $$
+where $g_k \sim \mathrm{Gumbel}(0, 1)$ and $\tau$ is temperature.
+*   **Training:** Use soft samples $y$ (or straight-through hard samples) to weight decoder inputs/losses.
+*   **Inference:** Hard sampling $c = \arg\max y$.
 
 ### 3.3 Decoder Architectures
 
@@ -50,7 +69,11 @@ $$
 $$z_{\text{path}} = W_z(z), \quad e_{\text{path}} = W_e(e_c), \quad \tilde z = [z_{\text{path}}; e_{\text{path}}], \quad p_\theta(x\mid z,c)=p_\theta(x\mid \tilde z).$$
 This enables component-specific feature learning while both architectures receive embedding context.
 
+**FiLM conditioning (current):** Generate affine parameters from embedding: $(\gamma,\beta)=g_\theta(e_c)$, apply feature-wise modulation $h'=\gamma\odot h + \beta$ inside the decoder. This strictly dominates concatenation when component embeddings are available.
+
 **Conditioning policy:** Train by evaluating the reconstruction term as a **weighted sum over channels** (expectation under $q(c\mid x)$); for efficiency we enable **Top-$M$ gating (default $M{=}5$)** and keep $\mathrm{KL}_c$ (if used) over all $K$. Optional: a short **soft-embedding warm-up** (replace $e_c$ by $\sum_c q(c\mid x)e_c$) in the first epochs; at **generation** time, sample a hard $c$ and decode with $e_c$.
+
+**Heteroscedastic output (current):** Decoder emits $(\mu,\sigma)$ with $\sigma = \operatorname{clip}\big(\sigma_{\min} + \operatorname{softplus}(s),\, \sigma_{\min},\, \sigma_{\max}\big)$ for stability; likelihood term uses $\|x-\mu\|^2/(2\sigma^2)+\log\sigma$.
 
 ---
 
@@ -58,14 +81,17 @@ This enables component-specific feature learning while both architectures receiv
 
 **Convention.** We minimize losses; all regularizers are written as positive penalties.
 
-Per-example objective:
+Per-example objective (ELBO):
 $$
-\mathcal L(x)= \underbrace{-\sum_c q_\phi(c\mid x)\,\mathbb{E}_{q_\phi(z\mid x,c)}\big[\log p_\theta(x\mid z,c)\big]}_{\text{Recon}}
-\;+\;
-\underbrace{\sum_c q_\phi(c\mid x)\,\mathrm{KL}\big(q_\phi(z\mid x,c)\,\|\,p(z\mid c)\big)}_{\text{$z$-KL}}
-\;+\;
-\underbrace{\beta_c\,\mathrm{KL}\big(q_\phi(c\mid x)\,\|\,\pi\big)}_{\text{$c$-KL (default }\beta_c{=}0\text{)}}.
+\mathcal L(x) = \underbrace{-\mathbb{E}_{q_\phi(c\mid x)}\big[\mathbb{E}_{q_\phi(z\mid x,c)}[\log p_\theta(x\mid z,c)]\big]}_{\text{Recon}} + \text{KL}_z + \underbrace{\beta_c\,\mathrm{KL}\big(q_\phi(c\mid x)\,\|\,\pi\big)}_{\text{$c$-KL}}.
 $$
+
+**Latent KL ($\text{KL}_z$) depends on layout:**
+
+*   **Shared:** Weighted sum against component priors.
+    $$ \text{KL}_z = \sum_c q_\phi(c\mid x)\,\mathrm{KL}\big(q_\phi(z\mid x)\,\|\,p(z\mid c)\big) $$
+*   **Decentralized:** Sum of independent KLs for all components.
+    $$ \text{KL}_z = \sum_{k=1}^K \mathrm{KL}\big(q_\phi(z_k\mid x)\,\|\,p(z_k)\big) $$
 
 **Supervised latent loss (labeled $(x,y)$):**
 $$

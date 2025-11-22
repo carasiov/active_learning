@@ -59,19 +59,29 @@ This directory contains the complete specification for implementing **decentrali
 
 ---
 
-### 5. [implementation_spec.md](./implementation_spec.md)
+### 5. [legacy_decoder_removal_spec.md](./legacy_decoder_removal_spec.md)
+**Purpose**: Specification for removing deprecated legacy decoder classes.
+
+**Contents**:
+- List of 10 classes to remove from `decoders.py`
+- Files to update (`decoders.py`, `__init__.py`)
+- Removal checklist and risk assessment
+- Expected file size reductions (90% cleanup)
+
+**For**: Cleaning up the codebase post-refactor.
+
+---
+
+### 6. [implementation_spec.md](./implementation_spec.md)
 **Purpose**: Complete implementation specification for AI agents.
 
 **Contents**:
-- Current state audit (existing code, issues)
-- Architectural transition (shared → decentralized latents)
-- Decoder refactor (modular composition to support all features)
-- Implementation tasks (extract modules, build decoders, migrate factory)
-- Validation experiments
-- Success criteria
-- File references with line numbers
+- Modular decoder refactor plan (Phase 1-2)
+- Detailed implementation tasks with line numbers
+- Validation experiments and success criteria
+- References to code locations
 
-**For**: Executing the full implementation from scratch.
+**For**: Executing the modular decoder refactor (COMPLETED).
 
 ---
 

@@ -273,25 +273,23 @@ class Encoder(nn.Module):
 
 **Location:** `src/rcmvae/domain/components/decoders/`
 
-**Types:**
-- `DenseDecoder`: Fully connected layers
-- `ConvDecoder`: Transposed convolutional layers
+**Modular Decoder Architecture (new)**
 
-**Interface:**
-```python
-class Decoder(nn.Module):
-    output_shape: Tuple[int, ...]
-    hidden_dims: Tuple[int, ...]
+- **Pattern:** `Decoder = Conditioner + Backbone + OutputHead`
+- **Modules:** see `src/rcmvae/domain/components/decoder_modules/`
+  - Conditioners: `FiLMLayer`, `ConcatConditioner`, `NoopConditioner`
+  - Backbones: `ConvBackbone`, `DenseBackbone`
+  - Output heads: `StandardHead`, `HeteroscedasticHead`
+- **Composed Decoders:** `ModularConvDecoder`, `ModularDenseDecoder`
+  - Construction handled by factory; supports all combos including **FiLM + Heteroscedastic** (previously blocked)
+- **Factory priority:** FiLM → Concat → Noop (mixture/geometric priors only); output head: heteroscedastic if enabled, else standard. Config validation enforces compatibility.
 
-    def __call__(self, z, deterministic=True):
-        # Returns: reconstructed x
-        ...
-```
-
-**Design:**
-- Mirrors encoder architecture (symmetric VAE)
-- Output shape matches input data shape
-- Sigmoid activation for [0,1] pixel values
+**Legacy decoders (deprecated, kept for backward-compatibility)**
+- `DenseDecoder`, `ConvDecoder`
+- `Heteroscedastic*Decoder`
+- `ComponentAware*Decoder`
+- `FiLM*Decoder`
+Migration: use `Modular*Decoder` with the equivalent conditioner/output head combination.
 
 ### Classifiers
 

@@ -395,29 +395,30 @@ train_step = runtime.train_step_fn
 
 **Purpose:** Decode latent vectors to reconstructions.
 
-**Classes:**
+**Modular decoders (preferred)**
+- Composition pattern: `conditioner + backbone + output_head`
+- Implementations: `ModularConvDecoder`, `ModularDenseDecoder`
+- Modules live in `src/rcmvae/domain/components/decoder_modules/{conditioning,backbones,outputs}.py`
+  - Conditioners: `FiLMLayer`, `ConcatConditioner`, `NoopConditioner`
+  - Backbones: `ConvBackbone`, `DenseBackbone`
+  - Output heads: `StandardHead`, `HeteroscedasticHead`
+- Factory mapping (mirrors priority): FiLM → Concat → Noop (mixture/geometric priors), heteroscedastic if enabled else standard. See `src/rcmvae/domain/components/factory.py::build_decoder`.
 
-**`DenseDecoder(nn.Module)`**
-- Fully connected decoder
-- Architecture: z → hidden layers → output_shape
-- Sigmoid activation for [0, 1] pixels
+**Legacy decoders (deprecated, kept for compatibility)**
+- `DenseDecoder`, `ConvDecoder`
+- `Heteroscedastic*Decoder`
+- `ComponentAware*Decoder`
+- `FiLM*Decoder`
+Migration: use modular decoders with the equivalent conditioner/output head; factory already routes configs accordingly.
 
-**Parameters:**
-```python
-output_shape: Tuple[int, ...]     # Reconstructed data shape
-hidden_dims: Tuple[int, ...]      # Layer sizes (reversed from encoder)
-dropout_rate: float = 0.0
-```
-
-**Output:**
-```python
-reconstruction = decoder(z, deterministic=True)  # Shape: output_shape
-```
-
-**`ConvDecoder(nn.Module)`**
-- Transposed convolutional decoder
-- Mirrors ConvEncoder architecture
-- Dense → ConvTranspose layers → output_shape
+**Implementing a new decoder module**
+1) Choose concern:
+   - New conditioner: accepts `(features, component_embedding)` → features (match shape; handle spatial broadcasting).
+   - New backbone: latent → intermediate features (no conditioning/output logic).
+   - New output head: features → mean or `(mean, sigma)` (apply clamping if variance).
+2) Place in `decoder_modules/`, export in `__init__.py`.
+3) Tests: add shape + gradient flow checks (see `tests/test_decoder_conditioning_modules.py`, `tests/test_decoder_backbones.py`, `tests/test_decoder_outputs.py`).
+4) Wire into factory if it should be selectable via config.
 
 ---
 

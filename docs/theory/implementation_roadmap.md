@@ -11,7 +11,8 @@
 | Pillar | Status | Key files / notes |
 |--------|--------|-------------------|
 | Mixture prior with entropy + Dirichlet controls | ✅ shipping | `src/rcmvae/domain/priors/mixture.py`, `src/rcmvae/application/services/loss_pipeline.py` (usage penalty + Dirichlet) |
-| Component-aware decoder (dense/conv, heteroscedastic variants) | ✅ shipping | `src/rcmvae/domain/components/decoders.py` |
+| Modular decoder architecture (conditioning + backbone + output) | ✅ shipping | `src/rcmvae/domain/components/decoder_modules/`, modular decoders in `decoders.py`, factory priority FiLM→Concat→Noop |
+| Component-aware decoder (legacy dense/conv, heteroscedastic variants) | ⚠️ legacy (deprecated) | Deprecated classes remain for compatibility; use modular decoders instead |
 | τ-classifier latent workflow (responsibility-based) | ✅ shipping | `src/rcmvae/domain/components/tau_classifier.py`, now enabled for **all** mixture-based priors |
 | Heteroscedastic decoder + weighted loss | ✅ needs tuning knobs only | `src/rcmvae/domain/components/decoders.py`, `src/rcmvae/application/services/loss_pipeline.py` |
 | VampPrior (pseudo-input learning, MC-KL) | ✅ shipping | `src/rcmvae/domain/priors/vamp.py`, network now caches pseudo stats & supports pseudo-LR scaling |
@@ -25,11 +26,21 @@ Legend: ✅ production-ready · ⚠️ needs tuning · 📋 planned/ready-to-wir
 
 ## Completed Pillars
 
-### Component-Aware Decoder
-- **What**: learns component embeddings `e_c` that specialize the decoder (parallel paths for `z` and `e_c`, merge mid-way). Supports dense/conv + heteroscedastic heads.  
-- **Why**: lets mixture components acquire functional roles without forcing latent separation.  
-- **Where**: `ComponentAware*Decoder` classes; configured via `use_component_aware_decoder`.  
-- **Validation**: ablations show improved recon quality and interpretable per-component outputs.
+### Modular Decoder Architecture
+- **What**: composition-based decoders: `conditioner + backbone + output_head`, supporting **FiLM + Heteroscedastic** combos (previously blocked by silent override).  
+- **Why**: avoids class explosion, enables all feature combinations, and makes testing/extension module-scoped.  
+- **Where**: `src/rcmvae/domain/components/decoder_modules/{conditioning,backbones,outputs}.py`; composed via `ModularConvDecoder`/`ModularDenseDecoder` in `decoders.py`; factory maps config flags with FiLM→Concat→Noop priority.  
+- **Validation**: FiLM + heteroscedastic run on MNIST improved reconstruction ~29% vs concat baseline (loss ≈ 4.8 vs 6.8); integration tests cover all 3×2 combinations.
+
+### Decentralized Latent Layout
+- **What**: Support for `latent_layout="decentralized"` (K independent latents) vs "shared" (single global latent).
+- **Mechanism**: Encoder outputs `[B, K, D]`; Gumbel-Softmax routing selects active path; Decoder processes active component.
+- **Status**: ✅ shipping (core infrastructure complete).
+- **Validation**: Validated in `mix10-dir-dec-gbl_tau_film-het` experiment (see `refactor_validation_report.md`).
+
+### Component-Aware Decoder (legacy)
+- **What**: legacy specialization via separate `z` and `e_c` paths (dense/conv, heteroscedastic variants).  
+- **Status**: deprecated; retained for backward compatibility. Migrate to modular decoders with `ConcatConditioner` + chosen output head.
 
 ### Mixture Prior with Diversity Controls
 - **What**: `MixtureGaussianPrior` handles `KL_z`, `KL_c`, optional Dirichlet MAP on π, and usage-entropy “diversity reward/punishment”.  
