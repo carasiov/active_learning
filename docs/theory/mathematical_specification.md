@@ -8,21 +8,21 @@
 
 ## 1. Abstract
 
-We present a responsibility-conditioned mixture VAE for semi-supervised classification with OOD awareness and dynamic label growth. A discrete channel $c$ captures global modes; a continuous latent $z$ captures within-mode variation. The decoder is component-aware, $p_\theta(x\mid z,c)$. A latent-only classifier arises from responsibilities $r_c(x)=q_\phi(c\mid x)$ and a component→label map $\tau$. We support interchangeable priors. **Default:** K-channels with $z\mid c\sim\mathcal N(0,I)$ and fixed uniform $\pi$. Channel usage is sparsified to keep only as many channels as needed; free channels serve OOD/new labels.
+We present a responsibility-conditioned mixture VAE for semi-supervised classification with OOD awareness and dynamic label growth. A discrete channel $c$ captures global modes; a channel-specific continuous latent $z_c$ captures within-mode variation. This is a **structured variational autoencoder** with a discrete global latent ($c$) and continuous local latents ($z_c$), where inference is performed via **amortized variational inference**: a neural encoder predicts $q_\phi(c\mid x)$ and $q_\phi(z_c\mid x,c)$. The decoder is component-aware, $p_\theta(x\mid z,c)$. A latent-only classifier arises from responsibilities $r_c(x)=q_\phi(c\mid x)$ and a component→label map $\tau$. We support interchangeable priors (mixture of Gaussians, VampPrior, geometric arrangements). Channel usage is sparsified to keep only as many channels as needed; free channels serve OOD/new labels.
 
 ---
 
 ## 2. Introduction
 
-**Default path.** Unless stated otherwise, we use **K-channels** with $z\mid c\sim\mathcal N(0,I)$ and **fixed uniform** $\pi$; amortized $q_\phi(c\mid x),q_\phi(z\mid x,c)$; a **component-aware decoder** $p_\theta(x\mid[z;e_c])$; a **per-image scalar** $\sigma(x)$ (clamped); a **latent-only classifier** via $\tau$ (stop-grad); **usage-entropy sparsity** on $\hat p(c)$; and **no $c$-KL** by default.
+This model achieves three goals: (i) classification from latent space; (ii) [uncertainty awareness](conceptual_model.md#5-uncertainty-and-ood) (aleatoric via decoder variance, epistemic via latent sampling); and (iii) dynamic label addition over time. We factor global vs. local variability via $c$ and $z$, then supervise the latent space lightly via responsibility-weighted label counts.
 
-Goal: a single model that (i) classifies from latent space; (ii) is uncertainty-aware (aleatoric via decoder variance, epistemic via latent sampling); and (iii) can add labels over time. We factor global vs. local variability via $c$ and $z$, then supervise the latent space lightly via responsibility-weighted label counts.
+This model employs a **structured variational posterior** of the form $q_\phi(c, z \mid x)$. Training maximizes an **evidence lower bound (ELBO)** comprising reconstruction likelihood, KL divergence terms, and optional regularizers, as in standard variational inference. The discrete channel $c$ captures global mixture-style modes (e.g., digit identity in MNIST), while the continuous latent $z_c$ captures local within-mode variation (e.g., stroke thickness, rotation).
 
 ---
 
 ## 3. Model
 
-### 3.1 Latent Layouts & Priors
+### 3.1 Latent Layouts
 
 The system supports two latent layouts (configured via `latent_layout` in [`config.py`](../../src/rcmvae/domain/config.py)):
 
@@ -33,49 +33,60 @@ c \sim \mathrm{Cat}(\pi), \quad z \mid c \sim \mathcal{N}(0, I), \quad x \sim p_
 $$
 
 **2. Decentralized Layout (Target):**
-Set of $K$ independent latents $Z = \{z_1, \dots, z_K\}$ where $z_k \in \mathbb{R}^D$. Each component owns a private latent space.
+The generative model samples one channel and one latent:
 $$
-c \sim \mathrm{Cat}(\pi), \quad z_k \sim \mathcal{N}(0, I) \;\forall k, \quad x \sim p_\theta(x \mid z_c, c)
+c \sim \mathrm{Cat}(\pi), \quad z \sim p(z \mid c) = \mathcal{N}(0, I), \quad x \sim p_\theta(x \mid z, c)
 $$
-Note: In decentralized mode, $z_c$ is the "active" latent selected by $c$.
+
+**Training implementation (hybrid approach):** The encoder [`encoders.py`](../../src/rcmvae/domain/components/encoders.py) produces $K$ independent posteriors $q_\phi(z_k \mid x)$ for $k=1,\dots,K$. During training, **all K latents are decoded** [`network.py`](../../src/rcmvae/domain/network.py#L159-L341) to produce per-component reconstructions, which are then weighted by $q_\phi(c\mid x)$. The KL term sums over all K posteriors. This treats the K latents as amortized inference variables with independent priors $p(z_k) = \mathcal{N}(0,I)$, forming a structured approximation to $q_\phi(c, z \mid x)$.
+
+### 3.2 Prior Modes
 
 **Prior Modes (for $\pi$ and $z$ structure):**
-*   **Mixture:** Learned $\pi$, standard normal $z$ ([`mixture.py`](../../src/rcmvae/domain/priors/mixture.py)).
-*   **VampPrior:** $p(z|c)$ defined by pseudo-inputs ([`vamp.py`](../../src/rcmvae/domain/priors/vamp.py)).
-*   **Geometric:** Fixed spatial arrangement of components ([`geometric_mog.py`](../../src/rcmvae/domain/priors/geometric_mog.py)).
+*   **Mixture:** Learned $\pi$, standard normal $z$ [`mixture.py`](../../src/rcmvae/domain/priors/mixture.py).
+*   **VampPrior:** $p(z|c)$ defined by pseudo-inputs [`vamp.py`](../../src/rcmvae/domain/priors/vamp.py).
+*   **Geometric:** Fixed spatial arrangement of components [`geometric_mog.py`](../../src/rcmvae/domain/priors/geometric_mog.py).
 
-### 3.2 Approximate Posterior
+### 3.3 Approximate Posterior
 
 **Shared:**
 $$ q_\phi(c, z \mid x) = q_\phi(c \mid x) \, q_\phi(z \mid x) $$
-(Single encoder head for $z$, see [`encoders.py`](../../src/rcmvae/domain/components/encoders.py)).
+(Single encoder head for $z$).
 
 **Decentralized:**
-$$ q_\phi(c, Z \mid x) = q_\phi(c \mid x) \prod_{k=1}^K q_\phi(z_k \mid x) $$
-(Multi-head encoder outputting $[B, K, D]$).
+The encoder produces $K$ independent Gaussian posteriors:
+$$ q_\phi(z_k \mid x) = \mathcal{N}(\mu_k(x), \sigma_k^2(x)) \quad \text{for } k=1,\dots,K. $$
+This forms a structured approximation to $q_\phi(c, z \mid x) = q_\phi(c \mid x) \, q_\phi(z \mid x, c)$.
+
+**Training procedure:** The encoder outputs all $K$ sets of parameters (shape $[B,K,D]$). During training:
+1. All $K$ latents $z_k \sim q_\phi(z_k \mid x)$ are sampled and decoded: $\text{recon}_k = p_\theta(x \mid z_k, k)$
+2. Reconstruction loss: $\mathcal{L}_{\text{recon}} = \sum_{k=1}^K q_\phi(c{=}k\mid x) \cdot \mathcal{L}(x, \text{recon}_k)$ (weighted expectation)
+3. KL loss: $\text{KL}_z = \sum_{k=1}^K \text{KL}(q_\phi(z_k\mid x) \| p(z_k))$ (sum over all K)
 
 **Discrete Relaxation (Gumbel-Softmax):**
-To differentiate through component selection $c$, we use the Gumbel-Softmax trick (implemented in [`network.py`](../../src/rcmvae/domain/network.py)):
+To differentiate through component selection $c$, we use the [Gumbel-Softmax trick](conceptual_model.md#gumbel-softmax-as-an-implementation-option) (implemented in [`network.py`](../../src/rcmvae/domain/network.py#L182-L227)):
 $$ y_k = \frac{\exp((\log \pi_k + g_k) / \tau)}{\sum_j \exp((\log \pi_j + g_j) / \tau)} $$
 where $g_k \sim \mathrm{Gumbel}(0, 1)$ and $\tau$ is temperature.
 *   **Training:** Use soft samples $y$ (or straight-through hard samples) to weight decoder inputs/losses.
 *   **Inference:** Hard sampling $c = \arg\max y$.
 
-### 3.3 Decoder Architectures
+### 3.4 Decoder Architectures
 
 Implemented in [`decoders.py`](../../src/rcmvae/domain/components/decoders.py) using modules from [`decoder_modules/`](../../src/rcmvae/domain/components/decoder_modules/).
 
-**Standard (concatenated):** Embed component $c$ as $e_c$, then concatenate with $z$: $\tilde z=[z; e_c]$, so $p_\theta(x\mid z,c)=p_\theta(x\mid \tilde z)$ with shared decoder weights ([`ConcatConditioner`](../../src/rcmvae/domain/components/decoder_modules/conditioning.py)).
+**Standard (concatenated):** Embed component $c$ as $e_c$, then concatenate with $z$: $\tilde z=[z; e_c]$, so $p_\theta(x\mid z,c)=p_\theta(x\mid \tilde z)$ with shared decoder weights.
 
 **Component-aware:** Separate transformation pathways for $z$ and $e_c$ before fusion:
 $$z_{\text{path}} = W_z(z), \quad e_{\text{path}} = W_e(e_c), \quad \tilde z = [z_{\text{path}}; e_{\text{path}}], \quad p_\theta(x\mid z,c)=p_\theta(x\mid \tilde z).$$
 This enables component-specific feature learning while both architectures receive embedding context.
 
-**FiLM conditioning (current):** Generate affine parameters from embedding: $(\gamma,\beta)=g_\theta(e_c)$, apply feature-wise modulation $h'=\gamma\odot h + \beta$ inside the decoder ([`FiLMLayer`](../../src/rcmvae/domain/components/decoder_modules/conditioning.py)). This strictly dominates concatenation when component embeddings are available.
+**FiLM conditioning (current):** Generate affine parameters from embedding: $(\gamma,\beta)=g_\theta(e_c)$, apply feature-wise modulation $h'=\gamma\odot h + \beta$ inside the decoder ([`conditioning.py`](../../src/rcmvae/domain/components/decoder_modules/conditioning.py)). This strictly dominates concatenation when component embeddings are available.
+
+**Decentralized training detail:** In decentralized layout, the decoder processes **all K latents** $(z_1, \dots, z_K)$ with their corresponding embeddings $(e_1, \dots, e_K)$ to produce $K$ reconstructions. The final output is a weighted combination using responsibilities/component selection.
 
 **Conditioning policy:** Train by evaluating the reconstruction term as a **weighted sum over channels** (expectation under $q(c\mid x)$); for efficiency we enable **Top-$M$ gating (default $M{=}5$)** and keep $\mathrm{KL}_c$ (if used) over all $K$. Optional: a short **soft-embedding warm-up** (replace $e_c$ by $\sum_c q(c\mid x)e_c$) in the first epochs; at **generation** time, sample a hard $c$ and decode with $e_c$.
 
-**Heteroscedastic output (current):** Decoder emits $(\mu,\sigma)$ with $\sigma = \operatorname{clip}\big(\sigma_{\min} + \operatorname{softplus}(s),\, \sigma_{\min},\, \sigma_{\max}\big)$ for stability ([`HeteroscedasticHead`](../../src/rcmvae/domain/components/decoder_modules/outputs.py)); likelihood term uses $\|x-\mu\|^2/(2\sigma^2)+\log\sigma$.
+**Heteroscedastic output (current):** Decoder emits $(\mu,\sigma)$ with $\sigma = \operatorname{clip}\big(\sigma_{\min} + \operatorname{softplus}(s),\, \sigma_{\min},\, \sigma_{\max}\big)$ for stability ([`outputs.py`](../../src/rcmvae/domain/components/decoder_modules/outputs.py)); likelihood term uses $\|x-\mu\|^2/(2\sigma^2)+\log\sigma$ ([`loss_pipeline.py`](../../src/rcmvae/application/services/loss_pipeline.py#L106-L149)).
 
 ---
 
@@ -87,6 +98,7 @@ Per-example objective (ELBO) (implemented in [`loss_pipeline.py`](../../src/rcmv
 $$
 \mathcal L(x) = \underbrace{-\mathbb{E}_{q_\phi(c\mid x)}\big[\mathbb{E}_{q_\phi(z\mid x,c)}[\log p_\theta(x\mid z,c)]\big]}_{\text{Recon}} + \text{KL}_z + \underbrace{\beta_c\,\mathrm{KL}\big(q_\phi(c\mid x)\,\|\,\pi\big)}_{\text{$c$-KL}}.
 $$
+In the decentralized layout, $q_\phi(z\mid x,c)$ refers specifically to the posterior of the active latent $z_c$, i.e., the $c$-th latent in the set $\{z_k\}$ produced by the encoder.
 
 **Latent KL ($\text{KL}_z$) depends on layout:**
 
@@ -99,7 +111,7 @@ $$
 $$
 \mathcal L_{\text{sup}}(x,y)=-\log\sum_c q_\phi(c\mid x)\,\tau_{c,y}.
 $$
-(See [`TauClassifier`](../../src/rcmvae/domain/components/tau_classifier.py)).
+(See [`tau_classifier.py`](../../src/rcmvae/domain/components/tau_classifier.py)).
 
 **Channel-usage sparsity (EMA $\hat p$):**
 $$
@@ -129,7 +141,7 @@ Maintain soft counts per channel/label:
 $$
 s_{c,y}\leftarrow s_{c,y}+q_\phi(c\mid x)\,\mathbf{1}\{y_i=y\},\qquad \tau_{c,y}=\frac{s_{c,y}+\alpha_0}{\sum_{y'}(s_{c,y'}+\alpha_0)}.
 $$
-Predict with $\ p(y\mid x)=\sum_c q_\phi(c\mid x)\,\tau_{c,y}$. Implementation: update $\tau$ from responsibility-weighted counts; treat $\tau$ as **stop-grad** in $\mathcal L_{\text{sup}}$. Multiple channels per label are allowed. Channels with low $\max_y\tau_{c,y}$ are candidates for OOD/new labels.
+Predict with $\ p(y\mid x)=\sum_c q_\phi(c\mid x)\,\tau_{c,y}$. Implementation: update $\tau$ from responsibility-weighted counts; treat $\tau$ as **stop-grad** in $\mathcal L_{\text{sup}}$ (see [`tau_classifier.py`](../../src/rcmvae/domain/components/tau_classifier.py)). Multiple channels per label are allowed. Channels with low $\max_y\tau_{c,y}$ are candidates for OOD/new labels.
 
 ---
 
@@ -159,93 +171,8 @@ $$
 
 5. **Optimize** the total loss; consider mild repulsion between $e_c$ to avoid duplicate channels.
 
-6. **Dynamic labels.** **Free channel:** a channel is free if $\hat p(c){<}10^{-3}$ **or** $\max_y\tau_{c,y}{<}0.05$. A new label claims **1–3** free channels chosen by highest responsibilities of its first labeled examples; initialize counts with those examples.
+6. **Dynamic labels.** **Free channel:** a channel is free if $\hat p(c){<}10^{-3}$ **or** $\max_y\tau_{c,y}{<}0.05$ (see [`tau_classifier.py`](../../src/rcmvae/domain/components/tau_classifier.py#L222-L251)). A new label claims **1–3** free channels chosen by highest responsibilities of its first labeled examples; initialize counts with those examples.
 
----
-
-## 8. Defaults (MNIST-like)
-
-- Latent $d{=}16$ (or $d{=}2$ for direct viz), $K\in[50,100]$.
-
-- **Decoder variance:** per-image scalar, $\sigma_{\min}{=}0.05$, clamp $[0.05,0.5]$.
-
-- **Channel weights:** $\pi$ fixed uniform by default (no $\pi$-prior term). If learnable: Dirichlet prior optional.
-
-- **Top-$M$ gating:** default $M{=}5$.
-
-- **Label smoothing prior:** $\alpha_0\approx 1$. **EMA** momentum $0.9$–$0.99$ for $\hat p(c)$.
-
-- **$c$-KL weight:** $\beta_c{=}0$ by default.
-
----
-
-## 9. Experiment Plan
-
-- **Datasets:** MNIST (base), Fashion-MNIST (stress), CIFAR-10 grayscale (stretch).
-
-- **Protocols:** few-label regime (e.g., 10–50 labels/class), class-imbalance, dynamic label addition, OOD with unseen digits/fashion classes.
-
-- **Metrics:** Accuracy/NLL/ECE; OOD AUROC/AUPR; recon-NLL; $K_{\text{eff}}$ via $H(\hat p(c))$; NMI/ARI; calibration plots.
-
-- **Baselines:** standard VAE + softmax; mixture VAE without component-aware decoder; evidential softmax; contrastive SSL + linear probe.
-
----
-
-## 10. Ablations
-
-- K-channels vs VampPrior; with/without prior-shaping.
-
-- With/without component-aware decoding.
-
-- Sparsity schedules; with/without repulsion.
-
-- Soft-embedding warm-up on/off; Top-$M$ gating $M\in\{3,5\}$.
-
-- Learned-$\sigma$ vs fixed-$\sigma$ decoder.
-
----
-
-## 11. Limitations & Risks
-
-- Over-fragmentation if sparsity too weak; over-pruning if too strong.
-
-- Fixed geometric MoG can mislead if its topology mismatches data.
-
-- PoE/tempering (if tried) can collapse modes without careful normalization.
-
-- Top-$M$ gating is a biased estimator (good trade-off empirically).
-
----
-
-## Appendix A — Prior Shaping (VampPrior)
-
-- **MMD** between ${\mathrm{Enc}(u_k)}$ (or samples from $q_{\text{mix}}$) and target samples; use RBF kernels, anneal weight after recon stabilizes.
-
-- **MC-KL** $\mathrm{KL}\big(q_{\text{mix}}\,\|\,p_{\text{target}}\big)$ via log-sum-exp; sample a few points per component.
-
----
-
-## Appendix B — PoE Prior (Experimental)
-
-Tempered product $p(z)\propto \prod_c p_c(z)^{\tau}$ with $\tau\in(0,1]$. Monitor normalization, entropy, and collapse.
-
----
-
-## Appendix C — Contrastive Add-On (Optional)
-
-Supervised contrastive in latent/projection space; cluster-prototype term using $e_c$ or latent centroids; weight modestly alongside ELBO.
-
----
-
-## Appendix D — VampPrior Hygiene
-
-Pseudo-inputs: diverse init (data/k-means), smaller LR, mild repulsion between ${\mathrm{Enc}(u_i)}$, optional annealed diversity loss.
-
----
-
-## Appendix E — Encoder Variants
-
-Default: shared trunk with small per-channel heads for $q(z\mid x,c)$. Heavy K-branch encoders are supported as experiments but compute-heavy.
 
 ---
 
@@ -253,9 +180,9 @@ Default: shared trunk with small per-channel heads for $q(z\mid x,c)$. Heavy K-b
 
 **Sparsity (default).** We use usage-entropy on empirical channel usage as the default; a Dirichlet prior on $\pi$ is optional.
 
-**Responsibility convention.** We write $r_c(z)$ for latent-space responsibilities. In practice we compute $r_c(z)$ via the encoder as $q_{\phi}(c\mid x)$ for the input that produced $z$.
+**Responsibility convention.** Responsibilities are always derived from encoder outputs: $r_c(x) = q_\phi(c\mid x)$. When referring to latent-space points $z$, we use $r_c(z)$ to denote the same value inherited from the corresponding input $x$.
 
-**OOD scoring.** Use responsibility×label-map confidence, e.g., $1-\max_c r_c(z)\,\max_y \tau_{c,y}$ (optionally blended with reconstruction checks).
+**OOD scoring.** Use responsibility×label-map confidence, e.g., $1-\max_c r_c(z)\,\max_y \tau_{c,y}$ (see [Section 6](#6-ood-scoring)), optionally blended with reconstruction checks.
 
 **Decoder variance.** Default is a per-image $\sigma(x)$ (clamped) for stability; a per-pixel head is optional and can be enabled later.
 

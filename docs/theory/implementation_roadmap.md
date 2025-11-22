@@ -79,7 +79,7 @@ Legend: ✅ production-ready · ⚠️ needs tuning · 📋 planned/ready-to-wir
 
 ---
 
-## Next Focus Areas
+## Future Focus Areas
 
 1. **OOD & Active Learning Loop**
    - Wire the existing metrics (`max_c r_c`, τ certainty) into experiment scripts for acquisition and reporting.
