@@ -174,6 +174,7 @@ class SSVAENetwork(nn.Module):
                 raise ValueError(f"{self.config.prior_type} prior selected but prior_module was not initialized.")
 
             responsibilities = softmax(component_logits, axis=-1)
+            responsibilities = jnp.nan_to_num(responsibilities, nan=0.0, posinf=0.0, neginf=0.0)
             batch_size = z_raw.shape[0]
             num_components = self.config.num_components
             latent_layout = getattr(self.config, "latent_layout", "shared")

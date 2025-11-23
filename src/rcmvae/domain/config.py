@@ -253,11 +253,16 @@ class SSVAEConfig:
                 "Both use_film_decoder and use_component_aware_decoder are True; FiLM will take priority.",
                 UserWarning,
             )
-        mixture_condition_priors = {"mixture", "geometric_mog"}
+        mixture_condition_priors = {"mixture", "geometric_mog", "vamp"}
         if (self.use_film_decoder or self.use_component_aware_decoder) and self.prior_type not in mixture_condition_priors:
             raise ValueError(
                 f"FiLM/component-aware decoders require mixture-like priors {mixture_condition_priors}; "
                 f"got prior_type='{self.prior_type}'."
+            )
+        if self.prior_type == "vamp" and (self.use_film_decoder or self.use_component_aware_decoder):
+            warnings.warn(
+                "VampPrior does not supply component embeddings; FiLM/component-aware settings will be ignored (decoder uses NoopConditioner).",
+                UserWarning,
             )
 
         # τ-classifier validation
@@ -268,11 +273,11 @@ class SSVAEConfig:
                 RuntimeWarning,
             )
         if self.use_tau_classifier:
-            if self.prior_type not in {"mixture", "geometric_mog"}:
-                raise ValueError("τ-classifier requires mixture/geometric priors that emit component responsibilities.")
+            if self.prior_type not in mixture_based_priors:
+                raise ValueError("τ-classifier requires mixture-based priors that emit component responsibilities.")
             if self.num_components < self.num_classes:
                 raise ValueError(
-                    "num_components must be >= num_classes when use_tau_classifier=True for mixture/geometric priors. "
+                    "num_components must be >= num_classes when use_tau_classifier=True for mixture-based priors. "
                     f"Got num_components={self.num_components}, num_classes={self.num_classes}."
                 )
         if self.tau_smoothing_alpha <= 0:
@@ -289,7 +294,11 @@ class SSVAEConfig:
 
         # Learnable π validation
         if self.learnable_pi and self.prior_type not in ["mixture", "geometric_mog"]:
-            raise ValueError("learnable_pi requires mixture or geometric_mog priors.")
+            warnings.warn(
+                f"learnable_pi is not supported for prior_type='{self.prior_type}'; disabling learnable_pi.",
+                UserWarning,
+            )
+            self.learnable_pi = False
 
         # Component-aware decoder validation
         mixture_based_priors = {"mixture", "vamp", "geometric_mog"}
@@ -345,16 +354,16 @@ class SSVAEConfig:
             raise ValueError(
                 f"latent_layout must be 'shared' or 'decentralized', got '{self.latent_layout}'."
             )
-        if self.latent_layout == "decentralized" and self.prior_type not in {"mixture", "geometric_mog"}:
-            raise ValueError("latent_layout='decentralized' requires a mixture/geometric prior.")
+        if self.latent_layout == "decentralized" and self.prior_type not in {"mixture", "geometric_mog", "vamp"}:
+            raise ValueError("latent_layout='decentralized' requires a mixture/geometric/vamp prior.")
         if self.latent_layout == "decentralized" and self.num_components <= 1:
             raise ValueError(
                 f"latent_layout='decentralized' requires num_components > 1, got {self.num_components}."
             )
         if self.gumbel_temperature <= 0:
             raise ValueError("gumbel_temperature must be positive")
-        if self.use_gumbel_softmax and self.prior_type not in {"mixture", "geometric_mog"}:
-            raise ValueError("use_gumbel_softmax requires a mixture/geometric prior.")
+        if self.use_gumbel_softmax and self.prior_type not in {"mixture", "geometric_mog", "vamp"}:
+            raise ValueError("use_gumbel_softmax requires a mixture/geometric/vamp prior.")
         if self.use_gumbel_softmax and self.gumbel_temperature < self.gumbel_temperature_min:
             raise ValueError(
                 f"gumbel_temperature ({self.gumbel_temperature}) must be >= gumbel_temperature_min ({self.gumbel_temperature_min})."
