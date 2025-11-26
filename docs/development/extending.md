@@ -112,7 +112,7 @@ When adding a new mixture-like prior, ensure it supplies `responsibilities` in `
 
 ## Tutorial 4 · Adding Custom Loss Terms
 
-Custom regularizers should plug into `compute_loss_and_metrics_v2` (or helper functions in `src/rcmvae/application/services/loss_pipeline.py`) so they appear in the trainer metrics. Example: channel-embedding repulsion.
+Custom regularizers should plug into `compute_loss_and_metrics_v2` (or helper functions in `src/rcmvae/application/services/loss_pipeline.py`) so they appear in the trainer metrics. Example: channel-embedding repulsion. Existing patterns: `usage_sparsity_penalty`, `dirichlet_map_penalty`, `l1_penalty`, heteroscedastic NLL helpers.
 
 ```python
 def channel_repulsion_loss(embeddings: jnp.ndarray, weight: float) -> jnp.ndarray:

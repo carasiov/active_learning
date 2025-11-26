@@ -4,9 +4,11 @@ from typing import Callable, Dict, Tuple
 
 import jax
 import jax.numpy as jnp
+import jax.tree_util as jtu
 import optax
 
 from rcmvae.domain.config import SSVAEConfig
+from rcmvae.domain.network import _make_weight_decay_mask
 
 
 EPS = 1e-8
@@ -210,6 +212,17 @@ def kl_divergence(z_mean: jnp.ndarray, z_log: jnp.ndarray, weight: float) -> jnp
         axes = tuple(range(1, kl.ndim))
         per_sample = jnp.sum(kl, axis=axes)
     return weight * jnp.mean(per_sample)
+
+
+def l1_penalty(params: Dict[str, Dict[str, jnp.ndarray]], mask) -> jnp.ndarray:
+    """Compute masked L1 penalty over parameters."""
+    masked_abs = jtu.tree_map(
+        lambda p, m: jnp.sum(jnp.abs(p)) if m else jnp.array(0.0, dtype=p.dtype),
+        params,
+        mask,
+    )
+    leaves = jtu.tree_leaves(masked_abs)
+    return jnp.sum(jnp.stack(leaves)) if leaves else jnp.array(0.0)
 
 
 def categorical_kl(
@@ -451,7 +464,13 @@ def compute_loss_and_metrics_v2(
         v for k, v in kl_terms.items()
         if k in ("kl_z", "kl_c", "dirichlet_penalty", "component_diversity")
     )
-    total = recon_loss + total_kl + cls_loss_weighted
+    if config.l1_weight > 0.0:
+        l1_mask = _make_weight_decay_mask(params)
+        l1_penalty_value = config.l1_weight * l1_penalty(params, l1_mask)
+    else:
+        l1_penalty_value = jnp.array(0.0, dtype=recon_loss.dtype)
+
+    total = recon_loss + total_kl + cls_loss_weighted + l1_penalty_value
 
     # Build metrics dictionary
     metrics = {
@@ -459,6 +478,7 @@ def compute_loss_and_metrics_v2(
         "reconstruction_loss": recon_loss,
         "classification_loss": cls_loss_unweighted,
         "weighted_classification_loss": cls_loss_weighted,
+        "l1_penalty": l1_penalty_value,
     }
 
     # Add all KL terms from prior
@@ -479,6 +499,8 @@ def compute_loss_and_metrics_v2(
         metrics["component_entropy"] = zero
     if "pi_entropy" not in metrics:
         metrics["pi_entropy"] = zero
+    if "l1_penalty" not in metrics:
+        metrics["l1_penalty"] = zero
 
     # Aggregate kl_loss for backward compatibility
     metrics["kl_loss"] = metrics["kl_z"] + metrics["kl_c"]

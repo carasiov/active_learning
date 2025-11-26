@@ -45,6 +45,7 @@ model:
   random_seed: 42                   
   grad_clip_norm: 5.0               # Gradient clipping (null to disable)
   weight_decay: 0.0001              # L2 regularization via AdamW
+  l1_weight: 0.0001                    # L1 regularization on weights (mask matches weight_decay); try 0.0, 1e-6, 1e-5
   dropout_rate: 0.2                 # Dropout in classifier
   monitor_metric: "loss"            # Metric for early stopping: "loss", "val_loss", or "classification_loss"
   # ──────────────────────────────────────────────────────────────────────────
@@ -83,10 +84,10 @@ model:
   geometric_radius: 2.0             # Spatial radius (1.5-3.0)
 
   # Mixture/VampPrior regularization (not used with standard/geometric_mog)
-  kl_c_weight: 0.05                  # Component assignment KL weight
+  kl_c_weight: 0.05                 # Component assignment KL weight
   kl_c_anneal_epochs: 100            # Anneal kl_c_weight from 0→1 over N epochs
                                     # (0 = no annealing, start at full weight)
-  component_diversity_weight: -15.00 # Entropy reward for diverse component usage
+  component_diversity_weight: -5.00 # Entropy reward for diverse component usage
                                     # NEGATIVE = encourage diversity (prevents collapse)
                                     # POSITIVE = discourage diversity (not recommended)
   learnable_pi: false

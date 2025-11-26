@@ -50,6 +50,7 @@ INFORMATIVE_HPARAMETERS = (
     "dirichlet_weight",
     "learnable_pi",
     "component_diversity_weight",
+    "l1_weight",
     "weight_decay",
     "dropout_rate",
     "monitor_metric",
@@ -106,6 +107,7 @@ class SSVAEConfig:
         random_seed: Base random seed used for parameter initialization and shuffling.
         grad_clip_norm: Global norm threshold for gradient clipping; disabled when ``None``.
         weight_decay: L2-style weight decay applied through the optimizer.
+        l1_weight: L1 regularization strength applied via loss (masked like weight_decay).
         dropout_rate: Dropout applied inside the classifier network.
         label_weight: (Unused today) scaling factor for the classification loss term.
         input_hw: Optional (height, width) tuple for decoder output; defaults to the model input.
@@ -167,6 +169,7 @@ class SSVAEConfig:
     random_seed: int = 42
     grad_clip_norm: float | None = 1.0
     weight_decay: float = 1e-4
+    l1_weight: float = 0.0
     dropout_rate: float = 0.2
     label_weight: float = 0.0
     xla_flags: str | None = None

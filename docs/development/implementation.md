@@ -778,6 +778,7 @@ preds = trainer.predict(X_test)
 - `categorical_kl()` - Component assignment KL
 - `dirichlet_map_penalty()` - Dirichlet prior regularization
 - `usage_sparsity_penalty()` - Component diversity regularization
+- `l1_penalty()` - Masked L1 regularization (shares weight-decay mask)
 - `classification_loss()` - Cross-entropy on labeled samples
 
 **Main Loss Function:**
@@ -814,6 +815,7 @@ Protocol-based loss computation that delegates to priors for their specific logi
     'component_entropy': entropy,
     'pi_entropy': pi_entropy,
     'dirichlet_penalty': dirichlet,
+    'l1_penalty': l1_penalty,  # masked L1 on params, config.l1_weight scales it
     'loss_no_global_priors': recon + kl_z + kl_c + cls,
     'contrastive_loss': 0.0  # placeholder
 }
