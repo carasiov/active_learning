@@ -6,6 +6,7 @@ from flax import linen as nn
 
 from rcmvae.domain.components.decoder_modules import (
     ConcatConditioner,
+    ConditionalInstanceNorm,
     ConvBackbone,
     DenseBackbone,
     FiLMLayer,
@@ -65,20 +66,40 @@ def build_encoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = Non
 
 
 def build_decoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = None) -> nn.Module:
-    """Build decoder using modular composition with no silent overrides."""
+    """Build decoder using modular composition.
+
+    Conditioning is selected via config.decoder_conditioning:
+        - "cin": Conditional Instance Normalization (recommended for mixture-of-VAEs)
+        - "film": FiLM (scale + shift without normalization)
+        - "concat": Concatenate projected embedding with features
+        - "none": No conditioning (standard decoder)
+
+    For VampPrior, conditioning is forced to "none" since it doesn't use embeddings.
+    """
     resolved_hw = _resolve_input_hw(config, input_hw)
 
-    use_film = config.prior_type in {"mixture", "geometric_mog"} and config.use_film_decoder
-    use_concat = config.prior_type in {"mixture", "geometric_mog"} and config.use_component_aware_decoder
-    use_heteroscedastic = config.use_heteroscedastic_decoder
+    # Determine conditioning method
+    # VampPrior doesn't use component embeddings, so force "none"
+    conditioning = config.decoder_conditioning
+    if config.prior_type == "vamp":
+        conditioning = "none"
+    # Standard prior also doesn't use conditioning
+    if config.prior_type == "standard":
+        conditioning = "none"
 
-    if use_film:
-        conditioner: nn.Module = FiLMLayer(component_embedding_dim=config.component_embedding_dim)
-    elif use_concat:
-        conditioner = ConcatConditioner()
-    else:
+    # Build conditioner based on config
+    if conditioning == "cin":
+        conditioner: nn.Module = ConditionalInstanceNorm(
+            component_embedding_dim=config.component_embedding_dim
+        )
+    elif conditioning == "film":
+        conditioner = FiLMLayer(component_embedding_dim=config.component_embedding_dim)
+    elif conditioning == "concat":
+        conditioner = ConcatConditioner(component_embedding_dim=config.component_embedding_dim)
+    else:  # "none"
         conditioner = NoopConditioner()
 
+    # Build backbone
     if config.decoder_type == "conv":
         backbone: nn.Module = ConvBackbone(latent_dim=config.latent_dim, output_hw=resolved_hw)
     elif config.decoder_type == "dense":
@@ -88,6 +109,8 @@ def build_decoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = Non
     else:
         raise ValueError(f"Unknown decoder type: {config.decoder_type}")
 
+    # Build output head
+    use_heteroscedastic = config.use_heteroscedastic_decoder
     if use_heteroscedastic:
         output_head: nn.Module = HeteroscedasticHead(
             output_hw=resolved_hw,
@@ -97,6 +120,7 @@ def build_decoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = Non
     else:
         output_head = StandardHead(output_hw=resolved_hw)
 
+    # Compose decoder
     if config.decoder_type == "conv":
         return ModularConvDecoder(
             conditioner=conditioner,
@@ -108,8 +132,6 @@ def build_decoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = Non
         backbone=backbone,
         output_head=output_head,
     )
-
-    raise ValueError(f"Unknown decoder type: {config.decoder_type}")
 
 
 def build_classifier(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = None) -> Classifier:

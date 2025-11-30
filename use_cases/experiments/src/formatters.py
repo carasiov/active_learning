@@ -241,18 +241,17 @@ def _format_decoder_type(model_config: Dict[str, Any]) -> str:
 
     features = []
 
-    # Conditioning: FiLM > Concat > Noop (mirror factory priority)
-    prior_type = model_config.get("prior_type", "standard")
-    is_mixture_based = prior_type in {"mixture", "geometric_mog"}
-    use_film = is_mixture_based and model_config.get("use_film_decoder", False)
-    use_concat = is_mixture_based and model_config.get("use_component_aware_decoder", False)
+    # Conditioning method: cin > film > concat > none
+    conditioning = model_config.get("decoder_conditioning", "none")
+    embed_dim = model_config.get("component_embedding_dim", 8)
 
-    if use_film:
-        embed_dim = model_config.get("component_embedding_dim", 8)
+    if conditioning == "cin":
+        features.append(f"CIN (embed={embed_dim})")
+    elif conditioning == "film":
         features.append(f"FiLM (embed={embed_dim})")
-    elif use_concat:
-        embed_dim = model_config.get("component_embedding_dim", 8)
+    elif conditioning == "concat":
         features.append(f"component-aware (embed={embed_dim})")
+    # "none" adds nothing
 
     # Heteroscedastic decoder
     if model_config.get("use_heteroscedastic_decoder", False):

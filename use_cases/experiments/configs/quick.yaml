@@ -64,7 +64,11 @@ model:
                                     # - true: separate pathways z→Dense, e_c→Dense, then merge
                                     # Both receive embeddings; true enables specialization
   component_embedding_dim: 32        # Embedding size for component conditioning (4-16)
-  use_film_decoder: true           # FiLM conditioning (dense/conv decoder)
+  decoder_conditioning: "cin"       # Conditioning method for component embeddings:
+                                    # - "cin": Conditional Instance Norm (normalizes then modulates)
+                                    # - "film": FiLM (scale + shift without normalization)
+                                    # - "concat": Concatenate projected embedding
+                                    # - "none": No conditioning
   # Discrete routing controls (mixture / geometric)
   use_gumbel_softmax: true         # If true, sample c via Gumbel-Softmax for decentralization experiments
   use_straight_through_gumbel: true # Straight-through one-hot for decoder selection

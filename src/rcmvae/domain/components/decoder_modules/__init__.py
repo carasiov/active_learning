@@ -1,8 +1,9 @@
-from .conditioning import ConcatConditioner, FiLMLayer, NoopConditioner
+from .conditioning import ConcatConditioner, ConditionalInstanceNorm, FiLMLayer, NoopConditioner
 from .backbones import ConvBackbone, DenseBackbone
 from .outputs import HeteroscedasticHead, StandardHead
 
 __all__ = [
+    "ConditionalInstanceNorm",
     "FiLMLayer",
     "ConcatConditioner",
     "NoopConditioner",

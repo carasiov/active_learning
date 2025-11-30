@@ -47,7 +47,11 @@ Outputs will land under `use_cases/experiments/results/<run>/`, with new figures
 ## Quick Reminder of Flags in `quick.yaml`
 - `latent_layout`: `"shared"` | `"decentralized"`
 - `use_gumbel_softmax`, `use_straight_through_gumbel`, `gumbel_temperature`
-- `use_film_decoder`: works for dense/conv; requires mixture-based prior
+- `decoder_conditioning`: `"cin"` | `"film"` | `"concat"` | `"none"` — controls decoder feature modulation
+  - `cin`: Conditional Instance Normalization (normalizes, then applies γ/β)
+  - `film`: FiLM modulation (γ/β without normalization)
+  - `concat`: Concatenate projected embedding with features
+  - `none`: No conditioning (for standard prior)
 - Others unchanged (component-aware, heteroscedastic, τ, etc.).
 
 ## Refactor Ideas to Simplify/Clean Up

@@ -184,12 +184,15 @@ def _encode_decoder(config: SSVAEConfig) -> str:
     """
     features = []
 
-    # Order matters for consistency (alphabetical for simplicity)
-    if getattr(config, "use_film_decoder", False):
+    # Conditioning method (cin > film > ca > none)
+    conditioning = getattr(config, "decoder_conditioning", "none")
+    if conditioning == "cin":
+        features.append("cin")
+    elif conditioning == "film":
         features.append("film")
-
-    if config.use_component_aware_decoder and not getattr(config, "use_film_decoder", False):
+    elif conditioning == "concat" or config.use_component_aware_decoder:
         features.append("ca")
+    # "none" adds nothing
 
     if config.use_heteroscedastic_decoder:
         features.append("het")
@@ -300,16 +303,17 @@ Encodes decoder features (modifiers are cumulative):
 
 | Code | Meaning | Config |
 |------|---------|--------|
-| `plain` | Standard decoder (no special features) | Default |
-| `film` | FiLM-conditioned decoder (dense) | `use_film_decoder: true` |
-| `ca` | Component-aware decoder | `use_component_aware_decoder: true` |
+| `plain` | Standard decoder (no special features) | `decoder_conditioning: "none"` |
+| `cin` | Conditional Instance Normalization | `decoder_conditioning: "cin"` |
+| `film` | FiLM conditioning (scale+shift) | `decoder_conditioning: "film"` |
+| `ca` | Component-aware (concat) | `decoder_conditioning: "concat"` |
 | `het` | Heteroscedastic (learns σ²) | `use_heteroscedastic_decoder: true` |
-| `ca-het` | Both component-aware and heteroscedastic | Both enabled |
+| `cin-het` | CIN + heteroscedastic | Both enabled |
 
 **Notes:**
-- Modifiers combine in canonical order: `film-ca-het`
-- Component-aware / FiLM require mixture-based priors with component embeddings
-- Future features will extend this list (e.g., `ca-het-contr` for contrastive)
+- Modifiers combine in canonical order: `cin-het`, `film-het`, `ca-het`
+- CIN/FiLM/CA require mixture-based priors with component embeddings
+- Future features will extend this list (e.g., `cin-het-contr` for contrastive)
 
 ---
 

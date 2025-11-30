@@ -61,7 +61,7 @@ INFORMATIVE_HPARAMETERS = (
     "kl_c_anneal_epochs",
     "component_embedding_dim",
     "use_component_aware_decoder",
-    "use_film_decoder",
+    "decoder_conditioning",
     "top_m_gating",
     "soft_embedding_warmup_epochs",
     "use_tau_classifier",
@@ -132,6 +132,9 @@ class SSVAEConfig:
         kl_c_anneal_epochs: If >0, linearly ramp kl_c_weight from 0 to its configured value across this many epochs.
         component_embedding_dim: Dimensionality of component embeddings (default: same as latent_dim).
             Small values (4-16) recommended to avoid overwhelming latent information.
+        decoder_conditioning: Conditioning method for component-aware decoders.
+            Options: "cin" (Conditional Instance Norm), "film", "concat", "none".
+            Requires mixture or geometric_mog prior. See architecture.md for details.
         use_component_aware_decoder: If True, use component-aware decoder architecture that processes
             z and component embeddings separately (recommended for mixture prior).
         top_m_gating: If >0, compute reconstruction using only top-M components by responsibility.
@@ -191,7 +194,7 @@ class SSVAEConfig:
     mixture_history_log_every: int = 1  # Track π and usage every N epochs
     component_embedding_dim: int | None = None  # Defaults to latent_dim if None
     use_component_aware_decoder: bool = True  # Enable by default for mixture prior
-    use_film_decoder: bool = False  # Optional FiLM-conditioned decoder (dense only)
+    decoder_conditioning: str = "none"  # Conditioning method: "cin" (Conditional Instance Norm), "film", "concat", "none"
     top_m_gating: int = 0  # 0 means use all components; >0 uses top-M
     soft_embedding_warmup_epochs: int = 0  # 0 means no warmup
     use_tau_classifier: bool = False  # Opt-in τ-classifier for mixture-based priors
@@ -250,23 +253,27 @@ class SSVAEConfig:
         if self.soft_embedding_warmup_epochs < 0:
             raise ValueError("soft_embedding_warmup_epochs must be >= 0")
 
-        # Conditioning conflicts and prerequisites
-        if self.use_film_decoder and self.use_component_aware_decoder:
-            warnings.warn(
-                "Both use_film_decoder and use_component_aware_decoder are True; FiLM will take priority.",
-                UserWarning,
-            )
-        mixture_condition_priors = {"mixture", "geometric_mog", "vamp"}
-        if (self.use_film_decoder or self.use_component_aware_decoder) and self.prior_type not in mixture_condition_priors:
+        # Decoder conditioning validation
+        valid_conditioning = {"cin", "film", "concat", "none"}
+        if self.decoder_conditioning not in valid_conditioning:
             raise ValueError(
-                f"FiLM/component-aware decoders require mixture-like priors {mixture_condition_priors}; "
-                f"got prior_type='{self.prior_type}'."
+                f"decoder_conditioning must be one of {valid_conditioning}, "
+                f"got '{self.decoder_conditioning}'"
             )
-        if self.prior_type == "vamp" and (self.use_film_decoder or self.use_component_aware_decoder):
-            warnings.warn(
-                "VampPrior does not supply component embeddings; FiLM/component-aware settings will be ignored (decoder uses NoopConditioner).",
-                UserWarning,
-            )
+        mixture_condition_priors = {"mixture", "geometric_mog"}
+        uses_conditioning = self.decoder_conditioning in {"cin", "film", "concat"}
+        if uses_conditioning and self.prior_type not in mixture_condition_priors:
+            if self.prior_type == "vamp":
+                warnings.warn(
+                    f"VampPrior does not supply component embeddings; "
+                    f"decoder_conditioning='{self.decoder_conditioning}' will be ignored (using 'none').",
+                    UserWarning,
+                )
+            else:
+                raise ValueError(
+                    f"decoder_conditioning='{self.decoder_conditioning}' requires mixture-like priors "
+                    f"{mixture_condition_priors}; got prior_type='{self.prior_type}'."
+                )
 
         # τ-classifier validation
         mixture_based_priors = {"mixture", "vamp", "geometric_mog"}
@@ -302,22 +309,6 @@ class SSVAEConfig:
                 UserWarning,
             )
             self.learnable_pi = False
-
-        # Component-aware decoder validation
-        mixture_based_priors = {"mixture", "vamp", "geometric_mog"}
-        if self.use_component_aware_decoder and self.prior_type not in mixture_based_priors:
-            warnings.warn(
-                f"use_component_aware_decoder: true only applies to mixture-based priors {mixture_based_priors}. "
-                f"Got prior_type: '{self.prior_type}'. Falling back to standard decoder.",
-                UserWarning
-            )
-            # Note: Factory will handle fallback to standard decoder gracefully
-        if self.use_film_decoder and self.prior_type not in mixture_based_priors:
-            warnings.warn(
-                f"use_film_decoder requires mixture-based priors {mixture_based_priors} to supply component embeddings. "
-                f"Got prior_type='{self.prior_type}', FiLM conditioning will be skipped.",
-                UserWarning,
-            )
 
         # VampPrior validation
         if self.vamp_num_samples_kl < 1:
