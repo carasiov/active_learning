@@ -70,23 +70,33 @@ where $g_k \sim \mathrm{Gumbel}(0, 1)$ and $\tau$ is temperature.
 *   **Training:** Use soft samples $y$ (or straight-through hard samples) to weight decoder inputs/losses.
 *   **Inference:** Hard sampling $c = \arg\max y$.
 
-### 3.4 Decoder Architectures
+### 3.4 Decoder Conditioning
 
-Implemented in [`decoders.py`](../../src/rcmvae/domain/components/decoders.py) using modules from [`decoder_modules/`](../../src/rcmvae/domain/components/decoder_modules/).
+The decoder is conditioned on component embeddings $e_c$ to enable component-specific reconstruction. Conditioning is configured via `decoder_conditioning` in [`config.py`](../../src/rcmvae/domain/config.py).
 
-**Standard (concatenated):** Embed component $c$ as $e_c$, then concatenate with $z$: $\tilde z=[z; e_c]$, so $p_\theta(x\mid z,c)=p_\theta(x\mid \tilde z)$ with shared decoder weights.
+**Conditioning methods** (implemented in [`conditioning.py`](../../src/rcmvae/domain/components/decoder_modules/conditioning.py)):
 
-**Component-aware:** Separate transformation pathways for $z$ and $e_c$ before fusion:
-$$z_{\text{path}} = W_z(z), \quad e_{\text{path}} = W_e(e_c), \quad \tilde z = [z_{\text{path}}; e_{\text{path}}], \quad p_\theta(x\mid z,c)=p_\theta(x\mid \tilde z).$$
-This enables component-specific feature learning while both architectures receive embedding context.
+| Method | Config | Formula | Description |
+|--------|--------|---------|-------------|
+| Conditional Instance Norm | `"cin"` | $h' = \gamma_c \cdot \frac{h - \mu}{\sigma} + \beta_c$ | Normalizes features, then modulates with γ/β from embedding |
+| FiLM | `"film"` | $h' = \gamma_c \cdot h + \beta_c$ | Scale + shift without normalization |
+| Concat | `"concat"` | $h' = [h; \text{proj}(e_c)]$ | Concatenate projected embedding with features |
+| None | `"none"` | $h' = h$ | Pass-through (for standard/vamp priors) |
 
-**FiLM conditioning (current):** Generate affine parameters from embedding: $(\gamma,\beta)=g_\theta(e_c)$, apply feature-wise modulation $h'=\gamma\odot h + \beta$ inside the decoder ([`conditioning.py`](../../src/rcmvae/domain/components/decoder_modules/conditioning.py)). This strictly dominates concatenation when component embeddings are available.
+Where:
+- $e_c \in \mathbb{R}^E$ is the **component embedding** — a learned vector representing component $c$'s identity (looked up from an embedding table)
+- $h$ is the **decoder's internal features** — activations flowing through the network as it reconstructs from $z$
+- $(\gamma_c, \beta_c) = g_\theta(e_c)$ are modulation parameters generated from the embedding via a learned linear layer
 
-**Decentralized training detail:** In decentralized layout, the decoder processes **all K latents** $(z_1, \dots, z_K)$ with their corresponding embeddings $(e_1, \dots, e_K)$ to produce $K$ reconstructions. The final output is a weighted combination using responsibilities/component selection.
+**CIN vs FiLM:** CIN normalizes features before modulation, allowing each component to control the "rendering style" of reconstructions. FiLM modulates without normalization, preserving feature statistics. CIN is recommended for component specialization; FiLM for feature gating.
 
-**Conditioning policy:** Train by evaluating the reconstruction term as a **weighted sum over channels** (expectation under $q(c\mid x)$); for efficiency we enable **Top-$M$ gating (default $M{=}5$)** and keep $\mathrm{KL}_c$ (if used) over all $K$. Optional: a short **soft-embedding warm-up** (replace $e_c$ by $\sum_c q(c\mid x)e_c$) in the first epochs; at **generation** time, sample a hard $c$ and decode with $e_c$.
+**Valid combinations:**
+- `mixture`, `geometric_mog`: All conditioning methods valid
+- `vamp`, `standard`: Only `"none"` (no component embeddings available)
 
-**Heteroscedastic output (current):** Decoder emits $(\mu,\sigma)$ with $\sigma = \operatorname{clip}\big(\sigma_{\min} + \operatorname{softplus}(s),\, \sigma_{\min},\, \sigma_{\max}\big)$ for stability ([`outputs.py`](../../src/rcmvae/domain/components/decoder_modules/outputs.py)); likelihood term uses $\|x-\mu\|^2/(2\sigma^2)+\log\sigma$ ([`loss_pipeline.py`](../../src/rcmvae/application/services/loss_pipeline.py#L106-L149)).
+**Decentralized training:** In decentralized layout, the decoder processes **all K latents** $(z_1, \dots, z_K)$ with their corresponding embeddings $(e_1, \dots, e_K)$ to produce $K$ reconstructions. The final output is a weighted combination using responsibilities/component selection.
+
+**Heteroscedastic output:** Decoder emits $(\mu,\sigma)$ with $\sigma = \operatorname{clip}\big(\sigma_{\min} + \operatorname{softplus}(s),\, \sigma_{\min},\, \sigma_{\max}\big)$ for stability ([`outputs.py`](../../src/rcmvae/domain/components/decoder_modules/outputs.py)); likelihood term uses $\|x-\mu\|^2/(2\sigma^2)+\log\sigma$ ([`loss_pipeline.py`](../../src/rcmvae/application/services/loss_pipeline.py#L106-L149)).
 
 ---
 

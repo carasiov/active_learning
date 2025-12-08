@@ -8,7 +8,7 @@ experiment:
 # ============================================================================
 data:
   dataset: "mnist"                  # Currently only MNIST is supported
-  num_samples: 3333               # Total samples from dataset
+  num_samples: 60000               # Total samples from dataset
   num_labeled: 0                  # Labeled samples (rest are unlabeled)
   seed: 42                          # Random seed for data sampling
   dataset_variant: "mnist"          # "mnist" (default) or "digits" 
@@ -56,16 +56,13 @@ model:
                                     # - "mixture": Learned mixture of Gaussians 
                                     # - "geometric_mog": Fixed geometric arrangement
                                     # - "vamp": Spatial clustering via pseudo-inputs
-  num_components: 10                # Number of mixture components (K)
+  num_components: 20                # Number of mixture components (K)
                                     # Should be >= num_classes for multimodal support
-  # Component specialization (mixture/vamp/geometric_mog only)
-  use_component_aware_decoder: false # Decoder variant for component embeddings:
-                                    # - false: concat [z, e_c] as input (shared decoder weights)
-                                    # - true: separate pathways z→Dense, e_c→Dense, then merge
-                                    # Both receive embeddings; true enables specialization
-  component_embedding_dim: 32        # Embedding size for component conditioning (4-16)
-  decoder_conditioning: "cin"       # Conditioning method for component embeddings:
-                                    # - "cin": Conditional Instance Norm (normalizes then modulates)
+  # Component conditioning (mixture/geometric_mog only)
+  component_embedding_dim: 32       # Embedding size for component conditioning
+  decoder_conditioning: "cin"       # How decoder uses component embeddings:
+                                    # - "cin": Conditional Instance Norm (recommended)
+                                    #          Normalizes features, then modulates with γ/β
                                     # - "film": FiLM (scale + shift without normalization)
                                     # - "concat": Concatenate projected embedding
                                     # - "none": No conditioning
@@ -91,7 +88,7 @@ model:
   kl_c_weight: 0.05                 # Component assignment KL weight
   kl_c_anneal_epochs: 100            # Anneal kl_c_weight from 0→1 over N epochs
                                     # (0 = no annealing, start at full weight)
-  component_diversity_weight: -5.00 # Entropy reward for diverse component usage
+  component_diversity_weight: -10.00 # Entropy reward for diverse component usage
                                     # NEGATIVE = encourage diversity (prevents collapse)
                                     # POSITIVE = discourage diversity (not recommended)
   learnable_pi: false

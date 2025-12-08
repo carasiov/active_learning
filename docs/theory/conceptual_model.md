@@ -105,18 +105,24 @@ Implementation options:
 
 [Gumbel-Softmax](mathematical_specification.md#33-approximate-posterior) is thus an **implementation detail** for making channel selection more discrete; the core concept is the categorical responsibilities $q_\phi(c\mid x)$.
 
-### 3.2 Decoder: component-aware via FiLM
+### 3.2 Decoder: component-conditioned reconstruction
 
 The decoder is **conditioned** on the active channel:
 
 - It always decodes from:
-  - The **active latent** $z_c$.
-  - A learned **channel embedding** $e_c$.
+  - The **active latent** $z_c$ — the continuous code for this sample.
+  - A learned **channel embedding** $e_c$ — a vector representing component $c$'s identity.
 
-To make each channel behave like its own expert, the decoder uses **FiLM (Feature-wise Linear Modulation)** [`conditioning.py`](../../src/rcmvae/domain/components/decoder_modules/conditioning.py):
+To make each channel behave like its own expert, the decoder uses **conditioning** ([`conditioning.py`](../../src/rcmvae/domain/components/decoder_modules/conditioning.py)). The embedding $e_c$ generates modulation parameters $(\gamma_c, \beta_c)$ that alter the decoder's internal features $h$:
 
-- At each layer, feature maps are modulated by parameters $(\gamma_c, \beta_c)$ computed from $e_c$:
-  - $h' = \gamma_c \odot h + \beta_c$.
+- **Conditional Instance Normalization (CIN)**: Normalizes features, then modulates:
+  - $h' = \gamma_c \odot \frac{h - \mu}{\sigma} + \beta_c$
+  - Each component controls the "rendering style" of its reconstructions.
+
+- **FiLM**: Modulates without normalization:
+  - $h' = \gamma_c \odot h + \beta_c$
+
+CIN is recommended for component specialization; FiLM for simpler feature gating. See [Mathematical Specification §3.4](mathematical_specification.md#34-decoder-conditioning) for all options.
 
 ### 3.3 Decoder as a likelihood model
 

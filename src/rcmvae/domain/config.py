@@ -135,8 +135,7 @@ class SSVAEConfig:
         decoder_conditioning: Conditioning method for component-aware decoders.
             Options: "cin" (Conditional Instance Norm), "film", "concat", "none".
             Requires mixture or geometric_mog prior. See architecture.md for details.
-        use_component_aware_decoder: If True, use component-aware decoder architecture that processes
-            z and component embeddings separately (recommended for mixture prior).
+        use_component_aware_decoder: DEPRECATED. Has no effect. Use decoder_conditioning instead.
         top_m_gating: If >0, compute reconstruction using only top-M components by responsibility.
             Reduces computation for large K. Default 0 means use all components.
         soft_embedding_warmup_epochs: If >0, use soft-weighted component embeddings for this many
@@ -193,7 +192,7 @@ class SSVAEConfig:
     kl_c_anneal_epochs: int = 0
     mixture_history_log_every: int = 1  # Track π and usage every N epochs
     component_embedding_dim: int | None = None  # Defaults to latent_dim if None
-    use_component_aware_decoder: bool = True  # Enable by default for mixture prior
+    use_component_aware_decoder: bool = False  # DEPRECATED: use decoder_conditioning instead
     decoder_conditioning: str = "none"  # Conditioning method: "cin" (Conditional Instance Norm), "film", "concat", "none"
     top_m_gating: int = 0  # 0 means use all components; >0 uses top-M
     soft_embedding_warmup_epochs: int = 0  # 0 means no warmup
@@ -240,6 +239,15 @@ class SSVAEConfig:
                 RuntimeWarning,
             )
             self.dirichlet_alpha = None
+
+        # Deprecation warning for use_component_aware_decoder
+        if self.use_component_aware_decoder:
+            warnings.warn(
+                "use_component_aware_decoder is deprecated and has no effect. "
+                "Use decoder_conditioning instead (options: 'cin', 'film', 'concat', 'none').",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         # Component-aware decoder defaults and validation
         if self.component_embedding_dim is None:
