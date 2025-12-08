@@ -146,6 +146,8 @@ The specification calls for: $D_{KL}(q(c|x) \| \text{Dirichlet}(\alpha))$
 
 This achieves the same goals (per-sample sparsity + batch diversity) through different math.
 
+**New option**: A logistic-normal mixture prior on component logits (`c_regularizer="logit_mog"`) replaces the categorical KL when enabled. It pushes q(c|x) toward one-hot vectors via a Gaussian mixture in logit space (means at +M·e_k), leaving the global π MAP penalty unchanged.
+
 ---
 
 ## Configuration Reference

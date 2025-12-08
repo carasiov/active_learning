@@ -64,6 +64,10 @@ INFORMATIVE_HPARAMETERS = (
     "decoder_conditioning",
     "top_m_gating",
     "soft_embedding_warmup_epochs",
+    "c_regularizer",
+    "c_logit_prior_weight",
+    "c_logit_prior_mean",
+    "c_logit_prior_sigma",
     "use_tau_classifier",
     "tau_smoothing_alpha",
     "use_heteroscedastic_decoder",
@@ -196,6 +200,10 @@ class SSVAEConfig:
     decoder_conditioning: str = "none"  # Conditioning method: "cin" (Conditional Instance Norm), "film", "concat", "none"
     top_m_gating: int = 0  # 0 means use all components; >0 uses top-M
     soft_embedding_warmup_epochs: int = 0  # 0 means no warmup
+    c_regularizer: str = "categorical"  # {"categorical", "logit_mog", "both"} — per-sample prior on q(c|x)
+    c_logit_prior_weight: float = 0.0  # Strength of logistic-normal mixture regularizer on component logits
+    c_logit_prior_mean: float = 5.0  # Mean magnitude M for the per-axis Gaussian components in logit space
+    c_logit_prior_sigma: float = 1.0  # Isotropic sigma for the Gaussian components in logit space
     use_tau_classifier: bool = False  # Opt-in τ-classifier for mixture-based priors
     tau_smoothing_alpha: float = 1.0  # Laplace smoothing prior (α_0)
     use_heteroscedastic_decoder: bool = False  # Learn per-image variance σ(x)
@@ -260,6 +268,19 @@ class SSVAEConfig:
             raise ValueError(f"top_m_gating ({self.top_m_gating}) cannot exceed num_components ({self.num_components})")
         if self.soft_embedding_warmup_epochs < 0:
             raise ValueError("soft_embedding_warmup_epochs must be >= 0")
+
+        # Component regularizer mode and parameters
+        valid_c_regularizers = {"categorical", "logit_mog", "both"}
+        if self.c_regularizer not in valid_c_regularizers:
+            raise ValueError(
+                f"c_regularizer must be one of {valid_c_regularizers}, got '{self.c_regularizer}'."
+            )
+        if self.c_logit_prior_weight < 0:
+            raise ValueError("c_logit_prior_weight must be non-negative")
+        if self.c_logit_prior_mean <= 0:
+            raise ValueError("c_logit_prior_mean must be positive")
+        if self.c_logit_prior_sigma <= 0:
+            raise ValueError("c_logit_prior_sigma must be positive")
 
         # Decoder conditioning validation
         valid_conditioning = {"cin", "film", "concat", "none"}

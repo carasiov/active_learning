@@ -11,6 +11,9 @@ from rcmvae.application.services.loss_pipeline import (
     usage_sparsity_penalty,
     weighted_reconstruction_loss,
 )
+from rcmvae.domain.config import SSVAEConfig
+from rcmvae.domain.priors.base import EncoderOutput
+from rcmvae.domain.priors.mixture import MixtureGaussianPrior
 
 
 def test_categorical_kl_zero_when_q_matches_pi():
@@ -111,3 +114,64 @@ def test_dirichlet_penalty_zero_when_alpha_none():
     pi = jnp.array([0.4, 0.6], dtype=jnp.float32)
     penalty = dirichlet_map_penalty(pi, alpha=None, weight=3.0)
     assert penalty == 0.0
+
+
+def test_logit_mog_penalty_prefers_axis_aligned_logits():
+    num_components = 3
+    batch_size = 3
+    latent_dim = 2
+
+    # Set up config to use only the logit_mog regularizer
+    config = SSVAEConfig(
+        prior_type="mixture",
+        num_components=num_components,
+        c_regularizer="logit_mog",
+        c_logit_prior_weight=1.0,
+        c_logit_prior_mean=5.0,
+        c_logit_prior_sigma=1.0,
+        kl_c_weight=0.0,
+        latent_dim=latent_dim,
+    )
+
+    # Dummy latent stats (unused by the logit prior in this test)
+    z_mean = jnp.zeros((batch_size, latent_dim))
+    z_log_var = jnp.zeros((batch_size, latent_dim))
+    z = jnp.zeros((batch_size, latent_dim))
+
+    # Responsibilities/pi just need to be well-formed
+    responsibilities = jnp.full((batch_size, num_components), 1.0 / num_components)
+    pi = jnp.full((num_components,), 1.0 / num_components)
+
+    # Axis-aligned logits should incur lower penalty than flat logits
+    aligned_logits = jnp.array(
+        [
+            [6.0, 0.0, 0.0],
+            [0.0, 6.0, 0.0],
+            [0.0, 0.0, 6.0],
+        ],
+        dtype=jnp.float32,
+    )
+    flat_logits = jnp.zeros((batch_size, num_components), dtype=jnp.float32)
+
+    prior = MixtureGaussianPrior()
+
+    aligned_output = EncoderOutput(
+        z_mean=z_mean,
+        z_log_var=z_log_var,
+        z=z,
+        component_logits=aligned_logits,
+        extras={
+            "responsibilities": responsibilities,
+            "pi": pi,
+            "z_mean_per_component": jnp.zeros((batch_size, num_components, latent_dim)),
+            "z_log_var_per_component": jnp.zeros((batch_size, num_components, latent_dim)),
+        },
+    )
+    flat_output = aligned_output._replace(component_logits=flat_logits)
+
+    aligned_terms = prior.compute_kl_terms(aligned_output, config)
+    flat_terms = prior.compute_kl_terms(flat_output, config)
+
+    assert aligned_terms["kl_c_logit_mog"] < flat_terms["kl_c_logit_mog"]
+    assert jnp.isfinite(aligned_terms["kl_c_logit_mog"])
+    assert jnp.isfinite(flat_terms["kl_c_logit_mog"])

@@ -436,6 +436,8 @@ def compute_loss_and_metrics_v2(
     # Apply KL_c annealing if present
     if "kl_c" in kl_terms:
         kl_terms["kl_c"] = kl_terms["kl_c"] * kl_c_scale
+    if "kl_c_logit_mog" in kl_terms:
+        kl_terms["kl_c_logit_mog"] = kl_terms["kl_c_logit_mog"] * kl_c_scale
 
     # Classification loss: use τ-based if enabled and available
     use_tau_classifier = (
@@ -462,7 +464,7 @@ def compute_loss_and_metrics_v2(
     # Assemble total loss
     total_kl = sum(
         v for k, v in kl_terms.items()
-        if k in ("kl_z", "kl_c", "dirichlet_penalty", "component_diversity")
+        if k in ("kl_z", "kl_c", "kl_c_logit_mog", "dirichlet_penalty", "component_diversity")
     )
     if config.l1_weight > 0.0:
         l1_mask = _make_weight_decay_mask(params)
@@ -499,11 +501,13 @@ def compute_loss_and_metrics_v2(
         metrics["component_entropy"] = zero
     if "pi_entropy" not in metrics:
         metrics["pi_entropy"] = zero
+    if "kl_c_logit_mog" not in metrics:
+        metrics["kl_c_logit_mog"] = zero
     if "l1_penalty" not in metrics:
         metrics["l1_penalty"] = zero
 
     # Aggregate kl_loss for backward compatibility
-    metrics["kl_loss"] = metrics["kl_z"] + metrics["kl_c"]
+    metrics["kl_loss"] = metrics["kl_z"] + metrics["kl_c"] + metrics["kl_c_logit_mog"]
 
     # Loss without global regularizers (for monitoring)
     metrics["loss_no_global_priors"] = (
