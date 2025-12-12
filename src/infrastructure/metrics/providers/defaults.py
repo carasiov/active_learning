@@ -39,6 +39,7 @@ def training_metrics(context: MetricContext) -> ComponentResult:
                 "final_recon_loss": _final(history, "reconstruction_loss"),
                 "final_kl_z": _final(history, "kl_z"),
                 "final_kl_c": _final(history, "kl_c"),
+                "final_kl_c_logit_mog": _final(history, "kl_c_logit_mog"),
                 "training_time_sec": float(context.train_time),
                 "epochs_completed": len(history.get("loss", [])),
             }
