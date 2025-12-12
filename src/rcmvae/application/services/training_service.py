@@ -108,6 +108,10 @@ class Trainer:
         self.config = config
         self._latest_splits: DataSplits | None = None
         self._current_state: SSVAETrainState | None = None  # For callback access during training
+        # Trigger mode state: tracks current k_active across epochs
+        self._trigger_k_active: int | None = None
+        # Track epochs since last unlock for migration window in trigger mode
+        self._trigger_epochs_since_unlock: int = 0
 
     @staticmethod
     def _init_history() -> HistoryDict:
@@ -128,6 +132,11 @@ class Trainer:
             "pi_entropy": [],
             "k_active": [],  # Curriculum: number of active channels
             "in_migration_window": [],  # Curriculum: whether in migration window
+            # Trigger-based unlock metrics (Stage 4)
+            "normality_score": [],  # Latent normality proxy
+            "plateau_detected": [],  # Whether plateau condition was met
+            "plateau_improvement": [],  # Relative improvement over plateau window
+            "unlock_triggered": [],  # Whether unlock was triggered this epoch
             "val_loss": [],
             "val_loss_no_global_priors": [],
             "val_reconstruction_loss": [],
@@ -194,6 +203,15 @@ class Trainer:
             self._current_state = None
             return updated_runtime, history
 
+        # Initialize trigger mode state
+        use_trigger_mode = (
+            self.config.curriculum_enabled
+            and self.config.curriculum_unlock_mode == "trigger"
+        )
+        if use_trigger_mode:
+            self._trigger_k_active = self.config.curriculum_start_k_active
+            self._trigger_epochs_since_unlock = 0
+
         epochs_ran = 0
         for epoch in range(setup.max_epochs):
             epochs_ran = epoch + 1
@@ -202,15 +220,32 @@ class Trainer:
             else:
                 kl_c_scale = 1.0
 
+            # Calculate curriculum k_active based on mode
+            if use_trigger_mode:
+                k_active = self._trigger_k_active
+            else:
+                k_active = self.config.get_k_active(epoch)
+
             # Calculate Gumbel temperature (with migration window boost if applicable)
-            gumbel_temp = self.config.get_effective_gumbel_temperature(epoch)
-
-            # Calculate curriculum k_active (number of active channels)
-            k_active = self.config.get_k_active(epoch)
-
-            # Calculate migration window settings
-            use_straight_through = self.config.use_straight_through_for_epoch(epoch)
-            effective_logit_mog_weight = self.config.get_effective_logit_mog_weight(epoch)
+            # For trigger mode, use epochs_since_unlock for migration window
+            if use_trigger_mode:
+                in_migration = (
+                    self.config.curriculum_migration_epochs > 0
+                    and self._trigger_epochs_since_unlock < self.config.curriculum_migration_epochs
+                )
+                if in_migration:
+                    gumbel_temp = self.config.gumbel_temperature * self.config.curriculum_temp_boost_during_migration
+                    effective_logit_mog_weight = self.config.c_logit_prior_weight * self.config.curriculum_logit_mog_scale_during_migration
+                    use_straight_through = not self.config.curriculum_soft_routing_during_migration
+                else:
+                    gumbel_temp = self.config.gumbel_temperature
+                    effective_logit_mog_weight = self.config.c_logit_prior_weight
+                    use_straight_through = self.config.use_straight_through_gumbel
+            else:
+                gumbel_temp = self.config.get_effective_gumbel_temperature(epoch)
+                use_straight_through = self.config.use_straight_through_for_epoch(epoch)
+                effective_logit_mog_weight = self.config.get_effective_logit_mog_weight(epoch)
+                in_migration = self.config.is_in_migration_window(epoch)
 
             state, state_rng, shuffle_rng, splits = self._train_one_epoch(
                 state,
@@ -238,9 +273,54 @@ class Trainer:
             )
             self._update_history(history, train_metrics, val_metrics)
 
-            # Record curriculum k_active and migration window status (epoch-level, not from metrics)
+            # Record curriculum k_active and migration window status
             history["k_active"].append(k_active)
-            history["in_migration_window"].append(self.config.is_in_migration_window(epoch))
+            history["in_migration_window"].append(in_migration)
+
+            # Trigger-based unlock logic (Stage 4)
+            unlock_triggered = False
+            normality_score = 0.0
+            plateau_detected = False
+            plateau_improvement = 0.0
+
+            if use_trigger_mode and self.config.curriculum_enabled:
+                # Compute normality score from validation latents
+                normality_score = self._compute_normality_score_for_trigger(
+                    state.params, splits, runtime, k_active
+                )
+
+                # Check trigger conditions
+                from rcmvae.application.services.curriculum_trigger import (
+                    check_plateau,
+                    should_unlock_trigger,
+                )
+
+                plateau_detected, plateau_improvement = check_plateau(
+                    history,
+                    self.config.curriculum_plateau_metric,
+                    self.config.curriculum_plateau_window_epochs,
+                    self.config.curriculum_plateau_min_improvement,
+                )
+
+                should_unlock, _ = should_unlock_trigger(
+                    history, normality_score, self.config, k_active
+                )
+
+                if should_unlock:
+                    unlock_triggered = True
+                    self._trigger_k_active = min(
+                        self._trigger_k_active + 1,
+                        self.config.curriculum_max_k_active,
+                    )
+                    self._trigger_epochs_since_unlock = 0
+                else:
+                    self._trigger_epochs_since_unlock += 1
+
+            # Record trigger metrics
+            history["normality_score"].append(normality_score)
+            history["plateau_detected"].append(plateau_detected)
+            history["plateau_improvement"].append(plateau_improvement)
+            history["unlock_triggered"].append(unlock_triggered)
 
             # Store state for callback access
             self._current_state = state
@@ -543,6 +623,68 @@ class Trainer:
             val_value = float(val_metrics.get(key, 0.0))
             history[key].append(train_value)
             history[f"val_{key}"].append(val_value)
+
+    def _compute_normality_score_for_trigger(
+        self,
+        params: Dict[str, Dict[str, jnp.ndarray]],
+        splits: DataSplits,
+        runtime: ModelRuntime,
+        k_active: int,
+    ) -> float:
+        """Compute latent normality score for trigger-based unlock.
+
+        Uses a sample of validation data to compute how close the latent
+        posterior q(z|x) is to N(0,I) over active channels.
+
+        Args:
+            params: Model parameters.
+            splits: Data splits.
+            runtime: Model runtime with forward function.
+            k_active: Current number of active channels.
+
+        Returns:
+            Normality score (lower = closer to N(0,I)).
+        """
+        from rcmvae.application.services.curriculum_trigger import compute_normality_score
+
+        # Use a sample of validation data (up to 256 samples for efficiency)
+        sample_size = min(256, splits.val_size if splits.val_size > 0 else splits.train_size)
+        if sample_size == 0:
+            return 0.0
+
+        if splits.val_size > 0:
+            sample_x = splits.x_val[:sample_size]
+        else:
+            sample_x = splits.x_train[:sample_size]
+
+        # Forward pass to get latent statistics
+        # Use the model's apply function without training noise
+        try:
+            forward_output = runtime.model.apply(
+                {"params": params},
+                sample_x,
+                training=False,
+                k_active=k_active,
+            )
+            _, z_mean, z_log_var, _, _, _, extras = forward_output
+
+            # Check for per-component latents (decentralized layout)
+            z_mean_pc = extras.get("z_mean_per_component")
+            z_log_pc = extras.get("z_log_var_per_component")
+
+            if z_mean_pc is not None and z_log_pc is not None:
+                # Decentralized layout
+                return compute_normality_score(
+                    z_mean_pc, z_log_pc, k_active, latent_layout="decentralized"
+                )
+            else:
+                # Shared layout
+                return compute_normality_score(
+                    z_mean, z_log_var, k_active, latent_layout="shared"
+                )
+        except Exception:
+            # If forward pass fails, return 0 (don't block training)
+            return 0.0
 
     @staticmethod
     def _run_callbacks(

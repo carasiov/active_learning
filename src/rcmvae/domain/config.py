@@ -85,6 +85,10 @@ INFORMATIVE_HPARAMETERS = (
     "curriculum_start_k_active",
     "curriculum_unlock_every_epochs",
     "curriculum_max_k_active",
+    "curriculum_unlock_mode",
+    "curriculum_plateau_window_epochs",
+    "curriculum_plateau_min_improvement",
+    "curriculum_normality_threshold",
 )
 
 @dataclass
@@ -247,6 +251,13 @@ class SSVAEConfig:
     curriculum_soft_routing_during_migration: bool = True  # Disable straight-through during migration
     curriculum_temp_boost_during_migration: float = 1.0  # Multiply gumbel_temperature by this during migration (>1 softens)
     curriculum_logit_mog_scale_during_migration: float = 1.0  # Scale logit_mog weight by this during migration (<1 reduces peakiness pressure)
+
+    # Trigger-based unlock (alternative to epoch-based)
+    curriculum_unlock_mode: str = "epoch"  # "epoch" = unlock every N epochs; "trigger" = unlock when plateau + normality
+    curriculum_plateau_window_epochs: int = 5  # Window size for plateau detection (recon loss must stagnate for this many epochs)
+    curriculum_plateau_min_improvement: float = 0.01  # Minimum relative improvement required to NOT be a plateau
+    curriculum_plateau_metric: str = "reconstruction_loss"  # Metric for plateau detection ("reconstruction_loss" or "loss")
+    curriculum_normality_threshold: float = 1.0  # Max normality score to allow unlock (lower = stricter)
 
     def __post_init__(self):
         """Validate configuration after initialization."""
@@ -440,6 +451,25 @@ class SSVAEConfig:
                 raise ValueError("curriculum_temp_boost_during_migration must be positive")
             if self.curriculum_logit_mog_scale_during_migration < 0:
                 raise ValueError("curriculum_logit_mog_scale_during_migration must be >= 0")
+            # Trigger-based unlock validation
+            valid_unlock_modes = {"epoch", "trigger"}
+            if self.curriculum_unlock_mode not in valid_unlock_modes:
+                raise ValueError(
+                    f"curriculum_unlock_mode must be one of {valid_unlock_modes}, "
+                    f"got '{self.curriculum_unlock_mode}'."
+                )
+            if self.curriculum_plateau_window_epochs < 1:
+                raise ValueError("curriculum_plateau_window_epochs must be >= 1")
+            if self.curriculum_plateau_min_improvement < 0:
+                raise ValueError("curriculum_plateau_min_improvement must be >= 0")
+            valid_plateau_metrics = {"reconstruction_loss", "loss"}
+            if self.curriculum_plateau_metric not in valid_plateau_metrics:
+                raise ValueError(
+                    f"curriculum_plateau_metric must be one of {valid_plateau_metrics}, "
+                    f"got '{self.curriculum_plateau_metric}'."
+                )
+            if self.curriculum_normality_threshold <= 0:
+                raise ValueError("curriculum_normality_threshold must be positive")
 
     def get_informative_hyperparameters(self) -> Dict[str, object]:
         return {name: getattr(self, name) for name in INFORMATIVE_HPARAMETERS}
