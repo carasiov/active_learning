@@ -162,8 +162,17 @@ class SSVAENetwork(nn.Module):
         *,
         training: bool,
         gumbel_temperature: float | None = None,
+        k_active: int | None = None,
     ) -> ForwardOutput:
-        """Forward pass returning latent statistics, reconstructions, and classifier logits."""
+        """Forward pass returning latent statistics, reconstructions, and classifier logits.
+
+        Args:
+            x: Input images [batch, H, W]
+            training: Whether in training mode
+            gumbel_temperature: Optional temperature override for Gumbel-Softmax
+            k_active: Number of active channels for curriculum (None = all channels active).
+                      When specified, channels k >= k_active are masked out with -inf logits.
+        """
         encoder_output = self.encoder(x, training=training)
         extras: Dict[str, jnp.ndarray] = {}
 
@@ -173,10 +182,24 @@ class SSVAENetwork(nn.Module):
             if self.prior_module is None:
                 raise ValueError(f"{self.config.prior_type} prior selected but prior_module was not initialized.")
 
+            # Apply curriculum active-set mask to component_logits BEFORE softmax/Gumbel
+            # This ensures inactive channels get exactly zero probability
+            component_logits_raw = component_logits  # Keep raw logits for diagnostics
+            num_components = self.config.num_components
+
+            # Curriculum masking: channels >= k_active get -inf logits
+            # k_active is always an integer (caller ensures this); when k_active == num_components,
+            # the mask is all-True (no-op). This keeps the code JIT-compatible.
+            # Handle None at Python level (before tracing) by defaulting to num_components
+            _k_active = num_components if k_active is None else k_active
+            # Mask: set logits for inactive channels (k >= k_active) to -inf
+            channel_indices = jnp.arange(num_components)  # [K]
+            mask = channel_indices < _k_active  # [K] bool - JIT traces this with _k_active as int
+            component_logits = jnp.where(mask, component_logits, -jnp.inf)
+
             responsibilities = softmax(component_logits, axis=-1)
             responsibilities = jnp.nan_to_num(responsibilities, nan=0.0, posinf=0.0, neginf=0.0)
             batch_size = z_raw.shape[0]
-            num_components = self.config.num_components
             latent_layout = getattr(self.config, "latent_layout", "shared")
             use_decentralized = latent_layout == "decentralized" and self.config.prior_type != "vamp"
 
@@ -260,6 +283,8 @@ class SSVAENetwork(nn.Module):
                 recon = self.decoder(z)
                 extras["responsibilities"] = responsibilities
                 extras["component_selection"] = component_selection
+                extras["component_logits_raw"] = component_logits_raw
+                extras["k_active"] = jnp.array(k_active if k_active is not None else num_components)
             else:
                 # Mixture or Geometric MoG: Get embeddings and pi
                 embeddings, pi_logits = self.prior_module()
@@ -305,6 +330,8 @@ class SSVAENetwork(nn.Module):
                         "pi_logits": pi_logits,
                         "pi": pi,
                         "component_embeddings": embeddings,
+                        "component_logits_raw": component_logits_raw,  # Pre-mask logits for regularizer
+                        "k_active": jnp.array(k_active if k_active is not None else num_components),
                     }
                 else:
                     # Standard decoder
@@ -324,6 +351,8 @@ class SSVAENetwork(nn.Module):
                         "pi_logits": pi_logits,
                         "pi": pi,
                         "component_embeddings": embeddings,
+                        "component_logits_raw": component_logits_raw,  # Pre-mask logits for regularizer
+                        "k_active": jnp.array(k_active if k_active is not None else num_components),
                     }
 
                 if z_mean_per_component is not None:

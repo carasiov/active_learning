@@ -81,6 +81,10 @@ INFORMATIVE_HPARAMETERS = (
     "vamp_pseudo_init_method",
     "geometric_arrangement",
     "geometric_radius",
+    "curriculum_enabled",
+    "curriculum_start_k_active",
+    "curriculum_unlock_every_epochs",
+    "curriculum_max_k_active",
 )
 
 @dataclass
@@ -229,6 +233,14 @@ class SSVAEConfig:
     # ═════════════════════════════════════════════════════════════════════════
     geometric_arrangement: str = "circle"  # Geometric arrangement: "circle" or "grid"
     geometric_radius: float = 2.0  # Radius for circle arrangement (distance from origin)
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # Channel Unlocking Curriculum (mixture/geometric_mog/vamp priors)
+    # ═════════════════════════════════════════════════════════════════════════
+    curriculum_enabled: bool = False  # Enable channel unlocking curriculum
+    curriculum_start_k_active: int = 1  # Number of active channels at start (must be >= 1)
+    curriculum_unlock_every_epochs: int = 5  # Unlock one additional channel every N epochs
+    curriculum_max_k_active: int | None = None  # Max active channels (None = num_components)
 
     def __post_init__(self):
         """Validate configuration after initialization."""
@@ -392,16 +404,56 @@ class SSVAEConfig:
                 f"gumbel_temperature ({self.gumbel_temperature}) must be >= gumbel_temperature_min ({self.gumbel_temperature_min})."
             )
 
+        # Channel Unlocking Curriculum validation
+        if self.curriculum_max_k_active is None:
+            self.curriculum_max_k_active = self.num_components
+        if self.curriculum_enabled:
+            mixture_based_priors = {"mixture", "vamp", "geometric_mog"}
+            if self.prior_type not in mixture_based_priors:
+                raise ValueError(
+                    f"curriculum_enabled requires mixture-based priors {mixture_based_priors}. "
+                    f"Got prior_type='{self.prior_type}'."
+                )
+            if self.curriculum_start_k_active < 1:
+                raise ValueError("curriculum_start_k_active must be >= 1")
+            if self.curriculum_unlock_every_epochs < 1:
+                raise ValueError("curriculum_unlock_every_epochs must be >= 1")
+            if self.curriculum_max_k_active > self.num_components:
+                raise ValueError(
+                    f"curriculum_max_k_active ({self.curriculum_max_k_active}) cannot exceed "
+                    f"num_components ({self.num_components})."
+                )
+            if self.curriculum_start_k_active > self.curriculum_max_k_active:
+                raise ValueError(
+                    f"curriculum_start_k_active ({self.curriculum_start_k_active}) cannot exceed "
+                    f"curriculum_max_k_active ({self.curriculum_max_k_active})."
+                )
+
     def get_informative_hyperparameters(self) -> Dict[str, object]:
         return {name: getattr(self, name) for name in INFORMATIVE_HPARAMETERS}
 
     def is_mixture_based_prior(self) -> bool:
         """Check if prior type uses mixture encoder (outputs component logits).
-        
+
         Returns:
             True if prior_type is mixture, vamp, or geometric_mog
         """
         return self.prior_type in {"mixture", "vamp", "geometric_mog"}
+
+    def get_k_active(self, epoch: int) -> int:
+        """Compute number of active channels for curriculum at given epoch.
+
+        Args:
+            epoch: Current epoch (0-indexed)
+
+        Returns:
+            Number of active channels. When curriculum is disabled, returns num_components.
+        """
+        if not self.curriculum_enabled:
+            return self.num_components
+        unlocks = epoch // self.curriculum_unlock_every_epochs
+        k_active = self.curriculum_start_k_active + unlocks
+        return min(k_active, self.curriculum_max_k_active)
 
 
 def get_architecture_defaults(encoder_type: str) -> dict:

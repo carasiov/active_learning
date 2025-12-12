@@ -104,20 +104,40 @@ class MixtureGaussianPrior:
             kl_c = jnp.array(0.0, dtype=responsibilities.dtype)
 
         # Logistic-normal mixture regularizer on logits
+        # In curriculum mode, only active channels contribute to the mixture
         if c_regularizer in {"logit_mog", "both"}:
-            component_logits = encoder_output.component_logits
-            if component_logits is None:
+            # Use raw (pre-mask) logits for the regularizer
+            component_logits_raw = encoder_output.extras.get("component_logits_raw")
+            if component_logits_raw is None:
+                component_logits_raw = encoder_output.component_logits
+            if component_logits_raw is None:
                 kl_c_logit_mog = jnp.array(0.0, dtype=kl_z.dtype)
             else:
-                k = component_logits.shape[-1]
-                means = jnp.eye(k) * config.c_logit_prior_mean  # [K, K]
+                k_total = component_logits_raw.shape[-1]
+                # Get k_active from extras (curriculum); defaults to all if not present
+                # Keep as JAX array for JIT compatibility (avoid Python int conversion)
+                k_active_arr = encoder_output.extras.get("k_active")
+                k_active = k_active_arr if k_active_arr is not None else jnp.array(k_total)
+
+                # Build means: [K_total, K_total] with μ_k = M * e_k
+                means = jnp.eye(k_total) * config.c_logit_prior_mean
                 sigma_sq = config.c_logit_prior_sigma ** 2
-                # Log prob under each Gaussian component
-                centered = component_logits[:, None, :] - means[None, :, :]
-                quad = jnp.sum(jnp.square(centered) / sigma_sq, axis=-1)
-                log_norm = -0.5 * (k * jnp.log(2 * jnp.pi * sigma_sq))
-                log_prob = log_norm - 0.5 * quad  # [B, K]
-                log_mix = logsumexp(log_prob - jnp.log(k), axis=1)  # uniform mixture
+
+                # Log prob under each Gaussian component: N(y; μ_k, σ²I)
+                # centered: [B, K_total, K_total]
+                centered = component_logits_raw[:, None, :] - means[None, :, :]
+                quad = jnp.sum(jnp.square(centered) / sigma_sq, axis=-1)  # [B, K_total]
+                log_norm = -0.5 * (k_total * jnp.log(2 * jnp.pi * sigma_sq))
+                log_prob = log_norm - 0.5 * quad  # [B, K_total]
+
+                # Mask: only active channels (k < k_active) contribute to mixture
+                active_mask = jnp.arange(k_total) < k_active  # [K_total] bool
+                # Set log_prob for inactive channels to -inf so they don't contribute
+                log_prob_masked = jnp.where(active_mask, log_prob, -jnp.inf)
+
+                # Uniform mixture over active channels: p_mix = (1/k_active) * Σ_{k∈A} N(y; μ_k)
+                # log p_mix = logsumexp(log_prob_masked) - log(k_active)
+                log_mix = logsumexp(log_prob_masked, axis=1) - jnp.log(k_active)
                 nll = -jnp.mean(log_mix)
                 kl_c_logit_mog = config.c_logit_prior_weight * nll
         else:

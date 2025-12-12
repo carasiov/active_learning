@@ -363,6 +363,7 @@ def compute_loss_and_metrics_v2(
     kl_c_scale: float = 1.0,
     tau: jnp.ndarray | None = None,  # Optional τ matrix for latent-only classification
     gumbel_temperature: float | None = None,  # Optional temperature override
+    k_active: int | None = None,  # Number of active channels (curriculum)
 ) -> Tuple[jnp.ndarray, Dict[str, jnp.ndarray]]:
     """Compute loss and metrics using PriorMode abstraction.
 
@@ -383,6 +384,7 @@ def compute_loss_and_metrics_v2(
              If provided and config.use_tau_classifier=True, uses τ-based loss.
              Otherwise falls back to standard classifier.
         gumbel_temperature: Optional temperature override for Gumbel-Softmax.
+        k_active: Number of active channels for curriculum (None = all channels).
 
     Returns:
         Tuple of (total_loss, metrics_dict)
@@ -397,6 +399,7 @@ def compute_loss_and_metrics_v2(
         training=training,
         key=use_key,
         gumbel_temperature=gumbel_temperature,
+        k_active=k_active,
     )
 
     # Unpack forward output

@@ -126,6 +126,7 @@ class Trainer:
             "contrastive_loss": [],
             "component_entropy": [],
             "pi_entropy": [],
+            "k_active": [],  # Curriculum: number of active channels
             "val_loss": [],
             "val_loss_no_global_priors": [],
             "val_reconstruction_loss": [],
@@ -210,6 +211,9 @@ class Trainer:
             else:
                 gumbel_temp = self.config.gumbel_temperature
 
+            # Calculate curriculum k_active (number of active channels)
+            k_active = self.config.get_k_active(epoch)
+
             state, state_rng, shuffle_rng, splits = self._train_one_epoch(
                 state,
                 splits=splits,
@@ -219,6 +223,7 @@ class Trainer:
                 batch_size=setup.batch_size,
                 kl_c_scale=kl_c_scale,
                 gumbel_temperature=gumbel_temp,
+                k_active=k_active,
                 loop_hooks=loop_hooks,
             )
             self._latest_splits = splits
@@ -232,6 +237,9 @@ class Trainer:
                 eval_context=eval_context,
             )
             self._update_history(history, train_metrics, val_metrics)
+
+            # Record curriculum k_active (epoch-level, not from metrics)
+            history["k_active"].append(k_active)
 
             # Store state for callback access
             self._current_state = state
@@ -351,6 +359,7 @@ class Trainer:
         batch_size: int,
         kl_c_scale: float,
         gumbel_temperature: float,
+        k_active: int | None = None,
         loop_hooks: TrainerLoopHooks | None = None,
     ) -> Tuple[SSVAETrainState, jax.Array, jax.Array, DataSplits]:
         if splits.train_size == 0:
@@ -370,6 +379,7 @@ class Trainer:
                 train_step_fn,
                 kl_c_scale,
                 gumbel_temperature,
+                k_active=k_active,
                 loop_hooks=loop_hooks,
             )
 
@@ -407,6 +417,7 @@ class Trainer:
         train_step_fn: TrainStepFn,
         kl_c_scale: float,
         gumbel_temperature: float,
+        k_active: int | None = None,
         loop_hooks: TrainerLoopHooks | None = None,
     ) -> Tuple[SSVAETrainState, jax.Array, MetricsDict]:
         batch_kwargs: Dict[str, jnp.ndarray] = {}
@@ -416,7 +427,7 @@ class Trainer:
 
         state_rng, raw_key = jax.random.split(state_rng)
         batch_key = jax.random.fold_in(raw_key, int(state.step))
-        state, batch_metrics = train_step_fn(state, batch_x, batch_y, batch_key, kl_c_scale, gumbel_temperature=gumbel_temperature, **batch_kwargs)
+        state, batch_metrics = train_step_fn(state, batch_x, batch_y, batch_key, kl_c_scale, gumbel_temperature=gumbel_temperature, k_active=k_active, **batch_kwargs)
 
         if loop_hooks and loop_hooks.post_batch_fn is not None:
             loop_hooks.post_batch_fn(state, batch_x, batch_y, batch_metrics)

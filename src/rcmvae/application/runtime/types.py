@@ -12,7 +12,7 @@ MetricsDict = Dict[str, jnp.ndarray]
 
 
 class TrainStepFn(Protocol):
-    """Signature for train_step functions (supports optional τ context)."""
+    """Signature for train_step functions (supports optional τ context and curriculum)."""
 
     def __call__(
         self,
@@ -22,12 +22,14 @@ class TrainStepFn(Protocol):
         key: jax.Array,
         kl_c_scale: float,
         tau: jnp.ndarray | None = None,
+        gumbel_temperature: float | None = None,
+        k_active: int | None = None,
     ) -> Tuple[SSVAETrainState, MetricsDict]:
         ...
 
 
 class EvalMetricsFn(Protocol):
-    """Signature for eval metrics functions (supports optional τ context)."""
+    """Signature for eval metrics functions (supports optional τ context and curriculum)."""
 
     def __call__(
         self,
@@ -35,5 +37,6 @@ class EvalMetricsFn(Protocol):
         batch_x: jnp.ndarray,
         batch_y: jnp.ndarray,
         tau: jnp.ndarray | None = None,
+        k_active: int | None = None,
     ) -> MetricsDict:
         ...
