@@ -202,6 +202,7 @@ class VampPrior:
         self,
         encoder_output: EncoderOutput,
         config,
+        effective_logit_mog_weight: float | None = None,
     ) -> Dict[str, jnp.ndarray]:
         """Compute KL divergence via Monte Carlo estimation.
 
@@ -217,6 +218,7 @@ class VampPrior:
                 - extras may contain 'responsibilities' for diversity regularization
                 - extras may contain 'rng_key' for MC sampling (if num_samples_kl > 1)
             config: Configuration with kl_weight, etc.
+            effective_logit_mog_weight: Ignored (VampPrior has no logit-mog)
 
         Returns:
             Dictionary with keys:

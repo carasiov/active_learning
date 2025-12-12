@@ -242,6 +242,12 @@ class SSVAEConfig:
     curriculum_unlock_every_epochs: int = 5  # Unlock one additional channel every N epochs
     curriculum_max_k_active: int | None = None  # Max active channels (None = num_components)
 
+    # Migration window (post-unlock softening for example migration)
+    curriculum_migration_epochs: int = 0  # Number of epochs after unlock to soften routing (0 = disabled)
+    curriculum_soft_routing_during_migration: bool = True  # Disable straight-through during migration
+    curriculum_temp_boost_during_migration: float = 1.0  # Multiply gumbel_temperature by this during migration (>1 softens)
+    curriculum_logit_mog_scale_during_migration: float = 1.0  # Scale logit_mog weight by this during migration (<1 reduces peakiness pressure)
+
     def __post_init__(self):
         """Validate configuration after initialization."""
         valid_losses = {"mse", "bce"}
@@ -428,6 +434,12 @@ class SSVAEConfig:
                     f"curriculum_start_k_active ({self.curriculum_start_k_active}) cannot exceed "
                     f"curriculum_max_k_active ({self.curriculum_max_k_active})."
                 )
+            if self.curriculum_migration_epochs < 0:
+                raise ValueError("curriculum_migration_epochs must be >= 0")
+            if self.curriculum_temp_boost_during_migration <= 0:
+                raise ValueError("curriculum_temp_boost_during_migration must be positive")
+            if self.curriculum_logit_mog_scale_during_migration < 0:
+                raise ValueError("curriculum_logit_mog_scale_during_migration must be >= 0")
 
     def get_informative_hyperparameters(self) -> Dict[str, object]:
         return {name: getattr(self, name) for name in INFORMATIVE_HPARAMETERS}
@@ -454,6 +466,95 @@ class SSVAEConfig:
         unlocks = epoch // self.curriculum_unlock_every_epochs
         k_active = self.curriculum_start_k_active + unlocks
         return min(k_active, self.curriculum_max_k_active)
+
+    def get_epochs_since_last_unlock(self, epoch: int) -> int:
+        """Get number of epochs since the most recent channel unlock.
+
+        Args:
+            epoch: Current epoch (0-indexed)
+
+        Returns:
+            Number of epochs since last unlock event. Returns epoch if curriculum disabled.
+        """
+        if not self.curriculum_enabled:
+            return epoch
+        return epoch % self.curriculum_unlock_every_epochs
+
+    def is_in_migration_window(self, epoch: int) -> bool:
+        """Check if current epoch is within the migration window after an unlock.
+
+        The migration window spans from an unlock event (epoch where k_active increases)
+        through the next (curriculum_migration_epochs - 1) epochs.
+
+        Args:
+            epoch: Current epoch (0-indexed)
+
+        Returns:
+            True if within migration window, False otherwise.
+        """
+        if not self.curriculum_enabled or self.curriculum_migration_epochs == 0:
+            return False
+        # Check if k_active has reached its max (no more unlocks possible)
+        if self.get_k_active(epoch) >= self.curriculum_max_k_active:
+            # If we're already at max and this isn't the epoch we just reached it,
+            # no migration window applies
+            prev_k = self.get_k_active(max(0, epoch - 1)) if epoch > 0 else self.curriculum_start_k_active
+            if prev_k >= self.curriculum_max_k_active:
+                return False
+        epochs_since_unlock = self.get_epochs_since_last_unlock(epoch)
+        return epochs_since_unlock < self.curriculum_migration_epochs
+
+    def get_effective_gumbel_temperature(self, epoch: int) -> float:
+        """Get Gumbel temperature for current epoch, with migration window boost.
+
+        Args:
+            epoch: Current epoch (0-indexed)
+
+        Returns:
+            Gumbel temperature, potentially boosted during migration window.
+        """
+        base_temp = self.gumbel_temperature
+        # Apply annealing if configured
+        if self.gumbel_temperature_anneal_epochs > 0 and epoch > 0:
+            progress = min(1.0, epoch / self.gumbel_temperature_anneal_epochs)
+            base_temp = self.gumbel_temperature - progress * (
+                self.gumbel_temperature - self.gumbel_temperature_min
+            )
+        # Apply migration boost if in window
+        if self.is_in_migration_window(epoch):
+            return base_temp * self.curriculum_temp_boost_during_migration
+        return base_temp
+
+    def get_effective_logit_mog_weight(self, epoch: int) -> float:
+        """Get logit-MoG weight for current epoch, with migration window scaling.
+
+        Args:
+            epoch: Current epoch (0-indexed)
+
+        Returns:
+            Logit-MoG weight, potentially scaled down during migration window.
+        """
+        if self.is_in_migration_window(epoch):
+            return self.c_logit_prior_weight * self.curriculum_logit_mog_scale_during_migration
+        return self.c_logit_prior_weight
+
+    def use_straight_through_for_epoch(self, epoch: int) -> bool:
+        """Determine if straight-through should be used for current epoch.
+
+        During migration window, straight-through can be disabled for soft routing.
+
+        Args:
+            epoch: Current epoch (0-indexed)
+
+        Returns:
+            True if straight-through should be used, False for soft routing.
+        """
+        if not self.use_straight_through_gumbel:
+            return False
+        # Disable ST during migration window if configured
+        if self.is_in_migration_window(epoch) and self.curriculum_soft_routing_during_migration:
+            return False
+        return True
 
 
 def get_architecture_defaults(encoder_type: str) -> dict:

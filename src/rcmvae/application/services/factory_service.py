@@ -307,9 +307,10 @@ class ModelFactoryService:
             key: jax.Array | None,
             gumbel_temperature: float | None = None,
             k_active: int | None = None,
+            use_straight_through: bool | None = None,
         ):
             if key is None:
-                return _apply_fn_wrapper(params, batch_x, training=training, gumbel_temperature=gumbel_temperature, k_active=k_active)
+                return _apply_fn_wrapper(params, batch_x, training=training, gumbel_temperature=gumbel_temperature, k_active=k_active, use_straight_through=use_straight_through)
             reparam_key, dropout_key, gumbel_key = random.split(key, 3)
             return _apply_fn_wrapper(
                 params,
@@ -318,6 +319,7 @@ class ModelFactoryService:
                 rngs={"reparam": reparam_key, "dropout": dropout_key, "gumbel": gumbel_key},
                 gumbel_temperature=gumbel_temperature,
                 k_active=k_active,
+                use_straight_through=use_straight_through,
             )
 
         def _loss_and_metrics(
@@ -330,6 +332,8 @@ class ModelFactoryService:
             tau: jnp.ndarray | None = None,
             gumbel_temperature: float | None = None,
             k_active: int | None = None,
+            use_straight_through: bool | None = None,
+            effective_logit_mog_weight: float | None = None,
         ):
             rng = key if training else None
             return compute_loss_and_metrics_v2(
@@ -345,10 +349,12 @@ class ModelFactoryService:
                 tau=tau,
                 gumbel_temperature=gumbel_temperature,
                 k_active=k_active,
+                use_straight_through=use_straight_through,
+                effective_logit_mog_weight=effective_logit_mog_weight,
             )
 
         train_loss_and_grad = jax.value_and_grad(
-            lambda p, x, y, k, scale, t, temp, k_act: _loss_and_metrics(p, x, y, k, True, scale, t, temp, k_act),
+            lambda p, x, y, k, scale, t, temp, k_act, use_st, eff_logit: _loss_and_metrics(p, x, y, k, True, scale, t, temp, k_act, use_st, eff_logit),
             argnums=0,
             has_aux=True,
         )
@@ -363,8 +369,10 @@ class ModelFactoryService:
             tau: jnp.ndarray | None = None,
             gumbel_temperature: float | None = None,
             k_active: int | None = None,
+            use_straight_through: bool | None = None,
+            effective_logit_mog_weight: float | None = None,
         ):
-            (loss, metrics), grads = train_loss_and_grad(state.params, batch_x, batch_y, key, kl_c_scale, tau, gumbel_temperature, k_active)
+            (loss, metrics), grads = train_loss_and_grad(state.params, batch_x, batch_y, key, kl_c_scale, tau, gumbel_temperature, k_active, use_straight_through, effective_logit_mog_weight)
             if config.prior_type == "vamp":
                 grads = _scale_vamp_pseudo_gradients(grads, config.vamp_pseudo_lr_scale)
             new_state = state.apply_gradients(grads=grads)
@@ -392,9 +400,10 @@ class ModelFactoryService:
             key: jax.Array | None,
             gumbel_temperature: float | None = None,
             k_active: int | None = None,
+            use_straight_through: bool | None = None,
         ):
             if key is None:
-                return _apply_fn_wrapper(params, batch_x, training=training, gumbel_temperature=gumbel_temperature, k_active=k_active)
+                return _apply_fn_wrapper(params, batch_x, training=training, gumbel_temperature=gumbel_temperature, k_active=k_active, use_straight_through=use_straight_through)
             reparam_key, dropout_key, gumbel_key = random.split(key, 3)
             return _apply_fn_wrapper(
                 params,
@@ -403,6 +412,7 @@ class ModelFactoryService:
                 rngs={"reparam": reparam_key, "dropout": dropout_key, "gumbel": gumbel_key},
                 gumbel_temperature=gumbel_temperature,
                 k_active=k_active,
+                use_straight_through=use_straight_through,
             )
 
         def _eval_metrics(

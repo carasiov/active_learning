@@ -47,6 +47,7 @@ class MixtureGaussianPrior:
         self,
         encoder_output: EncoderOutput,
         config,
+        effective_logit_mog_weight: float | None = None,
     ) -> Dict[str, jnp.ndarray]:
         """Compute all KL and regularization terms for mixture prior.
 
@@ -55,6 +56,8 @@ class MixtureGaussianPrior:
                 - responsibilities: q(c|x)
                 - pi: learned mixture weights
             config: Configuration with weights for each term
+            effective_logit_mog_weight: Optional override for logit-mog weight.
+                                        Used during migration window to reduce peakiness pressure.
 
         Returns:
             Dictionary with keys:
@@ -139,7 +142,9 @@ class MixtureGaussianPrior:
                 # log p_mix = logsumexp(log_prob_masked) - log(k_active)
                 log_mix = logsumexp(log_prob_masked, axis=1) - jnp.log(k_active)
                 nll = -jnp.mean(log_mix)
-                kl_c_logit_mog = config.c_logit_prior_weight * nll
+                # Use effective weight if provided (migration window), else config value
+                _logit_mog_weight = effective_logit_mog_weight if effective_logit_mog_weight is not None else config.c_logit_prior_weight
+                kl_c_logit_mog = _logit_mog_weight * nll
         else:
             kl_c_logit_mog = jnp.array(0.0, dtype=kl_z.dtype)
 

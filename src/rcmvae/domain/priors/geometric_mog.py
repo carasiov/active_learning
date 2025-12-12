@@ -174,6 +174,7 @@ class GeometricMixtureOfGaussiansPrior:
         self,
         encoder_output: EncoderOutput,
         config,
+        effective_logit_mog_weight: float | None = None,
     ) -> Dict[str, jnp.ndarray]:
         """Compute KL divergence and regularization terms.
 
@@ -182,13 +183,14 @@ class GeometricMixtureOfGaussiansPrior:
 
         where KL(N(μ_enc, Σ_enc) || N(μ_c, I)) has closed form:
             KL = 0.5 * (tr(Σ_enc) + ||μ_enc - μ_c||² - d - log|Σ_enc|)
-            
+
         For diagonal Σ_enc = diag(σ²):
             KL = 0.5 * Σ_i (σ²_i + (μ_enc_i - μ_c_i)² - 1 - log σ²_i)
 
         Args:
             encoder_output: Contains z_mean, z_log_var, and extras with responsibilities
             config: Configuration with weights for each term
+            effective_logit_mog_weight: Ignored (geometric MoG has no logit-mog regularizer)
 
         Returns:
             Dictionary with keys:

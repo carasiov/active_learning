@@ -37,12 +37,14 @@ class StandardGaussianPrior:
         self,
         encoder_output: EncoderOutput,
         config,
+        effective_logit_mog_weight: float | None = None,
     ) -> Dict[str, jnp.ndarray]:
         """Compute KL(q(z|x) || N(0,I)).
 
         Args:
             encoder_output: Contains z_mean and z_log_var
             config: Configuration with kl_weight
+            effective_logit_mog_weight: Ignored (standard prior has no logit-mog)
 
         Returns:
             Dictionary with keys:

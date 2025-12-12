@@ -364,6 +364,8 @@ def compute_loss_and_metrics_v2(
     tau: jnp.ndarray | None = None,  # Optional τ matrix for latent-only classification
     gumbel_temperature: float | None = None,  # Optional temperature override
     k_active: int | None = None,  # Number of active channels (curriculum)
+    use_straight_through: bool | None = None,  # Override for ST Gumbel (migration window)
+    effective_logit_mog_weight: float | None = None,  # Override for logit-mog weight (migration window)
 ) -> Tuple[jnp.ndarray, Dict[str, jnp.ndarray]]:
     """Compute loss and metrics using PriorMode abstraction.
 
@@ -385,6 +387,10 @@ def compute_loss_and_metrics_v2(
              Otherwise falls back to standard classifier.
         gumbel_temperature: Optional temperature override for Gumbel-Softmax.
         k_active: Number of active channels for curriculum (None = all channels).
+        use_straight_through: Override for straight-through Gumbel (None = use config).
+                              Set False during migration window for soft routing.
+        effective_logit_mog_weight: Override for logit-mog weight (None = use config).
+                                    Set lower during migration window to reduce peakiness pressure.
 
     Returns:
         Tuple of (total_loss, metrics_dict)
@@ -400,6 +406,7 @@ def compute_loss_and_metrics_v2(
         key=use_key,
         gumbel_temperature=gumbel_temperature,
         k_active=k_active,
+        use_straight_through=use_straight_through,
     )
 
     # Unpack forward output
@@ -434,7 +441,9 @@ def compute_loss_and_metrics_v2(
         )
 
     # KL divergence and regularization terms from prior
-    kl_terms = prior.compute_kl_terms(encoder_output, config)
+    kl_terms = prior.compute_kl_terms(
+        encoder_output, config, effective_logit_mog_weight=effective_logit_mog_weight
+    )
 
     # Apply KL_c annealing if present
     if "kl_c" in kl_terms:

@@ -163,6 +163,7 @@ class SSVAENetwork(nn.Module):
         training: bool,
         gumbel_temperature: float | None = None,
         k_active: int | None = None,
+        use_straight_through: bool | None = None,
     ) -> ForwardOutput:
         """Forward pass returning latent statistics, reconstructions, and classifier logits.
 
@@ -172,6 +173,8 @@ class SSVAENetwork(nn.Module):
             gumbel_temperature: Optional temperature override for Gumbel-Softmax
             k_active: Number of active channels for curriculum (None = all channels active).
                       When specified, channels k >= k_active are masked out with -inf logits.
+            use_straight_through: Override for straight-through Gumbel (None = use config value).
+                                  Set to False during migration window for soft routing.
         """
         encoder_output = self.encoder(x, training=training)
         extras: Dict[str, jnp.ndarray] = {}
@@ -230,16 +233,31 @@ class SSVAENetwork(nn.Module):
                     # Softmax with temperature
                     # y = softmax((logits + g) / temp)
                     y_soft = nn.softmax((component_logits + g) / temp)
-                    
-                    if self.config.use_straight_through_gumbel:
-                        # Straight-through: forward is one-hot, backward is soft
-                        index = jnp.argmax(y_soft, axis=-1)
-                        y_hard = jax.nn.one_hot(index, self.config.num_components)
-                        # ST trick: y_hard - y_soft.stop_gradient + y_soft
-                        y = y_hard - jax.lax.stop_gradient(y_soft) + y_soft
-                        return y, True
+
+                    # Compute straight-through version unconditionally
+                    # ST: forward is one-hot, backward is soft
+                    index = jnp.argmax(y_soft, axis=-1)
+                    y_hard = jax.nn.one_hot(index, self.config.num_components)
+                    y_st = y_hard - jax.lax.stop_gradient(y_soft) + y_soft
+
+                    # Determine whether to use straight-through
+                    # Handle None at Python level (before tracing), use config default
+                    if use_straight_through is None:
+                        # Not specified: use config value (not traced)
+                        if self.config.use_straight_through_gumbel:
+                            return y_st, True
+                        else:
+                            return y_soft, False
                     else:
-                        return y_soft, False
+                        # Specified: use jax.lax.cond for traced boolean
+                        # Convert to JAX array if needed for lax.cond
+                        _use_st = jnp.asarray(use_straight_through)
+                        y = jax.lax.cond(
+                            _use_st,
+                            lambda: y_st,
+                            lambda: y_soft,
+                        )
+                        return y, _use_st
                 else:
                 # Standard categorical sampling (non-differentiable for gradients to encoder)
                 # This path is likely not what we want for "decentralized" learning unless using REINFORCE

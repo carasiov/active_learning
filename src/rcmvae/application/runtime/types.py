@@ -24,6 +24,8 @@ class TrainStepFn(Protocol):
         tau: jnp.ndarray | None = None,
         gumbel_temperature: float | None = None,
         k_active: int | None = None,
+        use_straight_through: bool | None = None,
+        effective_logit_mog_weight: float | None = None,
     ) -> Tuple[SSVAETrainState, MetricsDict]:
         ...
 

@@ -160,6 +160,7 @@ class TestMixtureGaussianPrior:
         expected_keys = {
             "kl_z",
             "kl_c",
+            "kl_c_logit_mog",
             "dirichlet_penalty",
             "component_diversity",
             "component_entropy",

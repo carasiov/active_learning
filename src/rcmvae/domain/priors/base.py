@@ -39,12 +39,15 @@ class PriorMode(Protocol):
         self,
         encoder_output: EncoderOutput,
         config,
+        effective_logit_mog_weight: float | None = None,
     ) -> Dict[str, jnp.ndarray]:
         """Compute all KL divergence terms for this prior.
 
         Args:
             encoder_output: Output from encoder
             config: Model configuration
+            effective_logit_mog_weight: Optional override for logit-mog weight.
+                                        Used during migration window. Ignored by most priors.
 
         Returns:
             Dictionary of KL/regularization terms. All priors **must** return
