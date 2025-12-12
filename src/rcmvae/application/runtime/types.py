@@ -26,6 +26,7 @@ class TrainStepFn(Protocol):
         k_active: int | None = None,
         use_straight_through: bool | None = None,
         effective_logit_mog_weight: float | None = None,
+        top_m_gating: int | None = None,
     ) -> Tuple[SSVAETrainState, MetricsDict]:
         ...
 

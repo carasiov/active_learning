@@ -366,6 +366,7 @@ def compute_loss_and_metrics_v2(
     k_active: int | None = None,  # Number of active channels (curriculum)
     use_straight_through: bool | None = None,  # Override for ST Gumbel (migration window)
     effective_logit_mog_weight: float | None = None,  # Override for logit-mog weight (migration window)
+    top_m_gating: int | None = None,  # Top-M gating for reconstruction (None = use config)
 ) -> Tuple[jnp.ndarray, Dict[str, jnp.ndarray]]:
     """Compute loss and metrics using PriorMode abstraction.
 
@@ -407,6 +408,7 @@ def compute_loss_and_metrics_v2(
         gumbel_temperature=gumbel_temperature,
         k_active=k_active,
         use_straight_through=use_straight_through,
+        top_m_gating=top_m_gating,
     )
 
     # Unpack forward output

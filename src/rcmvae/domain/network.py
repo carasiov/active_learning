@@ -47,6 +47,79 @@ class ForwardOutput(NamedTuple):
     extras: Dict[str, jnp.ndarray]
 
 
+def apply_top_m_gating(
+    weights: jnp.ndarray,
+    top_m: jnp.ndarray | int,
+    k_active: jnp.ndarray | int,
+) -> Tuple[jnp.ndarray, jnp.ndarray]:
+    """Apply Top-M gating to component weights, keeping only top-M non-zero.
+
+    This function selects the top-M components by weight within the active set,
+    zeros out the rest, and renormalizes so the weights sum to 1.
+
+    This implementation is fully JAX-traceable and works with traced values
+    during JIT compilation.
+
+    Args:
+        weights: Component weights [batch, K], should already have inactive channels
+                 zeroed via curriculum masking.
+        top_m: Number of top components to keep (0 = no filtering, use all).
+               Can be a Python int or JAX array (traced).
+        k_active: Number of active channels (from curriculum).
+                  Can be a Python int or JAX array (traced).
+
+    Returns:
+        Tuple of:
+            - Filtered and renormalized weights [batch, K]
+            - effective_m: Actual M used as a JAX array (min(top_m, k_active) or k_active if top_m=0)
+
+    Behavior:
+        - If top_m = 0: return weights unchanged (use all active channels)
+        - If top_m >= k_active: return weights unchanged (use all active channels)
+        - If top_m < k_active: keep only top_m highest weights, zero others, renormalize
+    """
+    K = weights.shape[-1]
+
+    # Convert to JAX arrays for consistent tracing
+    top_m_arr = jnp.asarray(top_m)
+    k_active_arr = jnp.asarray(k_active)
+
+    # effective_m = min(top_m, k_active), but top_m=0 means "use all active"
+    effective_m = jnp.where(
+        top_m_arr == 0,
+        k_active_arr,
+        jnp.minimum(top_m_arr, k_active_arr),
+    )
+
+    # Check if filtering is needed: top_m > 0 and effective_m < k_active
+    needs_filtering = (top_m_arr > 0) & (effective_m < k_active_arr)
+
+    # Sort indices by weight descending
+    sorted_indices = jnp.argsort(-weights, axis=-1)  # [batch, K]
+
+    # Create position-based mask: position p is kept if p < effective_m
+    # This avoids dynamic slicing which doesn't work with traced shapes
+    positions = jnp.arange(K)  # [K]
+    position_mask = (positions < effective_m).astype(jnp.float32)  # [K]
+
+    # Map position mask back to original index space using one-hot encoding
+    # For each batch: one_hot(sorted_indices, K) gives [K, K] where row p is one-hot at original index
+    # Weight by position_mask and sum to get mask in original index space
+    one_hot_indices = jax.nn.one_hot(sorted_indices, K)  # [batch, K, K]
+    mask = jnp.einsum("p,bpk->bk", position_mask, one_hot_indices)  # [batch, K]
+
+    # Apply mask and renormalize
+    filtered_weights = weights * mask
+    weight_sum = jnp.sum(filtered_weights, axis=-1, keepdims=True)
+    weight_sum = jnp.maximum(weight_sum, 1e-10)  # Avoid division by zero
+    normalized_weights = filtered_weights / weight_sum
+
+    # Use jnp.where to select between filtered and original based on needs_filtering
+    result = jnp.where(needs_filtering, normalized_weights, weights)
+
+    return result, effective_m
+
+
 class MixturePriorParameters(nn.Module):
     """Container for learnable mixture prior parameters."""
 
@@ -164,6 +237,7 @@ class SSVAENetwork(nn.Module):
         gumbel_temperature: float | None = None,
         k_active: int | None = None,
         use_straight_through: bool | None = None,
+        top_m_gating: int | None = None,
     ) -> ForwardOutput:
         """Forward pass returning latent statistics, reconstructions, and classifier logits.
 
@@ -175,6 +249,8 @@ class SSVAENetwork(nn.Module):
                       When specified, channels k >= k_active are masked out with -inf logits.
             use_straight_through: Override for straight-through Gumbel (None = use config value).
                                   Set to False during migration window for soft routing.
+            top_m_gating: Number of top components to keep for reconstruction (None = use config).
+                          0 = use all active channels, >0 = keep only top-M by weight.
         """
         encoder_output = self.encoder(x, training=training)
         extras: Dict[str, jnp.ndarray] = {}
@@ -268,6 +344,16 @@ class SSVAENetwork(nn.Module):
 
             component_selection, selection_is_hard = _component_selection()
 
+            # Apply Top-M gating for reconstruction weighting
+            # Note: component_selection is kept unmodified for KL/responsibilities
+            # recon_weights has Top-M filtering applied (if configured)
+            _top_m = top_m_gating if top_m_gating is not None else self.config.top_m_gating
+            recon_weights, effective_m = apply_top_m_gating(
+                component_selection, _top_m, _k_active
+            )
+            extras["effective_m"] = jnp.array(effective_m)
+            extras["top_m_gating"] = jnp.array(_top_m)
+
             if use_decentralized and z_raw.ndim == 3:
                 z_mean_per_component = z_mean_raw
                 z_log_per_component = z_log_raw
@@ -298,11 +384,16 @@ class SSVAENetwork(nn.Module):
                 # VampPrior keeps π uniform today; expose it so diagnostics stay consistent.
                 extras["pi"] = jnp.ones((num_components,)) / num_components
 
+                # VampPrior: single latent z decoded (not per-component), so Top-M doesn't affect recon
+                # but we still track the values for consistency
                 recon = self.decoder(z)
                 extras["responsibilities"] = responsibilities
                 extras["component_selection"] = component_selection
+                extras["recon_weights"] = recon_weights  # Top-M filtered weights
                 extras["component_logits_raw"] = component_logits_raw
                 extras["k_active"] = jnp.array(k_active if k_active is not None else num_components)
+                extras["effective_m"] = jnp.array(effective_m)
+                extras["top_m_gating"] = jnp.array(_top_m)
             else:
                 # Mixture or Geometric MoG: Get embeddings and pi
                 embeddings, pi_logits = self.prior_module()
@@ -330,47 +421,54 @@ class SSVAENetwork(nn.Module):
                     mean_per_component = mean_flat.reshape((batch_size, num_components, *self.output_hw))
                     sigma_per_component = sigma_flat.reshape((batch_size, num_components))
 
-                    # Take expectation over components
+                    # Take expectation over components using Top-M filtered weights
                     expected_mean = jnp.sum(
-                        component_selection[..., None, None] * mean_per_component,
+                        recon_weights[..., None, None] * mean_per_component,
                         axis=1,
                     )
                     expected_sigma = jnp.sum(
-                        component_selection * sigma_per_component,
+                        recon_weights * sigma_per_component,
                         axis=1,
                     )
                     recon = (expected_mean, expected_sigma)
                     extras = {
                         "recon_per_component": (mean_per_component, sigma_per_component),
                         "responsibilities": responsibilities,
-                        "component_selection": component_selection,
+                        "component_selection": component_selection,  # Original selection (for KL)
+                        "recon_weights": recon_weights,  # Top-M filtered weights (for reconstruction)
                         "selection_is_hard": jnp.array(selection_is_hard),
                         "pi_logits": pi_logits,
                         "pi": pi,
                         "component_embeddings": embeddings,
                         "component_logits_raw": component_logits_raw,  # Pre-mask logits for regularizer
                         "k_active": jnp.array(k_active if k_active is not None else num_components),
+                        "effective_m": jnp.array(effective_m),  # Actual M used for Top-M gating
+                        "top_m_gating": jnp.array(_top_m),  # Configured Top-M value
                     }
                 else:
                     # Standard decoder
                     recon_per_component = decoder_output_flat.reshape(
                         (batch_size, num_components, *self.output_hw)
                     )
+                    # Use Top-M filtered weights for reconstruction
                     expected_recon = jnp.sum(
-                        component_selection[..., None, None] * recon_per_component,
+                        recon_weights[..., None, None] * recon_per_component,
                         axis=1,
                     )
                     recon = expected_recon
                     extras = {
                         "recon_per_component": recon_per_component,
                         "responsibilities": responsibilities,
-                        "component_selection": component_selection,
+                        "component_selection": component_selection,  # Original selection (for KL)
+                        "recon_weights": recon_weights,  # Top-M filtered weights (for reconstruction)
                         "selection_is_hard": jnp.array(selection_is_hard),
                         "pi_logits": pi_logits,
                         "pi": pi,
                         "component_embeddings": embeddings,
                         "component_logits_raw": component_logits_raw,  # Pre-mask logits for regularizer
                         "k_active": jnp.array(k_active if k_active is not None else num_components),
+                        "effective_m": jnp.array(effective_m),  # Actual M used for Top-M gating
+                        "top_m_gating": jnp.array(_top_m),  # Configured Top-M value
                     }
 
                 if z_mean_per_component is not None:
