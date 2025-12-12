@@ -4,9 +4,11 @@ from typing import Callable, Dict, Tuple
 
 import jax
 import jax.numpy as jnp
+import jax.tree_util as jtu
 import optax
 
 from rcmvae.domain.config import SSVAEConfig
+from rcmvae.domain.network import _make_weight_decay_mask
 
 
 EPS = 1e-8
@@ -202,7 +204,25 @@ def weighted_heteroscedastic_reconstruction_loss(
 def kl_divergence(z_mean: jnp.ndarray, z_log: jnp.ndarray, weight: float) -> jnp.ndarray:
     """Return the KL divergence term scaled by ``weight``."""
     kl = -0.5 * (1.0 + z_log - jnp.square(z_mean) - jnp.exp(z_log))
-    return weight * jnp.mean(jnp.sum(kl, axis=1))
+    if kl.ndim == 2:
+        per_sample = jnp.sum(kl, axis=1)
+    elif kl.ndim == 3:
+        per_sample = jnp.sum(kl, axis=(1, 2))
+    else:
+        axes = tuple(range(1, kl.ndim))
+        per_sample = jnp.sum(kl, axis=axes)
+    return weight * jnp.mean(per_sample)
+
+
+def l1_penalty(params: Dict[str, Dict[str, jnp.ndarray]], mask) -> jnp.ndarray:
+    """Compute masked L1 penalty over parameters."""
+    masked_abs = jtu.tree_map(
+        lambda p, m: jnp.sum(jnp.abs(p)) if m else jnp.array(0.0, dtype=p.dtype),
+        params,
+        mask,
+    )
+    leaves = jtu.tree_leaves(masked_abs)
+    return jnp.sum(jnp.stack(leaves)) if leaves else jnp.array(0.0)
 
 
 def categorical_kl(
@@ -342,6 +362,7 @@ def compute_loss_and_metrics_v2(
     training: bool,
     kl_c_scale: float = 1.0,
     tau: jnp.ndarray | None = None,  # Optional τ matrix for latent-only classification
+    gumbel_temperature: float | None = None,  # Optional temperature override
 ) -> Tuple[jnp.ndarray, Dict[str, jnp.ndarray]]:
     """Compute loss and metrics using PriorMode abstraction.
 
@@ -361,6 +382,7 @@ def compute_loss_and_metrics_v2(
         tau: Optional τ matrix [K, num_classes] for latent-only classification.
              If provided and config.use_tau_classifier=True, uses τ-based loss.
              Otherwise falls back to standard classifier.
+        gumbel_temperature: Optional temperature override for Gumbel-Softmax.
 
     Returns:
         Tuple of (total_loss, metrics_dict)
@@ -374,6 +396,7 @@ def compute_loss_and_metrics_v2(
         batch_x,
         training=training,
         key=use_key,
+        gumbel_temperature=gumbel_temperature,
     )
 
     # Unpack forward output
@@ -413,6 +436,8 @@ def compute_loss_and_metrics_v2(
     # Apply KL_c annealing if present
     if "kl_c" in kl_terms:
         kl_terms["kl_c"] = kl_terms["kl_c"] * kl_c_scale
+    if "kl_c_logit_mog" in kl_terms:
+        kl_terms["kl_c_logit_mog"] = kl_terms["kl_c_logit_mog"] * kl_c_scale
 
     # Classification loss: use τ-based if enabled and available
     use_tau_classifier = (
@@ -439,9 +464,15 @@ def compute_loss_and_metrics_v2(
     # Assemble total loss
     total_kl = sum(
         v for k, v in kl_terms.items()
-        if k in ("kl_z", "kl_c", "dirichlet_penalty", "component_diversity")
+        if k in ("kl_z", "kl_c", "kl_c_logit_mog", "dirichlet_penalty", "component_diversity")
     )
-    total = recon_loss + total_kl + cls_loss_weighted
+    if config.l1_weight > 0.0:
+        l1_mask = _make_weight_decay_mask(params)
+        l1_penalty_value = config.l1_weight * l1_penalty(params, l1_mask)
+    else:
+        l1_penalty_value = jnp.array(0.0, dtype=recon_loss.dtype)
+
+    total = recon_loss + total_kl + cls_loss_weighted + l1_penalty_value
 
     # Build metrics dictionary
     metrics = {
@@ -449,6 +480,7 @@ def compute_loss_and_metrics_v2(
         "reconstruction_loss": recon_loss,
         "classification_loss": cls_loss_unweighted,
         "weighted_classification_loss": cls_loss_weighted,
+        "l1_penalty": l1_penalty_value,
     }
 
     # Add all KL terms from prior
@@ -469,9 +501,13 @@ def compute_loss_and_metrics_v2(
         metrics["component_entropy"] = zero
     if "pi_entropy" not in metrics:
         metrics["pi_entropy"] = zero
+    if "kl_c_logit_mog" not in metrics:
+        metrics["kl_c_logit_mog"] = zero
+    if "l1_penalty" not in metrics:
+        metrics["l1_penalty"] = zero
 
     # Aggregate kl_loss for backward compatibility
-    metrics["kl_loss"] = metrics["kl_z"] + metrics["kl_c"]
+    metrics["kl_loss"] = metrics["kl_z"] + metrics["kl_c"] + metrics["kl_c_logit_mog"]
 
     # Loss without global regularizers (for monitoring)
     metrics["loss_no_global_priors"] = (

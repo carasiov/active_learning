@@ -1,20 +1,20 @@
 """
 Variational Mixture of Posteriors (VampPrior) prior.
 
-VampPrior learns K pseudo-inputs {u_1, ..., u_K} and defines the prior as:
-    p(z) = Σ_k π_k q(z|u_k)
-
-where q(z|u_k) is the encoder posterior evaluated at pseudo-input u_k.
-
-This creates spatial separation in latent space via learned prototypes,
-providing an alternative to component-aware decoders for inducing component
-specialization.
-
-Key features:
-- Learned pseudo-inputs (trainable parameters)
-- Monte Carlo KL estimation: KL(q(z|x) || Σ_k π_k q(z|u_k))
-- Optional prior shaping via MMD/MC-KL (not yet implemented)
-- Does NOT use component embeddings (spatial separation is sufficient)
+───────────────────────────────────────────────────────────────────────────────
+Current state and caveats (to be fixed):
+• This implementation **does not use component embeddings** or component-aware
+  decoder outputs. FiLM/concat flags are ignored for Vamp (decoder uses Noop).
+• π is fixed uniform; learnable π / Dirichlet are not supported here.
+• Responsibilities from the mixture encoder are used to weight losses and τ, but
+  they can be unstable if pseudo-inputs are not initialized from data. The
+  current experiment runner does not call `SSVAE.initialize_pseudo_inputs(...)`,
+  so pseudo-inputs remain random unless set manually.
+• NaN guards are in place to prevent crashes, but they can zero out learning if
+  responsibilities go invalid. A proper fix would:
+    - initialize pseudo-inputs from data in the pipeline,
+    - skip responsibility weighting when invalid instead of clamping to zero,
+    - add a non-uniform/learnable π variant if needed.
 
 Reference:
     Tomczak & Welling (2018). VAE with a VampPrior.
@@ -281,10 +281,16 @@ class VampPrior:
             )  # [batch, num_samples, latent_dim]
 
         # Compute log q(z|x)
+        z_samples = jnp.nan_to_num(z_samples, nan=0.0, posinf=0.0, neginf=0.0)
+        pseudo_z_mean = jnp.nan_to_num(pseudo_z_mean, nan=0.0, posinf=0.0, neginf=0.0)
+        pseudo_z_log_var = jnp.nan_to_num(pseudo_z_log_var, nan=0.0, posinf=0.0, neginf=0.0)
+        encoder_z_mean = jnp.nan_to_num(encoder_output.z_mean, nan=0.0, posinf=0.0, neginf=0.0)
+        encoder_z_log_var = jnp.nan_to_num(encoder_output.z_log_var, nan=0.0, posinf=0.0, neginf=0.0)
+
         log_q_z_x = self._log_gaussian_prob(
             z_samples,
-            encoder_output.z_mean,
-            encoder_output.z_log_var,
+            encoder_z_mean,
+            encoder_z_log_var,
         )  # [batch,] or [batch, num_samples]
 
         # Compute log p(z) = log Σ_k π_k q(z|u_k) from cached statistics
@@ -309,6 +315,10 @@ class VampPrior:
         # Optional: KL(q(c|x) || π) if responsibilities provided
         # This is useful if encoder outputs component logits
         responsibilities = encoder_output.extras.get("responsibilities")
+        if responsibilities is not None:
+            responsibilities = jnp.nan_to_num(
+                responsibilities, nan=0.0, posinf=0.0, neginf=0.0
+            )
         if responsibilities is not None:
             kl_c = categorical_kl(
                 responsibilities,
@@ -379,6 +389,10 @@ class VampPrior:
         responsibilities = None
         if encoder_output.extras is not None:
             responsibilities = encoder_output.extras.get("responsibilities")
+            if responsibilities is not None:
+                responsibilities = jnp.nan_to_num(
+                    responsibilities, nan=0.0, posinf=0.0, neginf=0.0
+                )
 
         from rcmvae.application.services.loss_pipeline import (
             reconstruction_loss_mse,
@@ -389,27 +403,64 @@ class VampPrior:
         if responsibilities is not None:
             if isinstance(x_recon, tuple):
                 mean, sigma = x_recon
-                return weighted_heteroscedastic_reconstruction_loss(
+                mean = jnp.nan_to_num(mean, nan=0.0, posinf=0.0, neginf=0.0)
+                sigma = jnp.nan_to_num(sigma, nan=config.sigma_min, posinf=config.sigma_max, neginf=config.sigma_min)
+                batch_size = responsibilities.shape[0]
+                num_components = responsibilities.shape[1]
+
+                # Per-component outputs flattened as (B*K, ...) → reshape
+                if mean.ndim == 3 and mean.shape[0] == batch_size * num_components:
+                    mean = mean.reshape((batch_size, num_components, *mean.shape[1:]))
+                    sigma = sigma.reshape((batch_size, num_components))
+
+                # If decoder returns per-component outputs (B, K, ...), weight by responsibilities.
+                if mean.ndim >= 4 and sigma.ndim == 2:
+                    return weighted_heteroscedastic_reconstruction_loss(
+                        x_true,
+                        mean,
+                        sigma,
+                        responsibilities,
+                        config.recon_weight,
+                    )
+                # Otherwise, treat as standard heteroscedastic (no component axis).
+                return heteroscedastic_reconstruction_loss(
                     x_true,
                     mean,
                     sigma,
-                    responsibilities,
                     config.recon_weight,
                 )
             if config.reconstruction_loss == "mse":
-                return weighted_reconstruction_loss_mse(
-                    x_true,
-                    x_recon,
-                    responsibilities,
-                    config.recon_weight,
-                )
+                batch_size = responsibilities.shape[0]
+                num_components = responsibilities.shape[1]
+
+                if x_recon.ndim == 3 and x_recon.shape[0] == batch_size * num_components:
+                    x_recon = x_recon.reshape((batch_size, num_components, *x_recon.shape[1:]))
+                x_recon = jnp.nan_to_num(x_recon, nan=0.0, posinf=0.0, neginf=0.0)
+
+                if x_recon.ndim >= 4:
+                    return weighted_reconstruction_loss_mse(
+                        x_true,
+                        x_recon,
+                        responsibilities,
+                        config.recon_weight,
+                    )
+                return reconstruction_loss_mse(x_true, x_recon, config.recon_weight)
             if config.reconstruction_loss == "bce":
-                return weighted_reconstruction_loss_bce(
-                    x_true,
-                    x_recon,
-                    responsibilities,
-                    config.recon_weight,
-                )
+                batch_size = responsibilities.shape[0]
+                num_components = responsibilities.shape[1]
+
+                if x_recon.ndim == 3 and x_recon.shape[0] == batch_size * num_components:
+                    x_recon = x_recon.reshape((batch_size, num_components, *x_recon.shape[1:]))
+                x_recon = jnp.nan_to_num(x_recon, nan=0.0, posinf=0.0, neginf=0.0)
+
+                if x_recon.ndim >= 4:
+                    return weighted_reconstruction_loss_bce(
+                        x_true,
+                        x_recon,
+                        responsibilities,
+                        config.recon_weight,
+                    )
+                return reconstruction_loss_bce(x_true, x_recon, config.recon_weight)
             raise ValueError(
                 f"Unknown reconstruction_loss: {config.reconstruction_loss}"
             )

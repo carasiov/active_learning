@@ -273,25 +273,45 @@ class Encoder(nn.Module):
 
 **Location:** `src/rcmvae/domain/components/decoders/`
 
-**Types:**
-- `DenseDecoder`: Fully connected layers
-- `ConvDecoder`: Transposed convolutional layers
+**Modular Decoder Architecture**
 
-**Interface:**
-```python
-class Decoder(nn.Module):
-    output_shape: Tuple[int, ...]
-    hidden_dims: Tuple[int, ...]
+- **Pattern:** `Decoder = Conditioner + Backbone + OutputHead`
+- **Location:** `src/rcmvae/domain/components/decoder_modules/`
 
-    def __call__(self, z, deterministic=True):
-        # Returns: reconstructed x
-        ...
-```
+**Conditioners** modulate decoder features based on component embeddings:
 
-**Design:**
-- Mirrors encoder architecture (symmetric VAE)
-- Output shape matches input data shape
-- Sigmoid activation for [0,1] pixel values
+| Conditioner | Config Value | Formula | Use Case |
+|-------------|--------------|---------|----------|
+| `ConditionalInstanceNorm` | `"cin"` | γ·((x-μ)/σ)+β | Style control, component specialization |
+| `FiLMLayer` | `"film"` | γ·x+β | Feature gating without normalization |
+| `ConcatConditioner` | `"concat"` | [x, proj(e)] | Simple baseline |
+| `NoopConditioner` | `"none"` | x | Standard/VampPrior (no embeddings) |
+
+**Valid prior × conditioning combinations:**
+
+| `prior_type` | `cin` | `film` | `concat` | `none` |
+|--------------|-------|--------|----------|--------|
+| `standard` | — | — | — | ✓ |
+| `mixture` | ✓ | ✓ | ✓ | ✓ |
+| `geometric_mog` | ✓ | ✓ | ✓ | ✓ |
+| `vamp` | — | — | — | ✓ |
+
+VampPrior doesn't use component embeddings, so conditioning is forced to `"none"`.
+
+**Other modules:**
+- Backbones: `ConvBackbone`, `DenseBackbone`
+- Output heads: `StandardHead`, `HeteroscedasticHead`
+- Composed decoders: `ModularConvDecoder`, `ModularDenseDecoder`
+
+Construction handled by factory (`build_decoder`). Config validation enforces compatibility.
+
+**Legacy decoders (deprecated, kept for backward-compatibility)**
+- `DenseDecoder`, `ConvDecoder`
+- `Heteroscedastic*Decoder`
+- `ComponentAware*Decoder`
+- `FiLM*Decoder`
+
+Migration: use `Modular*Decoder` with the equivalent conditioner/output head combination.
 
 ### Classifiers
 

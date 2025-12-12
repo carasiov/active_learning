@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Dict
 
 import jax.numpy as jnp
+from jax.scipy.special import logsumexp
 
 from rcmvae.domain.priors.base import EncoderOutput
 from rcmvae.application.services.loss_pipeline import (
@@ -69,22 +70,58 @@ class MixtureGaussianPrior:
 
         responsibilities = encoder_output.extras.get("responsibilities")
         pi = encoder_output.extras.get("pi")
+        z_mean_per_component = encoder_output.extras.get("z_mean_per_component")
+        z_log_per_component = encoder_output.extras.get("z_log_var_per_component")
 
         if responsibilities is None or pi is None:
             raise ValueError("Mixture prior requires responsibilities and pi in extras")
 
         # KL divergence terms
-        kl_z = kl_divergence(
-            encoder_output.z_mean,
-            encoder_output.z_log_var,
-            weight=config.kl_weight,
-        )
+        if z_mean_per_component is not None and z_log_per_component is not None:
+            kl_z = kl_divergence(
+                z_mean_per_component,
+                z_log_per_component,
+                weight=config.kl_weight,
+            )
+        else:
+            kl_z = kl_divergence(
+                encoder_output.z_mean,
+                encoder_output.z_log_var,
+                weight=config.kl_weight,
+            )
 
-        kl_c = categorical_kl(
-            responsibilities,
-            pi,
-            weight=config.kl_c_weight,
-        )
+        # Per-sample c prior selection
+        c_regularizer = getattr(config, "c_regularizer", "categorical")
+
+        # Standard categorical KL
+        if c_regularizer in {"categorical", "both"}:
+            kl_c = categorical_kl(
+                responsibilities,
+                pi,
+                weight=config.kl_c_weight,
+            )
+        else:
+            kl_c = jnp.array(0.0, dtype=responsibilities.dtype)
+
+        # Logistic-normal mixture regularizer on logits
+        if c_regularizer in {"logit_mog", "both"}:
+            component_logits = encoder_output.component_logits
+            if component_logits is None:
+                kl_c_logit_mog = jnp.array(0.0, dtype=kl_z.dtype)
+            else:
+                k = component_logits.shape[-1]
+                means = jnp.eye(k) * config.c_logit_prior_mean  # [K, K]
+                sigma_sq = config.c_logit_prior_sigma ** 2
+                # Log prob under each Gaussian component
+                centered = component_logits[:, None, :] - means[None, :, :]
+                quad = jnp.sum(jnp.square(centered) / sigma_sq, axis=-1)
+                log_norm = -0.5 * (k * jnp.log(2 * jnp.pi * sigma_sq))
+                log_prob = log_norm - 0.5 * quad  # [B, K]
+                log_mix = logsumexp(log_prob - jnp.log(k), axis=1)  # uniform mixture
+                nll = -jnp.mean(log_mix)
+                kl_c_logit_mog = config.c_logit_prior_weight * nll
+        else:
+            kl_c_logit_mog = jnp.array(0.0, dtype=kl_z.dtype)
 
         # Optional regularizers
         dirichlet_penalty = dirichlet_map_penalty(
@@ -113,6 +150,7 @@ class MixtureGaussianPrior:
             "component_diversity": diversity_penalty,
             "component_entropy": component_entropy,
             "pi_entropy": pi_entropy,
+            "kl_c_logit_mog": kl_c_logit_mog,
         }
 
     def compute_reconstruction_loss(
@@ -145,6 +183,7 @@ class MixtureGaussianPrior:
             raise ValueError("Mixture prior requires extras with responsibilities")
 
         responsibilities = encoder_output.extras.get("responsibilities")
+        component_weights = encoder_output.extras.get("component_selection", responsibilities)
         if responsibilities is None:
             raise ValueError("Mixture prior requires responsibilities in extras")
 
@@ -155,7 +194,7 @@ class MixtureGaussianPrior:
                 x_true,
                 mean_components,
                 sigma_components,
-                responsibilities,
+                component_weights,
                 config.recon_weight,
             )
 
@@ -165,14 +204,14 @@ class MixtureGaussianPrior:
             return weighted_reconstruction_loss_mse(
                 x_true,
                 x_recon,
-                responsibilities,
+                component_weights,
                 config.recon_weight,
             )
         elif config.reconstruction_loss == "bce":
             return weighted_reconstruction_loss_bce(
                 x_true,
                 x_recon,
-                responsibilities,
+                component_weights,
                 config.recon_weight,
             )
         else:

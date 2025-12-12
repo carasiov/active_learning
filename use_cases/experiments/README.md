@@ -145,6 +145,9 @@ model:
 
 **For model architecture theory**, see `/docs/theory/`.
 
+**New:** `configs/decentralized_mixture.yaml` shows the decentralized Mixture-of-VAEs setup
+(one latent per component, Gumbel-Softmax routing) ready for MNIST-sized runs.
+
 > **Note:** When `use_tau_classifier: true`, the config validator enforces `num_components >= num_classes`. During training you'll also see an INFO block summarizing the labeled-data regime (zero / few-shot / low-data / standard) plus warnings if there are too few or no labeled samples—these guardrails help interpret τ-classifier results.
 
 ---

@@ -14,6 +14,8 @@ matplotlib.use('Agg')  # Non-interactive backend
 import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 import numpy as np
+import jax
+import jax.numpy as jnp
 
 from ..utils import (
     _sanitize_model_name,
@@ -179,39 +181,106 @@ def plot_channel_latent_responsibility(
         return {}
 
     saved_paths: Dict[str, Dict[str, List[str]]] = {}
-    y_array = np.asarray(y_true).astype(int)
+    y_array = np.asarray(y_true)
 
     for model_name, model in channel_viz_models.items():
+        latent_2d = None
+        channel_latents = None  # shape: [N, K, 2] when available
+        resp = None
+        labels = None
+
+        # Prefer diagnostics payload (captures per-component latents if available)
+        latent_data = None
         try:
-            latent, _, _, _, responsibilities, _ = model.predict_batched(
-                X_data,
-                return_mixture=True,
+            diag_dir = getattr(model, "last_diagnostics_dir", None)
+            if diag_dir:
+                latent_data = model._diagnostics.load_latent_data(diag_dir)
+        except Exception:
+            latent_data = None
+
+        if latent_data and isinstance(latent_data, dict):
+            resp = np.asarray(latent_data.get("q_c"))
+            labels = np.asarray(latent_data.get("labels"))
+            z_mean_per_component = latent_data.get("z_mean_per_component")
+            if z_mean_per_component is not None:
+                channel_latents = np.asarray(z_mean_per_component)
+
+            # Verify size match with X_data (if provided via y_true length proxy)
+            # We use y_true as a proxy for X_data length because X_data might be passed as different type/shape
+            if y_true is not None and resp.shape[0] != len(y_true):
+                print(f"Info: Discarding cached diagnostics for {model_name} due to size mismatch "
+                      f"(cached={resp.shape[0]}, current={len(y_true)}). Re-running prediction.")
+                latent_data = None
+                resp = None
+                channel_latents = None
+                labels = None
+
+        if channel_latents is None:
+            try:
+                latent, _, _, _, responsibilities, _ = model.predict_batched(
+                    X_data,
+                    return_mixture=True,
+                )
+                latent_2d = np.asarray(latent)[:, :2]
+                resp = np.asarray(responsibilities)
+                labels = y_array
+            except Exception as exc:
+                print(f"Warning: Could not retrieve mixture outputs for {model_name}: {exc}")
+                continue
+
+        if resp is None or resp.size == 0:
+            print(f"Warning: Missing responsibilities for {model_name}")
+            continue
+
+        if channel_latents is not None:
+            if channel_latents.shape[-1] < 2:
+                print(f"Warning: Skipping channel latent plot for {model_name}: latent_dim < 2")
+                continue
+            if resp.shape[0] != channel_latents.shape[0]:
+                print(f"Warning: Responsibilities size mismatch for {model_name}")
+                continue
+
+            total = resp.shape[0]
+            if total > max_points:
+                rng = np.random.default_rng(seed)
+                idx = np.sort(rng.choice(total, size=max_points, replace=False))
+            else:
+                idx = slice(None)
+
+            channel_latents = channel_latents[idx]
+            resp = resp[idx]
+            # Prefer y_array (true labels) if available and matching size, otherwise fallback to cached labels
+            if y_array is not None and y_array.shape[0] >= resp.shape[0]:
+                 labels = y_array[idx]
+            else:
+                 labels = labels[idx] if labels is not None else y_array[: resp.shape[0]]
+            flat_latent = channel_latents.reshape(-1, channel_latents.shape[-1])
+            (x_lim, y_lim) = _compute_limits(flat_latent[:, :2])
+        else:
+            if latent_2d is None or latent_2d.shape[1] < 2:
+                print(f"Warning: Skipping channel latent plot for {model_name}: latent_dim < 2 or missing q(c|x)")
+                continue
+            if resp.shape[0] != latent_2d.shape[0]:
+                print(f"Warning: Responsibilities size mismatch for {model_name}")
+                continue
+
+            latent_2d, resp, labels = _downsample_points(
+                latent_2d,
+                resp,
+                np.asarray(labels).astype(int),
+                max_points=max_points,
+                seed=seed,
             )
-        except Exception as exc:
-            print(f"Warning: Could not retrieve mixture outputs for {model_name}: {exc}")
-            continue
-
-        if latent.shape[1] < 2 or responsibilities is None:
-            print(f"Warning: Skipping channel latent plot for {model_name}: latent_dim < 2 or missing q(c|x)")
-            continue
-
-        latent_2d = np.asarray(latent)[:, :2]
-        resp = np.asarray(responsibilities)
-        if resp.shape[0] != latent_2d.shape[0]:
-            print(f"Warning: Responsibilities size mismatch for {model_name}")
-            continue
-
-        latent_2d, resp, labels = _downsample_points(
-            latent_2d,
-            resp,
-            y_array,
-            max_points=max_points,
-            seed=seed,
-        )
+            (x_lim, y_lim) = _compute_limits(latent_2d)
 
         if labels.size == 0:
             print(f"Warning: No labels available for channel latent plot ({model_name})")
             continue
+
+        if labels.dtype.kind == "f":
+            labels = np.where(np.isnan(labels), -1, labels).astype(int)
+        else:
+            labels = labels.astype(int)
 
         max_label = labels.max()
         num_classes = int(getattr(model.config, "num_classes", max(max_label + 1, 1)))
@@ -233,7 +302,6 @@ def plot_channel_latent_responsibility(
             channel_dir = channel_dir / safe_name
         channel_dir.mkdir(parents=True, exist_ok=True)
 
-        (x_lim, y_lim) = _compute_limits(latent_2d)
         legend_handles = [
             Patch(facecolor=palette[i], edgecolor="none", label=str(i))
             for i in range(num_classes)
@@ -244,9 +312,10 @@ def plot_channel_latent_responsibility(
         def _draw_channel(ax: plt.Axes, channel_idx: int) -> None:
             rgba = label_colors.copy()
             rgba[:, 3] = np.clip(resp[:, channel_idx], 0.0, 1.0)
+            points = channel_latents[:, channel_idx, :2] if channel_latents is not None else latent_2d
             ax.scatter(
-                latent_2d[:, 0],
-                latent_2d[:, 1],
+                points[:, 0],
+                points[:, 1],
                 c=rgba,
                 s=CHANNEL_POINT_SIZE,
                 linewidths=0,
@@ -319,6 +388,322 @@ def plot_channel_latent_responsibility(
 
     return saved_paths
 
+
+def plot_selected_vs_weighted_reconstruction(
+    models: Dict[str, object],
+    X_data: np.ndarray,
+    output_dir: Path,
+    *,
+    num_samples: int = 6,
+    seed: int = 0,
+):
+    """Compare selected-channel (hard) vs weighted reconstructions.
+
+    Caption: Shows original, Gumbel/argmax-selected reconstruction, weighted reconstruction, and alt (2nd-best) per sample.
+    """
+    mixture_models = {
+        name: model for name, model in models.items()
+        if model.config.is_mixture_based_prior()
+    }
+    if not mixture_models:
+        return
+
+    rng = np.random.default_rng(seed)
+    total = X_data.shape[0]
+    idx = rng.choice(total, size=min(num_samples, total), replace=False)
+    samples = np.asarray(X_data[idx])
+
+    for model_name, model in mixture_models.items():
+        try:
+            # Forward with gumbel key to fetch component_selection if available
+            try:
+                import jax
+                jax_key = jax.random.PRNGKey(seed)
+                forward = model._apply_fn(
+                    model.state.params,
+                    jnp.asarray(samples),
+                    training=False,
+                    rngs={"gumbel": jax_key},
+                )
+            except Exception:
+                forward = model._apply_fn(
+                    model.state.params,
+                    jnp.asarray(samples),
+                    training=False,
+                )
+
+            extras = forward.extras if hasattr(forward, "extras") else forward[6]
+            if not hasattr(extras, "get"):
+                continue
+
+            recon_per_component, sigma_per_component, err = _extract_component_recon(extras)
+            if err:
+                continue
+
+            responsibilities = extras.get("responsibilities")
+            component_selection = extras.get("component_selection", responsibilities)
+            if component_selection is None:
+                continue
+            component_selection = np.asarray(component_selection)
+            responsibilities = np.asarray(responsibilities)
+            recon_per_component = np.asarray(recon_per_component)
+
+            # Derive selections
+            selected_idx = component_selection.argmax(axis=1)
+            alt_idx = responsibilities.argsort(axis=1)[:, -2] if responsibilities.shape[1] > 1 else selected_idx
+
+            def _gather_components(indices: np.ndarray) -> np.ndarray:
+                gathered = []
+                for i, c in enumerate(indices):
+                    gathered.append(recon_per_component[i, c])
+                return np.stack(gathered, axis=0)
+
+            recon_selected = _gather_components(selected_idx)
+            recon_alt = _gather_components(alt_idx)
+            recon_weighted = np.sum(
+                responsibilities[..., None, None] * recon_per_component,
+                axis=1,
+            )
+
+            # Plot grid
+            cols = 4
+            rows = recon_selected.shape[0]
+            fig, axes = plt.subplots(rows, cols, figsize=(cols * 3.2, rows * 3.2))
+            axes = np.atleast_2d(axes)
+            for r in range(rows):
+                axes[r, 0].imshow(_prep_image(samples[r]), cmap="gray")
+                axes[r, 0].set_title("Original" if r == 0 else "")
+                axes[r, 1].imshow(_prep_image(recon_selected[r]), cmap="gray")
+                axes[r, 1].set_title("Selected" if r == 0 else "")
+                axes[r, 2].imshow(_prep_image(recon_weighted[r]), cmap="gray")
+                axes[r, 2].set_title("Weighted" if r == 0 else "")
+                axes[r, 3].imshow(_prep_image(recon_alt[r]), cmap="gray")
+                axes[r, 3].set_title("Alt (2nd best)" if r == 0 else "")
+                for c in range(cols):
+                    axes[r, c].axis("off")
+
+            fig.suptitle("Selected vs weighted reconstructions (checks hard routing)", fontsize=12)
+            fig.tight_layout(rect=(0, 0, 1, 0.96))
+
+            mixture_dir = output_dir / "mixture"
+            mixture_dir.mkdir(parents=True, exist_ok=True)
+            fname = f"{_sanitize_model_name(model_name)}_recon_selected.png"
+            safe_save_plot(fig, mixture_dir / fname)
+
+        except Exception as exc:  # pragma: no cover
+            print(f"Warning: Failed selected vs weighted recon plot for {model_name}: {exc}")
+
+
+def plot_channel_ownership_heatmap(
+    models: Dict[str, object],
+    X_data: np.ndarray,
+    y_true: np.ndarray,
+    output_dir: Path,
+):
+    """Heatmap of channel vs label ownership using mean responsibilities.
+
+    Caption: Shows how responsibility mass distributes over (channel, label); bright diagonals imply specialization.
+    """
+    mixture_models = {
+        name: model for name, model in models.items()
+        if model.config.is_mixture_based_prior()
+    }
+    if not mixture_models:
+        return
+
+    for model_name, model in mixture_models.items():
+        try:
+            latent, _, _, _, responsibilities, _ = model.predict_batched(
+                X_data, return_mixture=True
+            )
+        except Exception as exc:
+            print(f"Warning: Skipping ownership heatmap for {model_name}: {exc}")
+            continue
+
+        if responsibilities is None or y_true.size == 0:
+            continue
+
+        resp = np.asarray(responsibilities)
+        labels = np.asarray(y_true)
+        valid = ~np.isnan(labels)
+        if not valid.any():
+            continue
+        labels = labels[valid].astype(int)
+        resp = resp[valid]
+
+        num_components = resp.shape[1]
+        num_classes = int(getattr(model.config, "num_classes", labels.max() + 1))
+        # ownership[k, y] = mean responsibility for class y on component k
+        ownership = np.zeros((num_components, num_classes), dtype=np.float32)
+        for c in range(num_classes):
+            mask = labels == c
+            if mask.any():
+                ownership[:, c] = resp[mask].mean(axis=0)
+
+        plt.close("all")
+        fig, ax = plt.subplots(figsize=(max(6, num_classes * 0.6), max(4, num_components * 0.4)))
+        im = ax.imshow(ownership, aspect="auto", cmap="magma")
+        ax.set_xlabel("Label")
+        ax.set_ylabel("Component")
+        ax.set_title("Channel vs label ownership (mean q(c|x) per class)")
+        fig.colorbar(im, ax=ax, fraction=0.046)
+        ax.set_xticks(np.arange(num_classes))
+        ax.set_yticks(np.arange(num_components))
+
+        mixture_dir = output_dir / "mixture"
+        mixture_dir.mkdir(parents=True, exist_ok=True)
+        fname = f"{_sanitize_model_name(model_name)}_channel_ownership.png"
+        safe_save_plot(fig, mixture_dir / fname)
+
+
+def plot_component_kl_heatmap(
+    models: Dict[str, object],
+    X_data: np.ndarray,
+    output_dir: Path,
+    *,
+    max_points: int = 2048,
+    batch_size: int = 256,
+):
+    """Per-component KL heatmap to spot dead or over-regularized channels.
+
+    Caption: KL(q(z_k|x) || N(0,I)) summed over dims and averaged over data.
+    """
+    mixture_models = {
+        name: model for name, model in models.items()
+        if model.config.is_mixture_based_prior()
+    }
+    if not mixture_models:
+        return
+
+    for model_name, model in mixture_models.items():
+        try:
+            import jax.numpy as jnp  # noqa: WPS433
+            from jax import random  # noqa: WPS433
+        except Exception:
+            print(f"Warning: JAX unavailable for KL heatmap ({model_name})")
+            continue
+
+        data = np.asarray(X_data)
+        if data.shape[0] > max_points:
+            data = data[:max_points]
+
+        num_components = getattr(model.config, "num_components", 0)
+        kl_sums = np.zeros((num_components,), dtype=np.float64)
+        count = 0
+
+        for start in range(0, data.shape[0], batch_size):
+            batch = data[start:start + batch_size]
+            if batch.size == 0:
+                continue
+            key = random.PRNGKey(start)
+            forward = model._apply_fn(
+                model.state.params,
+                jnp.asarray(batch),
+                training=False,
+                rngs={"gumbel": key},
+            )
+            extras = forward.extras if hasattr(forward, "extras") else forward[6]
+            if not hasattr(extras, "get"):
+                continue
+            z_mean = extras.get("z_mean_per_component")
+            z_log_var = extras.get("z_log_var_per_component")
+            if z_mean is None or z_log_var is None:
+                continue
+            z_mean = np.asarray(z_mean)
+            z_log_var = np.asarray(z_log_var)
+            kl = -0.5 * (1.0 + z_log_var - np.square(z_mean) - np.exp(z_log_var))
+            kl = kl.sum(axis=2)  # sum over latent dims -> [B, K]
+            kl_sums += kl.sum(axis=0)
+            count += kl.shape[0]
+
+        if count == 0:
+            continue
+        kl_mean = kl_sums / float(count)
+
+        plt.close("all")
+        fig, ax = plt.subplots(figsize=(max(6, num_components * 0.4), 2.5))
+        im = ax.imshow(kl_mean[None, :], aspect="auto", cmap="viridis")
+        ax.set_yticks([])
+        ax.set_xticks(np.arange(num_components))
+        ax.set_xlabel("Component")
+        ax.set_title("Per-component KL (mean over data)")
+        fig.colorbar(im, ax=ax, fraction=0.046)
+
+        mixture_dir = output_dir / "mixture"
+        mixture_dir.mkdir(parents=True, exist_ok=True)
+        fname = f"{_sanitize_model_name(model_name)}_component_kl.png"
+        safe_save_plot(fig, mixture_dir / fname)
+
+
+def plot_routing_hardness(
+    models: Dict[str, object],
+    X_data: np.ndarray,
+    output_dir: Path,
+    *,
+    sample_size: int = 1024,
+):
+    """Compare soft vs Gumbel-sampled routing hardness.
+
+    Caption: Bars show mean max q(c|x) with/without Gumbel; gap indicates impact of hard routing.
+    """
+    mixture_models = {
+        name: model for name, model in models.items()
+        if model.config.is_mixture_based_prior()
+    }
+    if not mixture_models:
+        return
+
+    for model_name, model in mixture_models.items():
+        data = np.asarray(X_data)
+        if data.shape[0] > sample_size:
+            data = data[:sample_size]
+
+        # Soft responsibilities
+        try:
+            _, _, _, _, resp_soft, _ = model.predict_batched(data, return_mixture=True)
+        except Exception as exc:
+            print(f"Warning: Skipping routing hardness for {model_name}: {exc}")
+            continue
+        if resp_soft is None:
+            continue
+        resp_soft = np.asarray(resp_soft)
+        hardness_soft = float(np.mean(resp_soft.max(axis=1)))
+
+        # Gumbel sampled
+        try:
+            import jax
+            forward = model._apply_fn(
+                model.state.params,
+                jnp.asarray(data),
+                training=False,
+                rngs={"gumbel": jax.random.PRNGKey(0)},
+            )
+            extras = forward.extras if hasattr(forward, "extras") else forward[6]
+            component_selection = extras.get("component_selection")
+            if component_selection is None:
+                hardness_gumbel = None
+            else:
+                hardness_gumbel = float(np.mean(np.asarray(component_selection).max(axis=1)))
+        except Exception:
+            hardness_gumbel = None
+
+        labels = ["soft"]
+        values = [hardness_soft]
+        if hardness_gumbel is not None:
+            labels.append("gumbel")
+            values.append(hardness_gumbel)
+
+        plt.close("all")
+        fig, ax = plt.subplots(figsize=(4, 3))
+        ax.bar(labels, values, color=["#0B84A5", "#EC5B56"][:len(values)])
+        ax.set_ylim(0, 1.05)
+        ax.set_ylabel("Mean max q(c|x)")
+        ax.set_title("Routing hardness (soft vs gumbel sample)")
+
+        mixture_dir = output_dir / "mixture"
+        mixture_dir.mkdir(parents=True, exist_ok=True)
+        fname = f"{_sanitize_model_name(model_name)}_routing_hardness.png"
+        safe_save_plot(fig, mixture_dir / fname)
 
 def plot_responsibility_histogram(
     models: Dict[str, object],

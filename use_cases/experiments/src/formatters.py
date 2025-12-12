@@ -241,10 +241,17 @@ def _format_decoder_type(model_config: Dict[str, Any]) -> str:
 
     features = []
 
-    # Component-aware decoder
-    if model_config.get("use_component_aware_decoder", False):
-        embed_dim = model_config.get("component_embedding_dim", 8)
+    # Conditioning method: cin > film > concat > none
+    conditioning = model_config.get("decoder_conditioning", "none")
+    embed_dim = model_config.get("component_embedding_dim", 8)
+
+    if conditioning == "cin":
+        features.append(f"CIN (embed={embed_dim})")
+    elif conditioning == "film":
+        features.append(f"FiLM (embed={embed_dim})")
+    elif conditioning == "concat":
         features.append(f"component-aware (embed={embed_dim})")
+    # "none" adds nothing
 
     # Heteroscedastic decoder
     if model_config.get("use_heteroscedastic_decoder", False):

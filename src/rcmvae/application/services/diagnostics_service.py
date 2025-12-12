@@ -90,6 +90,7 @@ class DiagnosticsCollector:
         resp_records: List[np.ndarray] = []
         label_records: List[np.ndarray] = []
         pi_array: np.ndarray | None = None
+        z_per_component_records: List[np.ndarray] = []
 
         # Process in batches
         total = data.shape[0]
@@ -134,6 +135,10 @@ class DiagnosticsCollector:
 
             # Collect latent space data (for visualization)
             z_records.append(np.asarray(z_mean))
+            if self.config.latent_dim == 2 and extras is not None:
+                z_mean_per_component = extras.get("z_mean_per_component") if hasattr(extras, "get") else None
+                if z_mean_per_component is not None:
+                    z_per_component_records.append(np.asarray(z_mean_per_component))
             resp_records.append(resp_np)
             label_records.append(labels[start:end])
 
@@ -194,12 +199,15 @@ class DiagnosticsCollector:
             resp_array = np.concatenate(resp_records, axis=0).astype(np.float32)
             labels_array = np.concatenate(label_records, axis=0)
 
-            np.savez(
-                output_dir / "latent.npz",
-                z_mean=z_array,
-                labels=labels_array,
-                q_c=resp_array,
-            )
+            latent_payload = {
+                "z_mean": z_array,
+                "labels": labels_array,
+                "q_c": resp_array,
+            }
+            if z_per_component_records:
+                latent_payload["z_mean_per_component"] = np.concatenate(z_per_component_records, axis=0).astype(np.float32)
+
+            np.savez(output_dir / "latent.npz", **latent_payload)
 
         # Return computed metrics
         metrics = {
@@ -253,7 +261,8 @@ class DiagnosticsCollector:
             output_dir: Directory to load from (uses last if None)
 
         Returns:
-            Dictionary with 'z_mean', 'labels', 'q_c' or None if not found
+            Dictionary with 'z_mean', 'labels', 'q_c' and optional
+            'z_mean_per_component' when saved, or None if not found
         """
         dir_path = output_dir or self._last_output_dir
         if dir_path is None:
@@ -264,11 +273,14 @@ class DiagnosticsCollector:
             return None
 
         data = np.load(latent_path)
-        return {
+        result = {
             "z_mean": data["z_mean"],
             "labels": data["labels"],
             "q_c": data["q_c"],
         }
+        if "z_mean_per_component" in data.files:
+            result["z_mean_per_component"] = data["z_mean_per_component"]
+        return result
 
     @staticmethod
     def compute_accuracy(

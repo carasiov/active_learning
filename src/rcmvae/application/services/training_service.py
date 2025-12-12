@@ -118,6 +118,7 @@ class Trainer:
             "kl_loss": [],
             "kl_z": [],
             "kl_c": [],
+            "kl_c_logit_mog": [],
             "dirichlet_penalty": [],
             "usage_sparsity_loss": [],
             "component_diversity": [],
@@ -131,6 +132,7 @@ class Trainer:
             "val_kl_loss": [],
             "val_kl_z": [],
             "val_kl_c": [],
+            "val_kl_c_logit_mog": [],
             "val_dirichlet_penalty": [],
             "val_usage_sparsity_loss": [],
             "val_component_diversity": [],
@@ -197,6 +199,17 @@ class Trainer:
                 kl_c_scale = min(1.0, (epoch + 1) / float(self.config.kl_c_anneal_epochs))
             else:
                 kl_c_scale = 1.0
+
+            # Calculate Gumbel temperature
+            if self.config.gumbel_temperature_anneal_epochs > 0:
+                # Linear decay from start to min
+                progress = min(1.0, epoch / float(self.config.gumbel_temperature_anneal_epochs))
+                gumbel_temp = self.config.gumbel_temperature + (
+                    self.config.gumbel_temperature_min - self.config.gumbel_temperature
+                ) * progress
+            else:
+                gumbel_temp = self.config.gumbel_temperature
+
             state, state_rng, shuffle_rng, splits = self._train_one_epoch(
                 state,
                 splits=splits,
@@ -205,6 +218,7 @@ class Trainer:
                 train_step_fn=train_step_fn,
                 batch_size=setup.batch_size,
                 kl_c_scale=kl_c_scale,
+                gumbel_temperature=gumbel_temp,
                 loop_hooks=loop_hooks,
             )
             self._latest_splits = splits
@@ -336,6 +350,7 @@ class Trainer:
         train_step_fn: TrainStepFn,
         batch_size: int,
         kl_c_scale: float,
+        gumbel_temperature: float,
         loop_hooks: TrainerLoopHooks | None = None,
     ) -> Tuple[SSVAETrainState, jax.Array, jax.Array, DataSplits]:
         if splits.train_size == 0:
@@ -354,6 +369,7 @@ class Trainer:
                 state_rng,
                 train_step_fn,
                 kl_c_scale,
+                gumbel_temperature,
                 loop_hooks=loop_hooks,
             )
 
@@ -390,6 +406,7 @@ class Trainer:
         state_rng: jax.Array,
         train_step_fn: TrainStepFn,
         kl_c_scale: float,
+        gumbel_temperature: float,
         loop_hooks: TrainerLoopHooks | None = None,
     ) -> Tuple[SSVAETrainState, jax.Array, MetricsDict]:
         batch_kwargs: Dict[str, jnp.ndarray] = {}
@@ -399,7 +416,7 @@ class Trainer:
 
         state_rng, raw_key = jax.random.split(state_rng)
         batch_key = jax.random.fold_in(raw_key, int(state.step))
-        state, batch_metrics = train_step_fn(state, batch_x, batch_y, batch_key, kl_c_scale, **batch_kwargs)
+        state, batch_metrics = train_step_fn(state, batch_x, batch_y, batch_key, kl_c_scale, gumbel_temperature=gumbel_temperature, **batch_kwargs)
 
         if loop_hooks and loop_hooks.post_batch_fn is not None:
             loop_hooks.post_batch_fn(state, batch_x, batch_y, batch_metrics)
@@ -494,6 +511,7 @@ class Trainer:
             "kl_loss",
             "kl_z",
             "kl_c",
+            "kl_c_logit_mog",
             "dirichlet_penalty",
             "usage_sparsity_loss",
             "component_diversity",

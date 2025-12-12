@@ -92,6 +92,11 @@ def _encode_prior(config: SSVAEConfig) -> str:
         if config.dirichlet_alpha is not None and config.dirichlet_alpha > 0:
             code += "-dir"
 
+        if getattr(config, "latent_layout", "shared") == "decentralized":
+            code += "-dec"
+        if getattr(config, "use_gumbel_softmax", False):
+            code += "-gbl"
+
         return code
 
     elif prior_type == "vamp":
@@ -126,6 +131,11 @@ def _encode_prior(config: SSVAEConfig) -> str:
                 f"got '{arrangement}'"
             )
 
+        if getattr(config, "latent_layout", "shared") == "decentralized":
+            code += "-dec"
+        if getattr(config, "use_gumbel_softmax", False):
+            code += "-gbl"
+
         return code
 
     else:
@@ -155,6 +165,7 @@ def _encode_decoder(config: SSVAEConfig) -> str:
     """Encode decoder features.
 
     Format builds up modifiers:
+    - FiLM conditioning: adds "film"
     - Component-aware: adds "ca"
     - Heteroscedastic: adds "het"
     - Plain (no features): "plain"
@@ -173,9 +184,15 @@ def _encode_decoder(config: SSVAEConfig) -> str:
     """
     features = []
 
-    # Order matters for consistency (alphabetical for simplicity)
-    if config.use_component_aware_decoder:
+    # Conditioning method (cin > film > ca > none)
+    conditioning = getattr(config, "decoder_conditioning", "none")
+    if conditioning == "cin":
+        features.append("cin")
+    elif conditioning == "film":
+        features.append("film")
+    elif conditioning == "concat" or config.use_component_aware_decoder:
         features.append("ca")
+    # "none" adds nothing
 
     if config.use_heteroscedastic_decoder:
         features.append("het")
@@ -251,16 +268,21 @@ Encodes the prior distribution p(z) and p(c):
 | `std` | Standard Gaussian N(0,I) | `prior_type: "standard"` |
 | `mix{{K}}` | Mixture of Gaussians, K components | `prior_type: "mixture"`, `num_components: K` |
 | `mix{{K}}-dir` | Mixture with Dirichlet prior on π | Above + `dirichlet_alpha: > 0` |
+| `mix{{K}}-dec` | Mixture with decentralized latents (one z per component) | `latent_layout: "decentralized"` |
+| `mix{{K}}-gbl` | Mixture with Gumbel-Softmax component selection | `use_gumbel_softmax: true` |
 | `vamp{{K}}-km` | VampPrior, k-means init | `prior_type: "vamp"`, `vamp_pseudo_init_method: "kmeans"` |
 | `vamp{{K}}-rand` | VampPrior, random init | `prior_type: "vamp"`, `vamp_pseudo_init_method: "random"` |
 | `geo{{K}}-circle` | Geometric MoG, circle arrangement | `prior_type: "geometric_mog"`, `geometric_arrangement: "circle"` |
 | `geo{{K}}-grid` | Geometric MoG, grid arrangement | `prior_type: "geometric_mog"`, `geometric_arrangement: "grid"` |
+| `geo{{K}}-dec` | Geometric MoG with decentralized latents | `latent_layout: "decentralized"` |
+| `geo{{K}}-gbl` | Geometric MoG with Gumbel-Softmax component selection | `use_gumbel_softmax: true` |
 
 **Notes:**
 - K is the number of mixture components (`num_components`)
 - Dirichlet modifier appears only when `dirichlet_alpha` is set and positive
 - VampPrior always includes initialization method suffix
 - Geometric MoG always includes arrangement suffix
+ - Modifiers stack: e.g., `mix10-dir-dec-gbl`
 
 ### Classifier Codes
 
@@ -281,15 +303,17 @@ Encodes decoder features (modifiers are cumulative):
 
 | Code | Meaning | Config |
 |------|---------|--------|
-| `plain` | Standard decoder (no special features) | Default |
-| `ca` | Component-aware decoder | `use_component_aware_decoder: true` |
+| `plain` | Standard decoder (no special features) | `decoder_conditioning: "none"` |
+| `cin` | Conditional Instance Normalization | `decoder_conditioning: "cin"` |
+| `film` | FiLM conditioning (scale+shift) | `decoder_conditioning: "film"` |
+| `ca` | Component-aware (concat) | `decoder_conditioning: "concat"` |
 | `het` | Heteroscedastic (learns σ²) | `use_heteroscedastic_decoder: true` |
-| `ca-het` | Both component-aware and heteroscedastic | Both enabled |
+| `cin-het` | CIN + heteroscedastic | Both enabled |
 
 **Notes:**
-- Modifiers combine in canonical order: `ca-het` (not `het-ca`)
-- Component-aware requires mixture-based prior
-- Future features will extend this list (e.g., `ca-het-contr` for contrastive)
+- Modifiers combine in canonical order: `cin-het`, `film-het`, `ca-het`
+- CIN/FiLM/CA require mixture-based priors with component embeddings
+- Future features will extend this list (e.g., `cin-het-contr` for contrastive)
 
 ---
 

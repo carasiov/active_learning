@@ -47,6 +47,7 @@ class LossKeys:
     # KL divergences
     KL_Z = "loss.kl_z"  # KL[q(z|x) || p(z|c)]
     KL_C = "loss.kl_c"  # KL[q(c|x) || p(c)]
+    KL_C_LOGIT_MOG = "loss.kl_c_logit_mog"  # Logistic-normal mixture prior on component logits
 
     # Classification loss (when using standard head)
     CLASSIFIER = "loss.classifier"
@@ -245,6 +246,7 @@ LEGACY_KEY_MAP = {
     "final_recon_loss": LossKeys.RECON,
     "final_kl_z": LossKeys.KL_Z,
     "final_kl_c": LossKeys.KL_C,
+    "final_kl_c_logit_mog": LossKeys.KL_C_LOGIT_MOG,
     "final_accuracy": MetricKeys.ACC_TRAIN,
     "training_time_sec": TrainingKeys.TIME_SEC,
     "epochs_completed": TrainingKeys.EPOCHS_COMPLETED,

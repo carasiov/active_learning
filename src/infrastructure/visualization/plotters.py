@@ -31,6 +31,10 @@ from .mixture import (
     plot_mixture_evolution,
     plot_component_embedding_divergence,
     plot_reconstruction_by_component,
+    plot_selected_vs_weighted_reconstruction,
+    plot_channel_ownership_heatmap,
+    plot_component_kl_heatmap,
+    plot_routing_hardness,
 )
 from .tau import (
     plot_tau_matrix_heatmap,
@@ -250,6 +254,87 @@ def component_embedding_plotter(context: VisualizationContext) -> ComponentResul
     except Exception as e:
         return ComponentResult.failed(
             reason="Failed to generate component embedding plots",
+            error=e,
+        )
+
+
+@register_plotter
+def selected_vs_weighted_recon_plotter(context: VisualizationContext) -> ComponentResult:
+    """Visualize selected-channel vs weighted reconstructions (hard vs soft routing)."""
+    if not context.config.is_mixture_based_prior():
+        return ComponentResult.disabled(reason="Requires mixture-based prior")
+
+    try:
+        plot_selected_vs_weighted_reconstruction(
+            _single_model_dict(context.model),
+            context.x_train,
+            context.figures_dir,
+        )
+        return ComponentResult.success(data={})
+    except Exception as e:
+        return ComponentResult.failed(
+            reason="Failed to generate selected vs weighted reconstructions",
+            error=e,
+        )
+
+
+@register_plotter
+def channel_ownership_plotter(context: VisualizationContext) -> ComponentResult:
+    """Heatmap of channel vs label responsibility (specialization view)."""
+    if not context.config.is_mixture_based_prior():
+        return ComponentResult.disabled(reason="Requires mixture-based prior")
+
+    try:
+        plot_channel_ownership_heatmap(
+            _single_model_dict(context.model),
+            context.x_train,
+            context.y_true,
+            context.figures_dir,
+        )
+        return ComponentResult.success(data={})
+    except Exception as e:
+        return ComponentResult.failed(
+            reason="Failed to generate channel ownership heatmap",
+            error=e,
+        )
+
+
+@register_plotter
+def component_kl_heatmap_plotter(context: VisualizationContext) -> ComponentResult:
+    """Per-component KL heatmap to spot dead/over-regularized channels."""
+    if not context.config.is_mixture_based_prior():
+        return ComponentResult.disabled(reason="Requires mixture-based prior")
+
+    try:
+        plot_component_kl_heatmap(
+            _single_model_dict(context.model),
+            context.x_train,
+            context.figures_dir,
+        )
+        return ComponentResult.success(data={})
+    except Exception as e:
+        return ComponentResult.failed(
+            reason="Failed to generate component KL heatmap",
+            error=e,
+        )
+
+
+@register_plotter
+def routing_hardness_plotter(context: VisualizationContext) -> ComponentResult:
+    """Compare routing hardness with and without Gumbel sampling."""
+    if not context.config.is_mixture_based_prior():
+        return ComponentResult.disabled(reason="Requires mixture-based prior")
+
+    try:
+        plot_routing_hardness(
+            _single_model_dict(context.model),
+            context.x_train,
+            context.figures_dir,
+        )
+        return ComponentResult.success(data={})
+    except Exception as e:
+        return ComponentResult.failed(
+            reason="Failed to generate routing hardness plot",
             error=e,
         )
 

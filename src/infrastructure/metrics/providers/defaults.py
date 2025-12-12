@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Dict, Optional
 
 import numpy as np
+import jax.numpy as jnp  # type: ignore
+from jax import random  # type: ignore
 
 from rcmvae.application.services.diagnostics_service import DiagnosticsCollector
 
@@ -37,6 +39,7 @@ def training_metrics(context: MetricContext) -> ComponentResult:
                 "final_recon_loss": _final(history, "reconstruction_loss"),
                 "final_kl_z": _final(history, "kl_z"),
                 "final_kl_c": _final(history, "kl_c"),
+                "final_kl_c_logit_mog": _final(history, "kl_c_logit_mog"),
                 "training_time_sec": float(context.train_time),
                 "epochs_completed": len(history.get("loss", [])),
             }
@@ -207,6 +210,133 @@ def tau_classifier_metrics(context: MetricContext) -> ComponentResult:
     except Exception as e:
         return ComponentResult.failed(
             reason="Failed to compute τ-classifier metrics",
+            error=e,
+        )
+
+
+@register_metric
+def routing_and_specialization_metrics(context: MetricContext) -> ComponentResult:
+    """Routing hardness, ownership, and per-component KL summaries for mixture models."""
+    config = context.config
+    if not getattr(config, "is_mixture_based_prior", lambda: False)():
+        return ComponentResult.disabled(reason="Requires mixture-based prior")
+
+    try:
+        data = np.asarray(context.x_train)
+        if data.size == 0:
+            return ComponentResult.skipped(reason="No training data available")
+        max_points = min(1024, data.shape[0])
+        data = data[:max_points]
+
+        summary: Dict[str, Dict[str, float]] = {}
+
+        # Soft responsibilities
+        resp_soft_np = None
+        try:
+            _, _, _, _, resp_soft, _ = context.model.predict_batched(data, return_mixture=True)
+            resp_soft_np = np.asarray(resp_soft) if resp_soft is not None else None
+        except Exception:
+            resp_soft_np = None
+
+        hardness: Dict[str, float] = {}
+        if resp_soft_np is not None and resp_soft_np.size > 0:
+            hardness["mean_max_soft"] = float(np.mean(resp_soft_np.max(axis=1)))
+            hardness["active_components_1pct"] = int(np.sum(resp_soft_np.mean(axis=0) > 0.01))
+
+        # Gumbel-sampled routing hardness (single pass)
+        hardness_gumbel = None
+        try:
+            forward = context.model._apply_fn(
+                context.model.state.params,
+                jnp.asarray(data),
+                training=False,
+                rngs={"gumbel": random.PRNGKey(0)},
+            )
+            extras = forward.extras if hasattr(forward, "extras") else forward[6]
+            comp_sel = extras.get("component_selection") if hasattr(extras, "get") else None
+            if comp_sel is not None:
+                hardness_gumbel = float(np.mean(np.asarray(comp_sel).max(axis=1)))
+        except Exception:
+            hardness_gumbel = None
+
+        if hardness_gumbel is not None:
+            hardness["mean_max_gumbel"] = hardness_gumbel
+
+        # Ownership diagonal strength (mean responsibility for each component's majority label)
+        ownership_diag = None
+        if resp_soft_np is not None and context.y_true.size > 0:
+            labels = np.asarray(context.y_true)[:resp_soft_np.shape[0]]
+            valid = ~np.isnan(labels)
+            labels = labels[valid].astype(int)
+            resp_f = resp_soft_np[valid]
+            if labels.size > 0:
+                num_components = resp_f.shape[1]
+                num_classes = int(getattr(config, "num_classes", labels.max() + 1))
+                ownership = np.zeros((num_components, num_classes), dtype=np.float32)
+                for c in range(num_classes):
+                    mask = labels == c
+                    if mask.any():
+                        ownership[:, c] = resp_f[mask].mean(axis=0)
+                majority = ownership.argmax(axis=1)
+                diag_vals = ownership[np.arange(num_components), majority]
+                ownership_diag = float(diag_vals.mean())
+
+        component_kl: Dict[str, float] = {}
+        # Per-component KL (if per-component stats are available)
+        try:
+            kl_sums = None
+            count = 0
+            batch_size = 256
+            for start in range(0, data.shape[0], batch_size):
+                batch = data[start:start + batch_size]
+                if batch.size == 0:
+                    continue
+                forward = context.model._apply_fn(
+                    context.model.state.params,
+                    jnp.asarray(batch),
+                    training=False,
+                    rngs={"gumbel": random.PRNGKey(start)},
+                )
+                extras = forward.extras if hasattr(forward, "extras") else forward[6]
+                if not hasattr(extras, "get"):
+                    continue
+                z_mean = extras.get("z_mean_per_component")
+                z_log_var = extras.get("z_log_var_per_component")
+                if z_mean is None or z_log_var is None:
+                    continue
+                z_mean = np.asarray(z_mean)
+                z_log_var = np.asarray(z_log_var)
+                kl = -0.5 * (1.0 + z_log_var - np.square(z_mean) - np.exp(z_log_var))
+                kl = kl.sum(axis=2)  # [B, K]
+                if kl_sums is None:
+                    kl_sums = np.zeros(kl.shape[1], dtype=np.float64)
+                kl_sums += kl.sum(axis=0)
+                count += kl.shape[0]
+            if count > 0 and kl_sums is not None:
+                kl_mean = kl_sums / float(count)
+                component_kl = {
+                    "component_kl_mean": kl_mean.tolist(),
+                    "component_kl_max": float(np.max(kl_mean)),
+                    "component_kl_min": float(np.min(kl_mean)),
+                }
+        except Exception:
+            component_kl = {}
+
+        if hardness:
+            summary["routing"] = hardness
+        if ownership_diag is not None:
+            summary.setdefault("routing", {})["ownership_diagonal_mean"] = ownership_diag
+        if component_kl:
+            summary["component_kl"] = component_kl
+
+        if not summary:
+            return ComponentResult.skipped(reason="Routing metrics unavailable (missing responsibilities or per-component stats)")
+
+        return ComponentResult.success(data={"routing_metrics": summary})
+
+    except Exception as e:
+        return ComponentResult.failed(
+            reason="Failed to compute routing/specialization metrics",
             error=e,
         )
 

@@ -37,6 +37,7 @@ INFORMATIVE_HPARAMETERS = (
     "classifier_type",
     "num_classes",
     "latent_dim",
+    "latent_layout",
     "hidden_dims",
     "learning_rate",
     "batch_size",
@@ -49,6 +50,7 @@ INFORMATIVE_HPARAMETERS = (
     "dirichlet_weight",
     "learnable_pi",
     "component_diversity_weight",
+    "l1_weight",
     "weight_decay",
     "dropout_rate",
     "monitor_metric",
@@ -59,13 +61,21 @@ INFORMATIVE_HPARAMETERS = (
     "kl_c_anneal_epochs",
     "component_embedding_dim",
     "use_component_aware_decoder",
+    "decoder_conditioning",
     "top_m_gating",
     "soft_embedding_warmup_epochs",
+    "c_regularizer",
+    "c_logit_prior_weight",
+    "c_logit_prior_mean",
+    "c_logit_prior_sigma",
     "use_tau_classifier",
     "tau_smoothing_alpha",
     "use_heteroscedastic_decoder",
     "sigma_min",
     "sigma_max",
+    "use_gumbel_softmax",
+    "gumbel_temperature",
+    "use_straight_through_gumbel",
     "vamp_num_samples_kl",
     "vamp_pseudo_lr_scale",
     "vamp_pseudo_init_method",
@@ -80,6 +90,9 @@ class SSVAEConfig:
     Attributes:
         num_classes: Number of output classes for the classifier head.
         latent_dim: Dimensionality of the latent representation.
+        latent_layout: Arrangement of latents when using mixture-style priors.
+            - "shared": single latent vector shared by all components (legacy behavior)
+            - "decentralized": one latent vector per component (Mixture of VAEs)
         hidden_dims: Dense layer sizes for the encoder; decoder mirrors in reverse (dense only).
         reconstruction_loss: Loss function for reconstruction term.
             - "mse": Mean squared error, treats pixels as continuous Gaussian.
@@ -98,6 +111,7 @@ class SSVAEConfig:
         random_seed: Base random seed used for parameter initialization and shuffling.
         grad_clip_norm: Global norm threshold for gradient clipping; disabled when ``None``.
         weight_decay: L2-style weight decay applied through the optimizer.
+        l1_weight: L1 regularization strength applied via loss (masked like weight_decay).
         dropout_rate: Dropout applied inside the classifier network.
         label_weight: (Unused today) scaling factor for the classification loss term.
         input_hw: Optional (height, width) tuple for decoder output; defaults to the model input.
@@ -122,8 +136,10 @@ class SSVAEConfig:
         kl_c_anneal_epochs: If >0, linearly ramp kl_c_weight from 0 to its configured value across this many epochs.
         component_embedding_dim: Dimensionality of component embeddings (default: same as latent_dim).
             Small values (4-16) recommended to avoid overwhelming latent information.
-        use_component_aware_decoder: If True, use component-aware decoder architecture that processes
-            z and component embeddings separately (recommended for mixture prior).
+        decoder_conditioning: Conditioning method for component-aware decoders.
+            Options: "cin" (Conditional Instance Norm), "film", "concat", "none".
+            Requires mixture or geometric_mog prior. See architecture.md for details.
+        use_component_aware_decoder: DEPRECATED. Has no effect. Use decoder_conditioning instead.
         top_m_gating: If >0, compute reconstruction using only top-M components by responsibility.
             Reduces computation for large K. Default 0 means use all components.
         soft_embedding_warmup_epochs: If >0, use soft-weighted component embeddings for this many
@@ -139,10 +155,14 @@ class SSVAEConfig:
             Prevents variance collapse and ensures numerical stability.
         sigma_max: Maximum allowed standard deviation for heteroscedastic decoder (default: 0.5).
             Prevents variance explosion and keeps uncertainty estimates reasonable.
+        use_gumbel_softmax: Sample discrete components with Gumbel-Softmax (mixture/geometric priors).
+        gumbel_temperature: Temperature for Gumbel-Softmax routing.
+        use_straight_through_gumbel: Use straight-through one-hot for decoder selection.
     """
 
     num_classes: int = 10
     latent_dim: int = 2
+    latent_layout: str = "shared"
     hidden_dims: Tuple[int, ...] = (256, 128, 64)
     reconstruction_loss: str = "mse"
     recon_weight: float = 500.0
@@ -155,6 +175,7 @@ class SSVAEConfig:
     random_seed: int = 42
     grad_clip_norm: float | None = 1.0
     weight_decay: float = 1e-4
+    l1_weight: float = 0.0
     dropout_rate: float = 0.2
     label_weight: float = 0.0
     xla_flags: str | None = None
@@ -175,14 +196,26 @@ class SSVAEConfig:
     kl_c_anneal_epochs: int = 0
     mixture_history_log_every: int = 1  # Track π and usage every N epochs
     component_embedding_dim: int | None = None  # Defaults to latent_dim if None
-    use_component_aware_decoder: bool = True  # Enable by default for mixture prior
+    use_component_aware_decoder: bool = False  # DEPRECATED: use decoder_conditioning instead
+    decoder_conditioning: str = "none"  # Conditioning method: "cin" (Conditional Instance Norm), "film", "concat", "none"
     top_m_gating: int = 0  # 0 means use all components; >0 uses top-M
     soft_embedding_warmup_epochs: int = 0  # 0 means no warmup
+    c_regularizer: str = "categorical"  # {"categorical", "logit_mog", "both"} — per-sample prior on q(c|x)
+    c_logit_prior_weight: float = 0.0  # Strength of logistic-normal mixture regularizer on component logits
+    c_logit_prior_mean: float = 5.0  # Mean magnitude M for the per-axis Gaussian components in logit space
+    c_logit_prior_sigma: float = 1.0  # Isotropic sigma for the Gaussian components in logit space
     use_tau_classifier: bool = False  # Opt-in τ-classifier for mixture-based priors
     tau_smoothing_alpha: float = 1.0  # Laplace smoothing prior (α_0)
     use_heteroscedastic_decoder: bool = False  # Learn per-image variance σ(x)
     sigma_min: float = 0.05  # Minimum allowed σ (prevents collapse)
     sigma_max: float = 0.5  # Maximum allowed σ (prevents explosion)
+    use_gumbel_softmax: bool = False  # Sample c via Gumbel-Softmax when decentralized latents are active
+    gumbel_temperature: float = 1.0  # Initial temperature for Gumbel-Softmax
+    gumbel_temperature_min: float = 0.5  # Minimum temperature after annealing
+    gumbel_temperature_decay: float = 0.0  # Decay rate per epoch (exponential) or linear step (if > 1, maybe epochs?)
+    # Let's use a simple linear annealing over N epochs for consistency with kl_c_anneal_epochs
+    gumbel_temperature_anneal_epochs: int = 0  # If >0, anneal from initial to min over this many epochs
+    use_straight_through_gumbel: bool = True  # Use straight-through one-hot for decoder selection
 
     # ═════════════════════════════════════════════════════════════════════════
     # VampPrior Configuration (prior_type="vamp")
@@ -215,6 +248,15 @@ class SSVAEConfig:
             )
             self.dirichlet_alpha = None
 
+        # Deprecation warning for use_component_aware_decoder
+        if self.use_component_aware_decoder:
+            warnings.warn(
+                "use_component_aware_decoder is deprecated and has no effect. "
+                "Use decoder_conditioning instead (options: 'cin', 'film', 'concat', 'none').",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
         # Component-aware decoder defaults and validation
         if self.component_embedding_dim is None:
             self.component_embedding_dim = self.latent_dim
@@ -227,6 +269,41 @@ class SSVAEConfig:
         if self.soft_embedding_warmup_epochs < 0:
             raise ValueError("soft_embedding_warmup_epochs must be >= 0")
 
+        # Component regularizer mode and parameters
+        valid_c_regularizers = {"categorical", "logit_mog", "both"}
+        if self.c_regularizer not in valid_c_regularizers:
+            raise ValueError(
+                f"c_regularizer must be one of {valid_c_regularizers}, got '{self.c_regularizer}'."
+            )
+        if self.c_logit_prior_weight < 0:
+            raise ValueError("c_logit_prior_weight must be non-negative")
+        if self.c_logit_prior_mean <= 0:
+            raise ValueError("c_logit_prior_mean must be positive")
+        if self.c_logit_prior_sigma <= 0:
+            raise ValueError("c_logit_prior_sigma must be positive")
+
+        # Decoder conditioning validation
+        valid_conditioning = {"cin", "film", "concat", "none"}
+        if self.decoder_conditioning not in valid_conditioning:
+            raise ValueError(
+                f"decoder_conditioning must be one of {valid_conditioning}, "
+                f"got '{self.decoder_conditioning}'"
+            )
+        mixture_condition_priors = {"mixture", "geometric_mog"}
+        uses_conditioning = self.decoder_conditioning in {"cin", "film", "concat"}
+        if uses_conditioning and self.prior_type not in mixture_condition_priors:
+            if self.prior_type == "vamp":
+                warnings.warn(
+                    f"VampPrior does not supply component embeddings; "
+                    f"decoder_conditioning='{self.decoder_conditioning}' will be ignored (using 'none').",
+                    UserWarning,
+                )
+            else:
+                raise ValueError(
+                    f"decoder_conditioning='{self.decoder_conditioning}' requires mixture-like priors "
+                    f"{mixture_condition_priors}; got prior_type='{self.prior_type}'."
+                )
+
         # τ-classifier validation
         mixture_based_priors = {"mixture", "vamp", "geometric_mog"}
         if self.use_tau_classifier and self.prior_type not in mixture_based_priors:
@@ -235,16 +312,12 @@ class SSVAEConfig:
                 RuntimeWarning,
             )
         if self.use_tau_classifier:
-            if self.prior_type in {"mixture", "vamp"} and self.num_components < self.num_classes:
+            if self.prior_type not in mixture_based_priors:
+                raise ValueError("τ-classifier requires mixture-based priors that emit component responsibilities.")
+            if self.num_components < self.num_classes:
                 raise ValueError(
-                    "num_components must be >= num_classes when use_tau_classifier=True for mixture/vamp priors. "
+                    "num_components must be >= num_classes when use_tau_classifier=True for mixture-based priors. "
                     f"Got num_components={self.num_components}, num_classes={self.num_classes}."
-                )
-            if self.prior_type == "geometric_mog" and self.num_components < self.num_classes:
-                warnings.warn(
-                    "Geometric MoG τ-classifier typically benefits from num_components >= num_classes. "
-                    f"Got num_components={self.num_components}, num_classes={self.num_classes}.",
-                    RuntimeWarning,
                 )
         if self.tau_smoothing_alpha <= 0:
             raise ValueError("tau_smoothing_alpha must be positive")
@@ -261,19 +334,10 @@ class SSVAEConfig:
         # Learnable π validation
         if self.learnable_pi and self.prior_type not in ["mixture", "geometric_mog"]:
             warnings.warn(
-                f"Prior '{self.prior_type}' doesn't use mixture weights, so learnable_pi has no effect.",
+                f"learnable_pi is not supported for prior_type='{self.prior_type}'; disabling learnable_pi.",
                 UserWarning,
             )
-
-        # Component-aware decoder validation
-        mixture_based_priors = {"mixture", "vamp", "geometric_mog"}
-        if self.use_component_aware_decoder and self.prior_type not in mixture_based_priors:
-            warnings.warn(
-                f"use_component_aware_decoder: true only applies to mixture-based priors {mixture_based_priors}. "
-                f"Got prior_type: '{self.prior_type}'. Falling back to standard decoder.",
-                UserWarning
-            )
-            # Note: Factory will handle fallback to standard decoder gracefully
+            self.learnable_pi = False
 
         # VampPrior validation
         if self.vamp_num_samples_kl < 1:
@@ -308,6 +372,24 @@ class SSVAEConfig:
                 "geometric_mog prior induces artificial topology on latent space. "
                 "Use only for diagnostic/curriculum purposes, not production models.",
                 UserWarning
+            )
+        if self.latent_layout not in {"shared", "decentralized"}:
+            raise ValueError(
+                f"latent_layout must be 'shared' or 'decentralized', got '{self.latent_layout}'."
+            )
+        if self.latent_layout == "decentralized" and self.prior_type not in {"mixture", "geometric_mog", "vamp"}:
+            raise ValueError("latent_layout='decentralized' requires a mixture/geometric/vamp prior.")
+        if self.latent_layout == "decentralized" and self.num_components <= 1:
+            raise ValueError(
+                f"latent_layout='decentralized' requires num_components > 1, got {self.num_components}."
+            )
+        if self.gumbel_temperature <= 0:
+            raise ValueError("gumbel_temperature must be positive")
+        if self.use_gumbel_softmax and self.prior_type not in {"mixture", "geometric_mog", "vamp"}:
+            raise ValueError("use_gumbel_softmax requires a mixture/geometric/vamp prior.")
+        if self.use_gumbel_softmax and self.gumbel_temperature < self.gumbel_temperature_min:
+            raise ValueError(
+                f"gumbel_temperature ({self.gumbel_temperature}) must be >= gumbel_temperature_min ({self.gumbel_temperature_min})."
             )
 
     def get_informative_hyperparameters(self) -> Dict[str, object]:

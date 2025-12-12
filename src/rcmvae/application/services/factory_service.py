@@ -305,15 +305,17 @@ class ModelFactoryService:
             *,
             training: bool,
             key: jax.Array | None,
+            gumbel_temperature: float | None = None,
         ):
             if key is None:
-                return _apply_fn_wrapper(params, batch_x, training=training)
-            reparam_key, dropout_key = random.split(key)
+                return _apply_fn_wrapper(params, batch_x, training=training, gumbel_temperature=gumbel_temperature)
+            reparam_key, dropout_key, gumbel_key = random.split(key, 3)
             return _apply_fn_wrapper(
                 params,
                 batch_x,
                 training=training,
-                rngs={"reparam": reparam_key, "dropout": dropout_key},
+                rngs={"reparam": reparam_key, "dropout": dropout_key, "gumbel": gumbel_key},
+                gumbel_temperature=gumbel_temperature,
             )
 
         def _loss_and_metrics(
@@ -324,6 +326,7 @@ class ModelFactoryService:
             training: bool,
             kl_c_scale: float,
             tau: jnp.ndarray | None = None,
+            gumbel_temperature: float | None = None,
         ):
             rng = key if training else None
             return compute_loss_and_metrics_v2(
@@ -337,10 +340,11 @@ class ModelFactoryService:
                 training=training,
                 kl_c_scale=kl_c_scale,
                 tau=tau,
+                gumbel_temperature=gumbel_temperature,
             )
 
         train_loss_and_grad = jax.value_and_grad(
-            lambda p, x, y, k, scale, t: _loss_and_metrics(p, x, y, k, True, scale, t),
+            lambda p, x, y, k, scale, t, temp: _loss_and_metrics(p, x, y, k, True, scale, t, temp),
             argnums=0,
             has_aux=True,
         )
@@ -353,8 +357,9 @@ class ModelFactoryService:
             key: jax.Array,
             kl_c_scale: float,
             tau: jnp.ndarray | None = None,
+            gumbel_temperature: float | None = None,
         ):
-            (loss, metrics), grads = train_loss_and_grad(state.params, batch_x, batch_y, key, kl_c_scale, tau)
+            (loss, metrics), grads = train_loss_and_grad(state.params, batch_x, batch_y, key, kl_c_scale, tau, gumbel_temperature)
             if config.prior_type == "vamp":
                 grads = _scale_vamp_pseudo_gradients(grads, config.vamp_pseudo_lr_scale)
             new_state = state.apply_gradients(grads=grads)
@@ -380,15 +385,17 @@ class ModelFactoryService:
             *,
             training: bool,
             key: jax.Array | None,
+            gumbel_temperature: float | None = None,
         ):
             if key is None:
-                return _apply_fn_wrapper(params, batch_x, training=training)
-            reparam_key, dropout_key = random.split(key)
+                return _apply_fn_wrapper(params, batch_x, training=training, gumbel_temperature=gumbel_temperature)
+            reparam_key, dropout_key, gumbel_key = random.split(key, 3)
             return _apply_fn_wrapper(
                 params,
                 batch_x,
                 training=training,
-                rngs={"reparam": reparam_key, "dropout": dropout_key},
+                rngs={"reparam": reparam_key, "dropout": dropout_key, "gumbel": gumbel_key},
+                gumbel_temperature=gumbel_temperature,
             )
 
         def _eval_metrics(
