@@ -1,0 +1,132 @@
+# Curriculum Learning Example: Trigger-Based Channel Unlocking
+#
+# This configuration demonstrates trigger-based channel unlocking where new
+# components are unlocked when training plateaus AND latent distributions
+# have settled (close to N(0,I)).
+#
+# Key curriculum settings:
+# - curriculum_enabled: true - enables channel unlocking curriculum
+# - curriculum_unlock_mode: "trigger" - unlock based on plateau + normality
+# - curriculum_start_k_active: 1 - start with only 1 active component
+# - curriculum_plateau_window_epochs: 5 - detect plateau over 5-epoch window
+# - curriculum_plateau_min_improvement: 0.01 - <1% improvement = plateau
+# - curriculum_normality_threshold: 1.0 - normality score must be <1.0 to unlock
+#
+# Trigger conditions (BOTH must be met):
+# 1. Plateau: reconstruction_loss improvement < 1% over 5 epochs
+# 2. Normality: latent normality score < 1.0 (active channels near N(0,I))
+
+experiment:
+  name: "curriculum_trigger_demo"
+  description: "Trigger-based channel unlocking (plateau + normality)"
+  tags: ["curriculum", "trigger-mode"]
+
+# ============================================================================
+# DATA CONFIGURATION
+# ============================================================================
+data:
+  dataset: "mnist"
+  num_samples: 5000
+  num_labeled: 0
+  seed: 42
+  dataset_variant: "mnist"
+
+# ============================================================================
+# MODEL CONFIGURATION
+# ============================================================================
+model:
+  # ──────────────────────────────────────────────────────────────────────────
+  # Core Architecture
+  # ──────────────────────────────────────────────────────────────────────────
+  num_classes: 10
+  latent_dim: 2
+  latent_layout: "decentralized"  # One latent per component (required for curriculum)
+  encoder_type: "conv"
+  decoder_type: "conv"
+  classifier_type: "dense"
+  hidden_dims: [256, 128, 64]
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Loss Configuration
+  # ──────────────────────────────────────────────────────────────────────────
+  reconstruction_loss: "bce"
+  recon_weight: 1.0
+  kl_weight: 1.0
+  label_weight: 1.0
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Training Configuration
+  # ──────────────────────────────────────────────────────────────────────────
+  learning_rate: 0.001
+  batch_size: 128
+  max_epochs: 200  # More epochs since trigger mode may take longer
+  patience: 30     # More patience for trigger-based unlock
+  val_split: 0.1
+  random_seed: 42
+  grad_clip_norm: 5.0
+  weight_decay: 0.0001
+  l1_weight: 0.0
+  dropout_rate: 0.2
+  monitor_metric: "loss"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Prior Configuration - Mixture with Gumbel-Softmax routing
+  # ──────────────────────────────────────────────────────────────────────────
+  prior_type: "mixture"
+  num_components: 10
+
+  # Component conditioning
+  component_embedding_dim: 32
+  decoder_conditioning: "cin"
+
+  # Logit-MoG regularizer
+  c_regularizer: "logit_mog"
+  c_logit_prior_weight: 1.0
+  c_logit_prior_mean: 5.0
+  c_logit_prior_sigma: 1.0
+
+  # Gumbel-Softmax routing
+  use_gumbel_softmax: true
+  use_straight_through_gumbel: true
+  gumbel_temperature: 2.0
+  gumbel_temperature_min: 0.5
+  gumbel_temperature_anneal_epochs: 100
+
+  # Component regularization
+  kl_c_weight: 0.0  # Disabled when using logit_mog
+  component_diversity_weight: -3.0  # Encourage diversity
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Channel Unlocking Curriculum - TRIGGER MODE
+  # ──────────────────────────────────────────────────────────────────────────
+  curriculum_enabled: true
+  curriculum_unlock_mode: "trigger"  # Unlock based on plateau + normality
+  curriculum_start_k_active: 1       # Start with 1 active component
+  curriculum_max_k_active: 10        # Max active = num_components
+
+  # Epoch-based unlock interval (used as fallback/migration calculation)
+  curriculum_unlock_every_epochs: 10
+
+  # Plateau detection settings
+  curriculum_plateau_window_epochs: 5  # Look at last 5 epochs for plateau
+  curriculum_plateau_min_improvement: 0.01  # <1% improvement = plateau
+  curriculum_plateau_metric: "reconstruction_loss"  # Metric to monitor
+
+  # Normality threshold (latent distribution proximity to N(0,I))
+  curriculum_normality_threshold: 1.0  # Score must be <1.0 to allow unlock
+
+  # Migration window (smooth transitions after unlock)
+  curriculum_migration_epochs: 3   # 3 epochs of soft routing after each unlock
+  curriculum_soft_routing_during_migration: true  # Disable ST during migration
+  curriculum_temp_boost_during_migration: 1.5     # Softer Gumbel temp during migration
+  curriculum_logit_mog_scale_during_migration: 0.5  # Reduce peakiness pressure
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Other settings
+  # ──────────────────────────────────────────────────────────────────────────
+  top_m_gating: 0  # Use all active components
+  soft_embedding_warmup_epochs: 0
+  use_tau_classifier: false
+  use_heteroscedastic_decoder: false
+  learnable_pi: false
+  mixture_history_log_every: 1

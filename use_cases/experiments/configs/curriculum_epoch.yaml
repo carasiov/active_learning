@@ -1,0 +1,122 @@
+# Curriculum Learning Example: Epoch-Based Channel Unlocking
+#
+# This configuration demonstrates epoch-based channel unlocking where new
+# mixture components are progressively unlocked at fixed epoch intervals.
+#
+# Key curriculum settings:
+# - curriculum_enabled: true - enables channel unlocking curriculum
+# - curriculum_unlock_mode: "epoch" - unlock at fixed epoch intervals
+# - curriculum_start_k_active: 1 - start with only 1 active component
+# - curriculum_unlock_every_epochs: 10 - unlock 1 new component every 10 epochs
+# - curriculum_max_k_active: 10 - max active components (equals num_components)
+#
+# Migration window settings (optional, helps smooth transitions):
+# - curriculum_migration_epochs: 3 - soft routing for 3 epochs after each unlock
+# - curriculum_soft_routing_during_migration: true - disable straight-through
+# - curriculum_temp_boost_during_migration: 1.5 - softer Gumbel during migration
+# - curriculum_logit_mog_scale_during_migration: 0.5 - reduce peakiness pressure
+
+experiment:
+  name: "curriculum_epoch_demo"
+  description: "Epoch-based channel unlocking curriculum with migration window"
+  tags: ["curriculum", "epoch-mode"]
+
+# ============================================================================
+# DATA CONFIGURATION
+# ============================================================================
+data:
+  dataset: "mnist"
+  num_samples: 5000
+  num_labeled: 0
+  seed: 42
+  dataset_variant: "mnist"
+
+# ============================================================================
+# MODEL CONFIGURATION
+# ============================================================================
+model:
+  # ──────────────────────────────────────────────────────────────────────────
+  # Core Architecture
+  # ──────────────────────────────────────────────────────────────────────────
+  num_classes: 10
+  latent_dim: 2
+  latent_layout: "decentralized"  # One latent per component (required for curriculum)
+  encoder_type: "conv"
+  decoder_type: "conv"
+  classifier_type: "dense"
+  hidden_dims: [256, 128, 64]
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Loss Configuration
+  # ──────────────────────────────────────────────────────────────────────────
+  reconstruction_loss: "bce"
+  recon_weight: 1.0
+  kl_weight: 1.0
+  label_weight: 1.0
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Training Configuration
+  # ──────────────────────────────────────────────────────────────────────────
+  learning_rate: 0.001
+  batch_size: 128
+  max_epochs: 150  # Enough epochs to unlock all 10 components
+  patience: 20
+  val_split: 0.1
+  random_seed: 42
+  grad_clip_norm: 5.0
+  weight_decay: 0.0001
+  l1_weight: 0.0
+  dropout_rate: 0.2
+  monitor_metric: "loss"
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Prior Configuration - Mixture with Gumbel-Softmax routing
+  # ──────────────────────────────────────────────────────────────────────────
+  prior_type: "mixture"
+  num_components: 10
+
+  # Component conditioning
+  component_embedding_dim: 32
+  decoder_conditioning: "cin"
+
+  # Logit-MoG regularizer (encourages peaky component selection)
+  c_regularizer: "logit_mog"
+  c_logit_prior_weight: 1.0
+  c_logit_prior_mean: 5.0
+  c_logit_prior_sigma: 1.0
+
+  # Gumbel-Softmax routing
+  use_gumbel_softmax: true
+  use_straight_through_gumbel: true
+  gumbel_temperature: 2.0
+  gumbel_temperature_min: 0.5
+  gumbel_temperature_anneal_epochs: 100
+
+  # Component regularization
+  kl_c_weight: 0.0  # Disabled when using logit_mog
+  component_diversity_weight: -3.0  # Encourage diversity
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Channel Unlocking Curriculum - EPOCH MODE
+  # ──────────────────────────────────────────────────────────────────────────
+  curriculum_enabled: true
+  curriculum_unlock_mode: "epoch"  # Unlock at fixed epoch intervals
+  curriculum_start_k_active: 1     # Start with 1 active component
+  curriculum_unlock_every_epochs: 10  # Unlock 1 new component every 10 epochs
+  curriculum_max_k_active: 10      # Max active = num_components
+
+  # Migration window (smooth transitions after unlock)
+  curriculum_migration_epochs: 3   # 3 epochs of soft routing after each unlock
+  curriculum_soft_routing_during_migration: true  # Disable ST during migration
+  curriculum_temp_boost_during_migration: 1.5     # Softer Gumbel temp during migration
+  curriculum_logit_mog_scale_during_migration: 0.5  # Reduce peakiness pressure
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Other settings
+  # ──────────────────────────────────────────────────────────────────────────
+  top_m_gating: 0  # Use all active components
+  soft_embedding_warmup_epochs: 0
+  use_tau_classifier: false
+  use_heteroscedastic_decoder: false
+  learnable_pi: false
+  mixture_history_log_every: 1

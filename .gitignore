@@ -1,28 +1,34 @@
+# ============================================================================
+# Data files
+# ============================================================================
+data/*.npz
 data/mnist/labels_*.csv
 data/processed/input_ml.csv
-data/output/latent_space_tsne_embedding_2.csv
-data/output/latent_space_tsne_embedding_sscvae.csv
-data/output/latent_space_tsne_embedding.csv
 data/processed/input_ml_2.csv
-data/raw/input_raw_avanto.csv
-data/raw/input_raw.csv
-domain/__pycache__/vae_model_copy.cpython-311.pyc
-domain/__pycache__/vae_model.cpython-311.pyc
-data/*.npz
+data/output/latent_space_tsne_embedding*.csv
+data/raw/input_raw*.csv
 
-
-# Data
-data/*.npz
-# Legacy TensorFlow weights (relocated under artifacts/legacy/tf_weights)
-models
-# Python cache
-domain/__pycache__/*
-*.pyc
-# Virtual env
-.venv/
+# ============================================================================
+# Python cache and bytecode
+# ============================================================================
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 .pytest_cache/
+
+# ============================================================================
+# Virtual environments
+# ============================================================================
+.venv/
+venv/
+env/
+
+# ============================================================================
+# Legacy artifacts
+# ============================================================================
+# Legacy TensorFlow weights (relocated under artifacts/legacy/tf_weights)
+models
 
 # Poetry local config (keep poetry.lock tracked)
 poetry.toml

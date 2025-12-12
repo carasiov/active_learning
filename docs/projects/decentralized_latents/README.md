@@ -18,7 +18,27 @@ This directory contains the complete specification for implementing **decentrali
 
 **For**: Understanding the "why" and theoretical foundation.
 
+### 2. [curriculum.md](./curriculum.md)
+**Purpose**: Channel unlocking curriculum implementation guide.
 
+**Contents**:
+- Unlock modes (epoch-based vs trigger-based)
+- Migration window configuration
+- Normality score and plateau detection
+- Configuration reference
+- Best practices
+
+**For**: Configuring and using progressive channel unlocking.
+
+### 3. [logit_mog_regularizer.md](./logit_mog_regularizer.md)
+**Purpose**: Logit-MoG regularizer design and implementation.
+
+**Contents**:
+- Theoretical foundation
+- Implementation details
+- Configuration options
+
+**For**: Understanding component selection regularization.
 
 ## Related Documentation
 

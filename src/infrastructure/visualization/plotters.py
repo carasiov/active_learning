@@ -41,6 +41,7 @@ from .tau import (
     plot_tau_per_class_accuracy,
     plot_tau_certainty_analysis,
 )
+from .curriculum import plot_curriculum_metrics
 
 
 # ---------------------------------------------------------------------------
@@ -366,5 +367,51 @@ def tau_matrix_plotter(context: VisualizationContext) -> ComponentResult:
     except Exception as e:
         return ComponentResult.failed(
             reason="Failed to generate τ-classifier plots",
+            error=e,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Registry bindings - Curriculum visualizations
+# ---------------------------------------------------------------------------
+
+@register_plotter
+def curriculum_metrics_plotter(context: VisualizationContext) -> ComponentResult:
+    """Generate curriculum learning diagnostic plots.
+
+    Shows k_active evolution, migration window indicators, and trigger-based
+    unlock diagnostics (normality score, plateau detection).
+
+    Only applicable when curriculum learning is enabled.
+
+    Returns:
+        ComponentResult with appropriate status
+    """
+    # Check if curriculum is enabled
+    if not getattr(context.config, "curriculum_enabled", False):
+        return ComponentResult.disabled(
+            reason="Curriculum learning not enabled"
+        )
+
+    # Check if history has curriculum data
+    if "k_active" not in context.history or len(context.history.get("k_active", [])) == 0:
+        return ComponentResult.skipped(
+            reason="No curriculum metrics in training history"
+        )
+
+    try:
+        success = plot_curriculum_metrics(
+            _single_history_dict(context.history),
+            context.figures_dir,
+        )
+        if success:
+            return ComponentResult.success(data={})
+        else:
+            return ComponentResult.skipped(
+                reason="No curriculum data to plot"
+            )
+    except Exception as e:
+        return ComponentResult.failed(
+            reason="Failed to generate curriculum metrics plot",
             error=e,
         )
