@@ -462,6 +462,9 @@ def curriculum_channel_progression_plotter(context: VisualizationContext) -> Com
                 reason="Could not generate curriculum channel progression"
             )
     except Exception as e:
+        import traceback
+        print(f"curriculum_channel_progression error: {e}")
+        traceback.print_exc()
         return ComponentResult.failed(
             reason="Failed to generate curriculum channel progression plot",
             error=e,

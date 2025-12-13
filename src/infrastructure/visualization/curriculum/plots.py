@@ -379,13 +379,15 @@ def plot_curriculum_channel_progression(
     else:
         idx = slice(None)
 
+    # Always compute latent_2d as fallback
+    latent_2d = np.asarray(latent)[idx, :2]
+    x_lim, y_lim = _compute_limits(latent_2d)
+
     if channel_latents is not None:
         channel_latents = channel_latents[idx]
+        # Use per-channel latents for limits if available
         flat_latent = channel_latents.reshape(-1, channel_latents.shape[-1])
         x_lim, y_lim = _compute_limits(flat_latent[:, :2])
-    else:
-        latent_2d = np.asarray(latent)[idx, :2]
-        x_lim, y_lim = _compute_limits(latent_2d)
 
     resp = resp[idx]
     labels = y_array[idx] if y_array is not None else np.zeros(resp.shape[0])
@@ -428,14 +430,17 @@ def plot_curriculum_channel_progression(
         ax = axes_list[plot_idx]
 
         # Get points for this channel
-        if channel_latents is not None:
+        if channel_latents is not None and channel_idx < channel_latents.shape[1]:
             points = channel_latents[:, channel_idx, :2]
         else:
             points = latent_2d
 
         # Color with responsibility alpha
         rgba = label_colors.copy()
-        rgba[:, 3] = np.clip(resp[:, channel_idx], 0.0, 1.0)
+        if channel_idx < resp.shape[1]:
+            rgba[:, 3] = np.clip(resp[:, channel_idx], 0.0, 1.0)
+        else:
+            rgba[:, 3] = 0.1  # Fallback: very transparent if channel not in resp
 
         ax.scatter(
             points[:, 0],
@@ -447,9 +452,13 @@ def plot_curriculum_channel_progression(
         )
 
         # Compute channel statistics
-        mean_resp = resp[:, channel_idx].mean()
-        max_resp_count = (resp.argmax(axis=1) == channel_idx).sum()
-        usage_pct = 100.0 * max_resp_count / len(resp)
+        if channel_idx < resp.shape[1]:
+            mean_resp = resp[:, channel_idx].mean()
+            max_resp_count = (resp.argmax(axis=1) == channel_idx).sum()
+            usage_pct = 100.0 * max_resp_count / len(resp)
+        else:
+            mean_resp = 0.0
+            usage_pct = 0.0
 
         unlock_epoch = unlock_epochs.get(channel_idx, "?")
         epochs_active = total_epochs - unlock_epoch + 1 if isinstance(unlock_epoch, int) else "?"
