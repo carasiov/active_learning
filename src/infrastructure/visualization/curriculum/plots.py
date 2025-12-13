@@ -367,7 +367,13 @@ def plot_curriculum_channel_progression(
             if latent_data and isinstance(latent_data, dict):
                 z_mean_per_component = latent_data.get("z_mean_per_component")
                 if z_mean_per_component is not None:
-                    channel_latents = np.asarray(z_mean_per_component)
+                    cached_latents = np.asarray(z_mean_per_component)
+                    # Only use cached latents if size matches current data
+                    if cached_latents.shape[0] == resp.shape[0]:
+                        channel_latents = cached_latents
+                    else:
+                        print(f"Info: Discarding cached diagnostics for curriculum progression "
+                              f"due to size mismatch (cached={cached_latents.shape[0]}, current={resp.shape[0]})")
     except Exception:
         pass
 
