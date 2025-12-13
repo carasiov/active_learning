@@ -343,3 +343,150 @@ class DiagnosticsCollector:
             "nmi": float(nmi),
             "ari": float(ari),
         }
+
+    def save_curriculum_snapshot(
+        self,
+        apply_fn: Callable,
+        params: Dict,
+        data: np.ndarray,
+        labels: np.ndarray,
+        output_dir: Path,
+        epoch: int,
+        k_active: int,
+        event_type: str,
+        *,
+        max_samples: int = 1000,
+        batch_size: int = 256,
+        seed: int = 42,
+    ) -> Path | None:
+        """Save a curriculum snapshot for evolution visualization.
+
+        Saves latent embeddings and responsibilities for a fixed subset of data
+        at a specific training moment (unlock event or end of migration window).
+
+        Args:
+            apply_fn: Model forward function
+            params: Model parameters
+            data: Input data (full dataset)
+            labels: Labels for data
+            output_dir: Base directory for saving
+            epoch: Current epoch number
+            k_active: Current number of active channels
+            event_type: Type of event ("unlock" or "migration_end")
+            max_samples: Maximum samples to include in snapshot
+            batch_size: Batch size for processing
+            seed: Random seed for consistent sample selection
+
+        Returns:
+            Path to saved snapshot file, or None if failed
+        """
+        if self.config.prior_type not in COMPONENT_PRIORS:
+            return None
+
+        # Create curriculum snapshots directory
+        snapshot_dir = Path(output_dir) / "curriculum_snapshots"
+        snapshot_dir.mkdir(parents=True, exist_ok=True)
+
+        # Select fixed subset of samples (same samples across all snapshots)
+        rng = np.random.default_rng(seed)
+        total = data.shape[0]
+        if total > max_samples:
+            sample_idx = np.sort(rng.choice(total, size=max_samples, replace=False))
+        else:
+            sample_idx = np.arange(total)
+
+        subset_data = data[sample_idx]
+        subset_labels = labels[sample_idx]
+
+        # Collect latent data for this snapshot
+        z_records: List[np.ndarray] = []
+        resp_records: List[np.ndarray] = []
+        z_per_component_records: List[np.ndarray] = []
+
+        for start in range(0, len(subset_data), batch_size):
+            end = min(start + batch_size, len(subset_data))
+            batch_inputs = jnp.asarray(subset_data[start:end])
+
+            try:
+                forward_output = apply_fn(params, batch_inputs, training=False)
+                _, z_mean, _, _, _, _, extras = forward_output
+
+                responsibilities = extras.get("responsibilities") if hasattr(extras, "get") else None
+                if responsibilities is None:
+                    continue
+
+                z_records.append(np.asarray(z_mean))
+                resp_records.append(np.asarray(responsibilities))
+
+                # Get per-component latents if available
+                z_mean_per_component = extras.get("z_mean_per_component") if hasattr(extras, "get") else None
+                if z_mean_per_component is not None:
+                    z_per_component_records.append(np.asarray(z_mean_per_component))
+
+            except Exception as e:
+                print(f"Warning: Failed to process batch for curriculum snapshot: {e}")
+                continue
+
+        if not z_records or not resp_records:
+            return None
+
+        # Assemble snapshot data
+        snapshot_data = {
+            "epoch": epoch,
+            "k_active": k_active,
+            "event_type": event_type,
+            "sample_idx": sample_idx,
+            "z_mean": np.concatenate(z_records, axis=0).astype(np.float32),
+            "responsibilities": np.concatenate(resp_records, axis=0).astype(np.float32),
+            "labels": subset_labels.astype(np.float32),
+        }
+
+        if z_per_component_records:
+            snapshot_data["z_mean_per_component"] = np.concatenate(
+                z_per_component_records, axis=0
+            ).astype(np.float32)
+
+        # Save snapshot with descriptive filename
+        filename = f"snapshot_epoch{epoch:04d}_{event_type}_k{k_active}.npz"
+        snapshot_path = snapshot_dir / filename
+        np.savez(snapshot_path, **snapshot_data)
+
+        return snapshot_path
+
+    @staticmethod
+    def load_curriculum_snapshots(output_dir: Path) -> List[Dict]:
+        """Load all curriculum snapshots from a run directory.
+
+        Args:
+            output_dir: Base output directory containing curriculum_snapshots/
+
+        Returns:
+            List of snapshot dictionaries, sorted by epoch
+        """
+        snapshot_dir = Path(output_dir) / "curriculum_snapshots"
+        if not snapshot_dir.exists():
+            return []
+
+        snapshots = []
+        for snapshot_file in sorted(snapshot_dir.glob("snapshot_*.npz")):
+            try:
+                data = np.load(snapshot_file)
+                snapshot = {
+                    "epoch": int(data["epoch"]),
+                    "k_active": int(data["k_active"]),
+                    "event_type": str(data["event_type"]),
+                    "sample_idx": data["sample_idx"],
+                    "z_mean": data["z_mean"],
+                    "responsibilities": data["responsibilities"],
+                    "labels": data["labels"],
+                }
+                if "z_mean_per_component" in data.files:
+                    snapshot["z_mean_per_component"] = data["z_mean_per_component"]
+                snapshots.append(snapshot)
+            except Exception as e:
+                print(f"Warning: Failed to load snapshot {snapshot_file}: {e}")
+                continue
+
+        # Sort by epoch
+        snapshots.sort(key=lambda s: s["epoch"])
+        return snapshots

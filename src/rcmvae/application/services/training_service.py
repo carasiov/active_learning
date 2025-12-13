@@ -17,6 +17,9 @@ from rcmvae.domain.config import SSVAEConfig
 HistoryDict = Dict[str, list[float]]
 SaveFn = Callable[[SSVAETrainState, str], None]
 
+# Curriculum snapshot callback type: (params, epoch, k_active, event_type) -> None
+CurriculumSnapshotFn = Callable[[Dict, int, int, str], None]
+
 
 @dataclass
 class TrainerLoopHooks:
@@ -180,6 +183,7 @@ class Trainer:
         num_epochs: int | None = None,
         patience: int | None = None,
         loop_hooks: TrainerLoopHooks | None = None,
+        curriculum_snapshot_fn: CurriculumSnapshotFn | None = None,
     ) -> Tuple[ModelRuntime, HistoryDict]:
         state = runtime.state
         state_rng = state.rng
@@ -213,6 +217,7 @@ class Trainer:
             self._trigger_epochs_since_unlock = 0
 
         epochs_ran = 0
+        prev_k_active = self.config.curriculum_start_k_active if self.config.curriculum_enabled else self.config.num_components
         for epoch in range(setup.max_epochs):
             epochs_ran = epoch + 1
             if self.config.kl_c_anneal_epochs > 0:
@@ -225,6 +230,9 @@ class Trainer:
                 k_active = self._trigger_k_active
             else:
                 k_active = self.config.get_k_active(epoch)
+
+            # Detect epoch-based unlock (k_active increased from previous epoch)
+            epoch_unlock_triggered = (not use_trigger_mode) and (k_active > prev_k_active)
 
             # Calculate Gumbel temperature (with migration window boost if applicable)
             # For trigger mode, use epochs_since_unlock for migration window
@@ -326,6 +334,45 @@ class Trainer:
             history["plateau_detected"].append(plateau_detected)
             history["plateau_improvement"].append(plateau_improvement)
             history["unlock_triggered"].append(unlock_triggered)
+
+            # Save curriculum snapshots at key events
+            if curriculum_snapshot_fn is not None and self.config.curriculum_enabled:
+                # Save snapshot at unlock events (both trigger and epoch mode)
+                any_unlock = unlock_triggered or epoch_unlock_triggered
+                if any_unlock:
+                    try:
+                        curriculum_snapshot_fn(
+                            state.params, epoch, k_active, "unlock"
+                        )
+                    except Exception as e:
+                        print(f"Warning: Failed to save unlock snapshot: {e}")
+
+                # Save snapshot at end of migration window (trigger mode)
+                if use_trigger_mode:
+                    migration_epochs = self.config.curriculum_migration_epochs
+                    if (
+                        migration_epochs > 0
+                        and self._trigger_epochs_since_unlock == migration_epochs
+                    ):
+                        try:
+                            curriculum_snapshot_fn(
+                                state.params, epoch, k_active, "migration_end"
+                            )
+                        except Exception as e:
+                            print(f"Warning: Failed to save migration_end snapshot: {e}")
+                # Save snapshot at end of migration window (epoch mode)
+                elif self.config.curriculum_migration_epochs > 0:
+                    epochs_since = self.config.get_epochs_since_last_unlock(epoch)
+                    if epochs_since == self.config.curriculum_migration_epochs:
+                        try:
+                            curriculum_snapshot_fn(
+                                state.params, epoch, k_active, "migration_end"
+                            )
+                        except Exception as e:
+                            print(f"Warning: Failed to save migration_end snapshot: {e}")
+
+            # Update previous k_active for next epoch's unlock detection
+            prev_k_active = k_active
 
             # Store state for callback access
             self._current_state = state

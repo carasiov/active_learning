@@ -318,6 +318,16 @@ class SSVAE:
             export_history=export_history,
         )
 
+        # Build curriculum snapshot function if curriculum is enabled
+        curriculum_snapshot_fn = None
+        if self.config.curriculum_enabled:
+            output_dir = Path(self.weights_path).parent
+            curriculum_snapshot_fn = self._build_curriculum_snapshot_fn(
+                data=data,
+                labels=labels,
+                output_dir=output_dir,
+            )
+
         loop_hooks = self._build_tau_loop_hooks() if self._tau_classifier else None
         self._runtime, history = self._trainer.train(
             self._runtime,
@@ -327,6 +337,7 @@ class SSVAE:
             save_fn=self._checkpoint_mgr.save,
             callbacks=callbacks,
             loop_hooks=loop_hooks,
+            curriculum_snapshot_fn=curriculum_snapshot_fn,
         )
 
         # Update RNG from state
@@ -775,6 +786,45 @@ class SSVAE:
             )
 
         return callbacks
+
+    def _build_curriculum_snapshot_fn(
+        self,
+        data: np.ndarray,
+        labels: np.ndarray,
+        output_dir: Path,
+    ):
+        """Build curriculum snapshot function for training loop.
+
+        Returns a closure that captures the necessary context (data, labels,
+        output_dir, apply_fn, diagnostics) and can be called during training
+        to save latent snapshots at curriculum events.
+
+        Args:
+            data: Full training data
+            labels: Labels for training data
+            output_dir: Base directory for saving snapshots
+
+        Returns:
+            Callable that takes (params, epoch, k_active, event_type)
+        """
+        # Capture references to instance methods/objects
+        diagnostics = self._diagnostics
+        apply_fn = self._apply_fn
+
+        def snapshot_fn(params: Dict, epoch: int, k_active: int, event_type: str):
+            """Save curriculum snapshot at a training event."""
+            diagnostics.save_curriculum_snapshot(
+                apply_fn=apply_fn,
+                params=params,
+                data=data,
+                labels=labels,
+                output_dir=output_dir,
+                epoch=epoch,
+                k_active=k_active,
+                event_type=event_type,
+            )
+
+        return snapshot_fn
 
     def _save_weights(self, state: SSVAETrainState, path: str) -> None:
         """Helper for adapters that expect a bound save function."""

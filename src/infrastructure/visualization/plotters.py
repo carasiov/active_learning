@@ -469,3 +469,64 @@ def curriculum_channel_progression_plotter(context: VisualizationContext) -> Com
             reason="Failed to generate curriculum channel progression plot",
             error=e,
         )
+
+
+@register_plotter
+def curriculum_evolution_plotter(context: VisualizationContext) -> ComponentResult:
+    """Generate curriculum evolution visualization showing temporal progression.
+
+    Shows a grid of channels (rows) × time stages (columns), displaying how each
+    channel's latent space evolved from unlock through migration end.
+
+    Requires curriculum snapshots to have been saved during training.
+
+    Returns:
+        ComponentResult with appropriate status
+    """
+    from .curriculum import plot_curriculum_evolution
+    from rcmvae.application.services.diagnostics_service import DiagnosticsCollector
+
+    # Check if curriculum is enabled
+    if not getattr(context.config, "curriculum_enabled", False):
+        return ComponentResult.disabled(
+            reason="Curriculum learning not enabled"
+        )
+
+    # Check if mixture-based prior
+    if not context.config.is_mixture_based_prior():
+        return ComponentResult.disabled(
+            reason="Requires mixture-based prior"
+        )
+
+    # Load curriculum snapshots
+    try:
+        snapshots = DiagnosticsCollector.load_curriculum_snapshots(context.figures_dir.parent)
+        if not snapshots:
+            return ComponentResult.skipped(
+                reason="No curriculum snapshots found (run with snapshot saving enabled)"
+            )
+    except Exception as e:
+        return ComponentResult.skipped(
+            reason=f"Could not load curriculum snapshots: {e}"
+        )
+
+    try:
+        path = plot_curriculum_evolution(
+            snapshots,
+            context.figures_dir,
+            num_classes=context.config.num_classes,
+        )
+        if path:
+            return ComponentResult.success(data={"channel_evolution": path})
+        else:
+            return ComponentResult.skipped(
+                reason="Could not generate curriculum evolution plot"
+            )
+    except Exception as e:
+        import traceback
+        print(f"curriculum_evolution error: {e}")
+        traceback.print_exc()
+        return ComponentResult.failed(
+            reason="Failed to generate curriculum evolution plot",
+            error=e,
+        )

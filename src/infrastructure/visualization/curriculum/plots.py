@@ -524,3 +524,242 @@ def plot_curriculum_channel_progression(
         except ValueError:
             return str(output_path)
     return None
+
+
+def plot_curriculum_evolution(
+    snapshots: List[Dict],
+    output_dir: Path,
+    *,
+    channels_to_show: Optional[List[int]] = None,
+    num_classes: int = 10,
+) -> Optional[str]:
+    """Render curriculum evolution grid: channels (rows) × time (columns).
+
+    Shows how each channel's latent space evolved from unlock through
+    migration end to the final state.
+
+    Args:
+        snapshots: List of snapshot dicts from DiagnosticsCollector.load_curriculum_snapshots.
+            Each dict should have: epoch, k_active, event_type, z_mean/z_mean_per_component,
+            responsibilities, labels.
+        output_dir: Base directory for saving figures.
+        channels_to_show: Optional list of channel indices to show. If None, shows all
+            channels that appear in any snapshot.
+        num_classes: Number of label classes for coloring.
+
+    Returns:
+        Relative path to saved figure, or None if not applicable.
+    """
+    if not snapshots:
+        return None
+
+    # Organize snapshots by channel
+    # For each channel, we want: (unlock snapshot, migration_end snapshot, final snapshot if different)
+    unlock_snapshots = [s for s in snapshots if s["event_type"] == "unlock"]
+    migration_end_snapshots = [s for s in snapshots if s["event_type"] == "migration_end"]
+
+    if not unlock_snapshots:
+        return None
+
+    # Build list of channels that were unlocked
+    unlocked_channels = set()
+    for snap in unlock_snapshots:
+        # Channel unlocked is k_active - 1 (the newly unlocked channel)
+        # But on first unlock, k_active=1 means channel 0 was already active
+        # We need to figure out which channel was unlocked at each snapshot
+        k_active = snap["k_active"]
+        # At unlock time, k_active is the NEW count, so the newly unlocked channel is k_active - 1
+        # But for epoch 0, channel 0 starts active without an "unlock" event
+        # Let's use k_active to determine what channels are active in each snapshot
+        for ch in range(k_active):
+            unlocked_channels.add(ch)
+
+    if channels_to_show is None:
+        channels_to_show = sorted(unlocked_channels)
+
+    if not channels_to_show:
+        return None
+
+    # For each channel, find its unlock snapshot and migration_end snapshot (if any)
+    channel_snapshots: Dict[int, Dict[str, Dict]] = {}
+    for ch in channels_to_show:
+        channel_snapshots[ch] = {"unlock": None, "migration_end": None}
+
+        # Find unlock snapshot where this channel became active
+        for snap in unlock_snapshots:
+            if snap["k_active"] > ch:  # Channel is active after this unlock
+                # Check if this is the first snapshot where ch is active
+                if channel_snapshots[ch]["unlock"] is None:
+                    channel_snapshots[ch]["unlock"] = snap
+                elif snap["epoch"] < channel_snapshots[ch]["unlock"]["epoch"]:
+                    channel_snapshots[ch]["unlock"] = snap
+
+        # Find migration_end snapshot closest to unlock
+        for snap in migration_end_snapshots:
+            if snap["k_active"] > ch:  # Channel is active
+                unlock_snap = channel_snapshots[ch]["unlock"]
+                if unlock_snap is not None:
+                    # Find migration_end that follows the unlock
+                    if snap["epoch"] > unlock_snap["epoch"]:
+                        if channel_snapshots[ch]["migration_end"] is None:
+                            channel_snapshots[ch]["migration_end"] = snap
+                        elif snap["epoch"] < channel_snapshots[ch]["migration_end"]["epoch"]:
+                            channel_snapshots[ch]["migration_end"] = snap
+
+    # Also add the final snapshot for comparison
+    final_snapshot = snapshots[-1] if snapshots else None
+
+    # Build color palette
+    palette = _build_label_palette(num_classes)
+
+    # Determine grid layout
+    n_rows = len(channels_to_show)
+    n_cols = 3  # unlock, migration_end, final
+
+    if n_rows == 0:
+        return None
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4 * n_cols, 3.5 * n_rows))
+    if n_rows == 1:
+        axes = axes.reshape(1, -1)
+
+    # Compute global limits from all snapshots
+    all_points = []
+    for snap in snapshots:
+        if "z_mean_per_component" in snap:
+            z_pc = snap["z_mean_per_component"]  # [N, K, D]
+            for ch in channels_to_show:
+                if ch < z_pc.shape[1]:
+                    all_points.append(z_pc[:, ch, :2])
+        else:
+            all_points.append(snap["z_mean"][:, :2])
+
+    if all_points:
+        combined = np.concatenate(all_points, axis=0)
+        x_lim, y_lim = _compute_limits(combined)
+    else:
+        x_lim, y_lim = (-3, 3), (-3, 3)
+
+    col_titles = ["At Unlock", "After Migration", "Latest"]
+
+    for row_idx, ch in enumerate(channels_to_show):
+        snap_dict = channel_snapshots[ch]
+
+        for col_idx, (key, col_title) in enumerate(zip(
+            ["unlock", "migration_end", None], col_titles
+        )):
+            ax = axes[row_idx, col_idx]
+
+            if col_idx == 2:
+                snap = final_snapshot
+            else:
+                snap = snap_dict.get(key)
+
+            if snap is None:
+                ax.text(
+                    0.5, 0.5, "N/A",
+                    ha="center", va="center",
+                    transform=ax.transAxes,
+                    fontsize=12, color="gray",
+                )
+                ax.set_xlim(*x_lim)
+                ax.set_ylim(*y_lim)
+                ax.set_xticks([])
+                ax.set_yticks([])
+                if row_idx == 0:
+                    ax.set_title(col_title, fontsize=11)
+                if col_idx == 0:
+                    ax.set_ylabel(f"Ch {ch}", fontsize=10, fontweight="bold")
+                style_axes(ax, grid=False)
+                continue
+
+            # Get data for this snapshot
+            labels = snap["labels"]
+            resp = snap["responsibilities"]
+
+            if "z_mean_per_component" in snap:
+                z_pc = snap["z_mean_per_component"]  # [N, K, D]
+                if ch < z_pc.shape[1]:
+                    points = z_pc[:, ch, :2]
+                else:
+                    points = snap["z_mean"][:, :2]
+            else:
+                points = snap["z_mean"][:, :2]
+
+            # Build colors from labels
+            label_int = labels.astype(int)
+            label_int = np.clip(label_int, 0, num_classes - 1)
+            label_colors = palette[label_int].copy()
+
+            # Apply responsibility as alpha
+            if ch < resp.shape[1]:
+                label_colors[:, 3] = np.clip(resp[:, ch], 0.0, 1.0)
+            else:
+                label_colors[:, 3] = 0.1
+
+            ax.scatter(
+                points[:, 0],
+                points[:, 1],
+                c=label_colors,
+                s=CHANNEL_POINT_SIZE * 0.8,
+                linewidths=0,
+                edgecolors="none",
+            )
+
+            ax.set_xlim(*x_lim)
+            ax.set_ylim(*y_lim)
+            ax.set_xticks([])
+            ax.set_yticks([])
+            style_axes(ax, grid=False)
+
+            # Add column title (first row only)
+            if row_idx == 0:
+                epoch_info = f" (e{snap['epoch']})" if snap else ""
+                ax.set_title(f"{col_title}{epoch_info}", fontsize=11)
+
+            # Add row label (first column only)
+            if col_idx == 0:
+                ax.set_ylabel(f"Ch {ch}", fontsize=10, fontweight="bold")
+
+            # Add epoch annotation in corner
+            if snap:
+                ax.text(
+                    0.02, 0.98,
+                    f"e{snap['epoch']}",
+                    transform=ax.transAxes,
+                    va="top", ha="left",
+                    fontsize=8,
+                    bbox=dict(boxstyle='round', facecolor='white', alpha=0.7),
+                )
+
+    # Add legend
+    legend_handles = [
+        Patch(facecolor=palette[i], edgecolor="none", label=str(i))
+        for i in range(num_classes)
+    ]
+    fig.legend(
+        handles=legend_handles,
+        loc="lower center",
+        ncol=min(len(legend_handles), 10),
+        frameon=False,
+        fontsize=9,
+    )
+
+    fig.suptitle(
+        "Curriculum Evolution: Channels × Time",
+        fontsize=14,
+        y=0.995,
+    )
+    fig.tight_layout(rect=(0, 0.06, 1, 0.96))
+
+    # Save
+    curriculum_dir = output_dir / "curriculum"
+    curriculum_dir.mkdir(parents=True, exist_ok=True)
+    output_path = curriculum_dir / "channel_evolution.png"
+
+    if safe_save_plot(fig, output_path):
+        try:
+            return str(output_path.relative_to(output_dir))
+        except ValueError:
+            return str(output_path)
+    return None
