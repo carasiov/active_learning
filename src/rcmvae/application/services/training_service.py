@@ -306,6 +306,11 @@ class Trainer:
                     history, normality_score, self.config, k_active
                 )
 
+                # Enforce minimum epochs per channel before allowing unlock
+                min_epochs = self.config.curriculum_min_epochs_per_channel
+                if min_epochs > 0 and self._trigger_epochs_since_unlock < min_epochs:
+                    should_unlock = False
+
                 if should_unlock:
                     unlock_triggered = True
                     self._trigger_k_active = min(

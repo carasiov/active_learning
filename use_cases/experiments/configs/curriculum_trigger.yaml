@@ -8,13 +8,15 @@
 # - curriculum_enabled: true - enables channel unlocking curriculum
 # - curriculum_unlock_mode: "trigger" - unlock based on plateau + normality
 # - curriculum_start_k_active: 1 - start with only 1 active component
-# - curriculum_plateau_window_epochs: 5 - detect plateau over 5-epoch window
-# - curriculum_plateau_min_improvement: 0.01 - <1% improvement = plateau
-# - curriculum_normality_threshold: 1.0 - normality score must be <1.0 to unlock
+# - curriculum_min_epochs_per_channel: 10 - minimum epochs before unlock allowed
+# - curriculum_plateau_window_epochs: 8 - detect plateau over 8-epoch window
+# - curriculum_plateau_min_improvement: 0.005 - <0.5% improvement = plateau
+# - curriculum_normality_threshold: 0.5 - normality score must be <0.5 to unlock
 #
-# Trigger conditions (BOTH must be met):
-# 1. Plateau: reconstruction_loss improvement < 1% over 5 epochs
-# 2. Normality: latent normality score < 1.0 (active channels near N(0,I))
+# Trigger conditions (ALL must be met):
+# 1. Minimum epochs: at least 10 epochs since last unlock
+# 2. Plateau: reconstruction_loss improvement < 0.5% over 8 epochs
+# 3. Normality: latent normality score < 0.5 (active channels near N(0,I))
 
 experiment:
   name: "curriculum_trigger_demo"
@@ -107,13 +109,16 @@ model:
   # Epoch-based unlock interval (used as fallback/migration calculation)
   curriculum_unlock_every_epochs: 10
 
+  # Minimum epochs constraint (prevents rapid consecutive unlocks)
+  curriculum_min_epochs_per_channel: 10  # Wait at least 10 epochs before unlock
+
   # Plateau detection settings
-  curriculum_plateau_window_epochs: 5  # Look at last 5 epochs for plateau
-  curriculum_plateau_min_improvement: 0.01  # <1% improvement = plateau
+  curriculum_plateau_window_epochs: 8  # Look at last 8 epochs for plateau
+  curriculum_plateau_min_improvement: 0.005  # <0.5% improvement = plateau
   curriculum_plateau_metric: "reconstruction_loss"  # Metric to monitor
 
   # Normality threshold (latent distribution proximity to N(0,I))
-  curriculum_normality_threshold: 1.0  # Score must be <1.0 to allow unlock
+  curriculum_normality_threshold: 0.5  # Score must be <0.5 to allow unlock (stricter)
 
   # Migration window (smooth transitions after unlock)
   curriculum_migration_epochs: 3   # 3 epochs of soft routing after each unlock

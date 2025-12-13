@@ -40,15 +40,17 @@ Components are unlocked when training plateaus AND latent distributions have set
 curriculum_enabled: true
 curriculum_unlock_mode: "trigger"
 curriculum_start_k_active: 1
-curriculum_plateau_window_epochs: 5    # Look at last 5 epochs
-curriculum_plateau_min_improvement: 0.01  # <1% improvement = plateau
+curriculum_min_epochs_per_channel: 10  # Minimum epochs before unlock allowed
+curriculum_plateau_window_epochs: 8    # Look at last 8 epochs
+curriculum_plateau_min_improvement: 0.005  # <0.5% improvement = plateau
 curriculum_plateau_metric: "reconstruction_loss"
-curriculum_normality_threshold: 1.0    # Normality score threshold
+curriculum_normality_threshold: 0.5    # Normality score threshold (lower = stricter)
 ```
 
-**Trigger conditions** (BOTH must be met):
-1. **Plateau detected**: Relative improvement in reconstruction loss over the window is below threshold
-2. **Normality OK**: Active latent channels are close to N(0,I)
+**Trigger conditions** (ALL must be met):
+1. **Minimum epochs**: At least `curriculum_min_epochs_per_channel` epochs since last unlock
+2. **Plateau detected**: Relative improvement in reconstruction loss over the window is below threshold
+3. **Normality OK**: Active latent channels are close to N(0,I)
 
 #### Normality Score
 
@@ -147,6 +149,7 @@ Output: `figures/curriculum/curriculum_metrics.png`
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
+| `curriculum_min_epochs_per_channel` | int | 0 | Minimum epochs at each k_active before unlock (0=disabled) |
 | `curriculum_plateau_window_epochs` | int | 5 | Window for plateau detection |
 | `curriculum_plateau_min_improvement` | float | 0.01 | Minimum improvement to not be plateau |
 | `curriculum_plateau_metric` | str | "reconstruction_loss" | Metric for plateau detection |
@@ -175,3 +178,4 @@ See the ready-to-run example configurations:
 3. **Monitor normality scores**: High scores indicate latent collapse
 4. **Tune plateau threshold**: 0.01-0.05 works well for most cases
 5. **Balance unlock pace**: Too fast → collapse; too slow → underfitting
+6. **Use min epochs constraint**: Set `curriculum_min_epochs_per_channel: 10` in trigger mode to prevent rapid consecutive unlocks before channels develop

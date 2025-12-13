@@ -89,6 +89,7 @@ INFORMATIVE_HPARAMETERS = (
     "curriculum_plateau_window_epochs",
     "curriculum_plateau_min_improvement",
     "curriculum_normality_threshold",
+    "curriculum_min_epochs_per_channel",
 )
 
 @dataclass
@@ -258,6 +259,7 @@ class SSVAEConfig:
     curriculum_plateau_min_improvement: float = 0.01  # Minimum relative improvement required to NOT be a plateau
     curriculum_plateau_metric: str = "reconstruction_loss"  # Metric for plateau detection ("reconstruction_loss" or "loss")
     curriculum_normality_threshold: float = 1.0  # Max normality score to allow unlock (lower = stricter)
+    curriculum_min_epochs_per_channel: int = 0  # Minimum epochs at each k_active before unlock (0 = no constraint)
 
     def __post_init__(self):
         """Validate configuration after initialization."""
@@ -470,6 +472,8 @@ class SSVAEConfig:
                 )
             if self.curriculum_normality_threshold <= 0:
                 raise ValueError("curriculum_normality_threshold must be positive")
+            if self.curriculum_min_epochs_per_channel < 0:
+                raise ValueError("curriculum_min_epochs_per_channel must be >= 0")
 
     def get_informative_hyperparameters(self) -> Dict[str, object]:
         return {name: getattr(self, name) for name in INFORMATIVE_HPARAMETERS}
