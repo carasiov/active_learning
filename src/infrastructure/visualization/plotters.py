@@ -41,7 +41,7 @@ from .tau import (
     plot_tau_per_class_accuracy,
     plot_tau_certainty_analysis,
 )
-from .curriculum import plot_curriculum_metrics
+from .curriculum import plot_curriculum_metrics, plot_curriculum_channel_progression
 
 
 # ---------------------------------------------------------------------------
@@ -413,5 +413,56 @@ def curriculum_metrics_plotter(context: VisualizationContext) -> ComponentResult
     except Exception as e:
         return ComponentResult.failed(
             reason="Failed to generate curriculum metrics plot",
+            error=e,
+        )
+
+
+@register_plotter
+def curriculum_channel_progression_plotter(context: VisualizationContext) -> ComponentResult:
+    """Generate curriculum-aware channel latent visualization.
+
+    Shows channels in unlock order with annotations about when each was unlocked
+    and usage statistics. Provides a curriculum-centric view of channel learning.
+
+    Only applicable when curriculum learning is enabled with mixture priors.
+
+    Returns:
+        ComponentResult with appropriate status
+    """
+    # Check if curriculum is enabled
+    if not getattr(context.config, "curriculum_enabled", False):
+        return ComponentResult.disabled(
+            reason="Curriculum learning not enabled"
+        )
+
+    # Check if mixture-based prior
+    if not context.config.is_mixture_based_prior():
+        return ComponentResult.disabled(
+            reason="Requires mixture-based prior"
+        )
+
+    # Check if history has curriculum data
+    if "k_active" not in context.history or len(context.history.get("k_active", [])) == 0:
+        return ComponentResult.skipped(
+            reason="No curriculum metrics in training history"
+        )
+
+    try:
+        path = plot_curriculum_channel_progression(
+            context.model,
+            context.x_train,
+            context.y_true,
+            context.history,
+            context.figures_dir,
+        )
+        if path:
+            return ComponentResult.success(data={"channel_progression": path})
+        else:
+            return ComponentResult.skipped(
+                reason="Could not generate curriculum channel progression"
+            )
+    except Exception as e:
+        return ComponentResult.failed(
+            reason="Failed to generate curriculum channel progression plot",
             error=e,
         )
