@@ -498,9 +498,20 @@ def curriculum_evolution_plotter(context: VisualizationContext) -> ComponentResu
             reason="Requires mixture-based prior"
         )
 
-    # Load curriculum snapshots
+    # Load curriculum snapshots - check multiple possible locations
     try:
+        snapshots = []
+        # Try run directory (figures_dir.parent)
         snapshots = DiagnosticsCollector.load_curriculum_snapshots(context.figures_dir.parent)
+        # If not found, try checkpoints directory (common pattern)
+        if not snapshots:
+            checkpoints_dir = context.figures_dir.parent / "checkpoints"
+            if checkpoints_dir.exists():
+                snapshots = DiagnosticsCollector.load_curriculum_snapshots(checkpoints_dir)
+        # Also check figures_dir itself
+        if not snapshots:
+            snapshots = DiagnosticsCollector.load_curriculum_snapshots(context.figures_dir)
+
         if not snapshots:
             return ComponentResult.skipped(
                 reason="No curriculum snapshots found (run with snapshot saving enabled)"
