@@ -381,11 +381,13 @@ class DiagnosticsCollector:
             Path to saved snapshot file, or None if failed
         """
         if self.config.prior_type not in COMPONENT_PRIORS:
+            print(f"[Snapshot] Skipping: prior_type={self.config.prior_type} not in {COMPONENT_PRIORS}")
             return None
 
         # Create curriculum snapshots directory
         snapshot_dir = Path(output_dir) / "curriculum_snapshots"
         snapshot_dir.mkdir(parents=True, exist_ok=True)
+        print(f"[Snapshot] Saving to {snapshot_dir}")
 
         # Select fixed subset of samples (same samples across all snapshots)
         rng = np.random.default_rng(seed)
@@ -413,6 +415,7 @@ class DiagnosticsCollector:
 
                 responsibilities = extras.get("responsibilities") if hasattr(extras, "get") else None
                 if responsibilities is None:
+                    print(f"[Snapshot] Warning: No responsibilities in extras. Keys: {list(extras.keys()) if hasattr(extras, 'keys') else type(extras)}")
                     continue
 
                 z_records.append(np.asarray(z_mean))
@@ -425,9 +428,12 @@ class DiagnosticsCollector:
 
             except Exception as e:
                 print(f"Warning: Failed to process batch for curriculum snapshot: {e}")
+                import traceback
+                traceback.print_exc()
                 continue
 
         if not z_records or not resp_records:
+            print(f"[Snapshot] Failed: z_records={len(z_records)}, resp_records={len(resp_records)}")
             return None
 
         # Assemble snapshot data

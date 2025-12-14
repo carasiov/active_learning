@@ -503,6 +503,7 @@ def curriculum_evolution_plotter(context: VisualizationContext) -> ComponentResu
         snapshots = []
         search_paths = [
             context.figures_dir.parent,
+            context.figures_dir.parent / "artifacts",  # snapshots saved here
             context.figures_dir.parent / "checkpoints",
             context.figures_dir,
         ]
