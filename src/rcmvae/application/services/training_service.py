@@ -340,12 +340,16 @@ class Trainer:
                 # Save snapshot at unlock events (both trigger and epoch mode)
                 any_unlock = unlock_triggered or epoch_unlock_triggered
                 if any_unlock:
+                    print(f"[Curriculum] Saving unlock snapshot at epoch {epoch}, k_active={k_active}")
                     try:
-                        curriculum_snapshot_fn(
+                        result = curriculum_snapshot_fn(
                             state.params, epoch, k_active, "unlock"
                         )
+                        print(f"[Curriculum] Snapshot result: {result}")
                     except Exception as e:
+                        import traceback
                         print(f"Warning: Failed to save unlock snapshot: {e}")
+                        traceback.print_exc()
 
                 # Save snapshot at end of migration window (trigger mode)
                 if use_trigger_mode:
@@ -354,22 +358,34 @@ class Trainer:
                         migration_epochs > 0
                         and self._trigger_epochs_since_unlock == migration_epochs
                     ):
+                        print(f"[Curriculum] Saving migration_end snapshot at epoch {epoch}")
                         try:
-                            curriculum_snapshot_fn(
+                            result = curriculum_snapshot_fn(
                                 state.params, epoch, k_active, "migration_end"
                             )
+                            print(f"[Curriculum] Snapshot result: {result}")
                         except Exception as e:
+                            import traceback
                             print(f"Warning: Failed to save migration_end snapshot: {e}")
+                            traceback.print_exc()
                 # Save snapshot at end of migration window (epoch mode)
                 elif self.config.curriculum_migration_epochs > 0:
                     epochs_since = self.config.get_epochs_since_last_unlock(epoch)
                     if epochs_since == self.config.curriculum_migration_epochs:
+                        print(f"[Curriculum] Saving migration_end snapshot at epoch {epoch}")
                         try:
-                            curriculum_snapshot_fn(
+                            result = curriculum_snapshot_fn(
                                 state.params, epoch, k_active, "migration_end"
                             )
+                            print(f"[Curriculum] Snapshot result: {result}")
                         except Exception as e:
+                            import traceback
                             print(f"Warning: Failed to save migration_end snapshot: {e}")
+                            traceback.print_exc()
+            elif self.config.curriculum_enabled and curriculum_snapshot_fn is None:
+                # Only log once at first epoch
+                if epoch == 0:
+                    print("[Curriculum] Warning: curriculum_snapshot_fn is None, snapshots will not be saved")
 
             # Update previous k_active for next epoch's unlock detection
             prev_k_active = k_active

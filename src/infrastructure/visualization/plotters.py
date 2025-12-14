@@ -501,22 +501,27 @@ def curriculum_evolution_plotter(context: VisualizationContext) -> ComponentResu
     # Load curriculum snapshots - check multiple possible locations
     try:
         snapshots = []
-        # Try run directory (figures_dir.parent)
-        snapshots = DiagnosticsCollector.load_curriculum_snapshots(context.figures_dir.parent)
-        # If not found, try checkpoints directory (common pattern)
-        if not snapshots:
-            checkpoints_dir = context.figures_dir.parent / "checkpoints"
-            if checkpoints_dir.exists():
-                snapshots = DiagnosticsCollector.load_curriculum_snapshots(checkpoints_dir)
-        # Also check figures_dir itself
-        if not snapshots:
-            snapshots = DiagnosticsCollector.load_curriculum_snapshots(context.figures_dir)
+        search_paths = [
+            context.figures_dir.parent,
+            context.figures_dir.parent / "checkpoints",
+            context.figures_dir,
+        ]
+        print(f"[curriculum_evolution] Looking for snapshots in: {[str(p) for p in search_paths]}")
+
+        for search_path in search_paths:
+            if search_path.exists():
+                snapshots = DiagnosticsCollector.load_curriculum_snapshots(search_path)
+                if snapshots:
+                    print(f"[curriculum_evolution] Found {len(snapshots)} snapshots in {search_path}")
+                    break
 
         if not snapshots:
+            print(f"[curriculum_evolution] No snapshots found in any location")
             return ComponentResult.skipped(
                 reason="No curriculum snapshots found (run with snapshot saving enabled)"
             )
     except Exception as e:
+        print(f"[curriculum_evolution] Error loading snapshots: {e}")
         return ComponentResult.skipped(
             reason=f"Could not load curriculum snapshots: {e}"
         )

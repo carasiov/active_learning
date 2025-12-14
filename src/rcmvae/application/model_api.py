@@ -322,11 +322,13 @@ class SSVAE:
         curriculum_snapshot_fn = None
         if self.config.curriculum_enabled:
             output_dir = Path(self.weights_path).parent
+            print(f"[Curriculum] Building snapshot function, output_dir={output_dir}")
             curriculum_snapshot_fn = self._build_curriculum_snapshot_fn(
                 data=data,
                 labels=labels,
                 output_dir=output_dir,
             )
+            print(f"[Curriculum] Snapshot function created: {curriculum_snapshot_fn is not None}")
 
         loop_hooks = self._build_tau_loop_hooks() if self._tau_classifier else None
         self._runtime, history = self._trainer.train(
