@@ -8,7 +8,11 @@ from flax import linen as nn
 
 
 class StandardHead(nn.Module):
-    """Mean-only reconstruction head for decoder outputs."""
+    """Mean-only reconstruction head for decoder outputs.
+
+    Outputs probabilities in [0, 1] via sigmoid activation.
+    Use with MSE reconstruction loss.
+    """
 
     output_hw: Tuple[int, int]
 
@@ -30,6 +34,34 @@ class StandardHead(nn.Module):
         mean = nn.Dense(h * w, name="projection")(features)
         mean = nn.sigmoid(mean)
         return mean.reshape((-1, h, w))
+
+
+class LogitsHead(nn.Module):
+    """Logits-only reconstruction head for decoder outputs.
+
+    Outputs raw logits (unbounded) without sigmoid activation.
+    Use with BCE reconstruction loss for numerical stability.
+    The BCE loss function applies sigmoid internally.
+    """
+
+    output_hw: Tuple[int, int]
+
+    @nn.compact
+    def __call__(self, features: jnp.ndarray) -> jnp.ndarray:
+        h, w = self.output_hw
+        if features.ndim == 4:
+            logits = nn.Conv(
+                features=1,
+                kernel_size=(3, 3),
+                strides=(1, 1),
+                padding="SAME",
+                name="recon",
+            )(features)
+            logits = logits.squeeze(axis=-1)
+            return logits
+
+        logits = nn.Dense(h * w, name="projection")(features)
+        return logits.reshape((-1, h, w))
 
 
 class HeteroscedasticHead(nn.Module):

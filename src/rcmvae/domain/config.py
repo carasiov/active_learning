@@ -183,7 +183,7 @@ class SSVAEConfig:
     encoder_type: str = "dense"
     decoder_type: str = "dense"
     classifier_type: str = "dense"
-    monitor_metric: str = "classification_loss"
+    monitor_metric: str = "loss"
     use_contrastive: bool = False
     contrastive_weight: float = 0.0
     prior_type: str = "standard"

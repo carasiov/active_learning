@@ -499,6 +499,7 @@ class SSVAE:
         sample: bool = False,
         num_samples: int = 1,
         return_mixture: bool = False,
+        active_mask: np.ndarray | None = None,
     ) -> Tuple:
         """Perform inference on data.
 
@@ -507,6 +508,8 @@ class SSVAE:
             sample: Whether to sample from latent distribution
             num_samples: Number of samples to draw (if sample=True)
             return_mixture: Return mixture-specific outputs (responsibilities, π)
+            active_mask: Optional boolean mask [K] for active channels (curriculum).
+                         If provided, inactive channels are masked in routing.
 
         Returns:
             Standard: (latent, reconstruction, class_predictions, certainty)
@@ -518,14 +521,24 @@ class SSVAE:
         if return_mixture and not mixture_active:
             raise ValueError("return_mixture=True only supported for component-based priors.")
 
-        if sample:
-            return self._predict_with_sampling(x, num_samples, return_mixture)
-        else:
-            return self._predict_deterministic(x, return_mixture)
+        # Convert active_mask to JAX array if provided
+        jax_active_mask = jnp.array(active_mask) if active_mask is not None else None
 
-    def _predict_deterministic(self, x: jnp.ndarray, return_mixture: bool) -> Tuple:
+        if sample:
+            return self._predict_with_sampling(x, num_samples, return_mixture, jax_active_mask)
+        else:
+            return self._predict_deterministic(x, return_mixture, jax_active_mask)
+
+    def _predict_deterministic(
+        self,
+        x: jnp.ndarray,
+        return_mixture: bool,
+        active_mask: jnp.ndarray | None = None,
+    ) -> Tuple:
         """Deterministic prediction (use mean of latent distribution)."""
-        forward = self._apply_fn(self.state.params, x, training=False)
+        forward = self._apply_fn(
+            self.state.params, x, training=False, active_mask=active_mask
+        )
         extras = self._extract_extras_from_forward(forward)
         _, z_mean, _, _, recon, logits, _ = forward
 
@@ -557,7 +570,11 @@ class SSVAE:
         return result
 
     def _predict_with_sampling(
-        self, x: jnp.ndarray, num_samples: int, return_mixture: bool
+        self,
+        x: jnp.ndarray,
+        num_samples: int,
+        return_mixture: bool,
+        active_mask: jnp.ndarray | None = None,
     ) -> Tuple:
         """Prediction with sampling from latent distribution."""
         num_samples = max(1, int(num_samples))
@@ -576,6 +593,7 @@ class SSVAE:
                 x,
                 training=False,
                 rngs={"reparam": subkey},
+                active_mask=active_mask,
             )
             extras = self._extract_extras_from_forward(forward)
             _, z_mean, _, z, recon, logits, _ = forward
@@ -654,19 +672,22 @@ class SSVAE:
         sample: bool = False,
         num_samples: int = 1,
         return_mixture: bool = False,
+        active_mask: np.ndarray | None = None,
     ) -> Tuple:
         """Perform batched prediction to avoid OOM with large datasets and conv architectures.
-        
+
         This method splits large datasets into smaller batches to prevent out-of-memory errors
         that can occur with convolutional architectures due to large intermediate tensors.
-        
+
         Args:
             data: Input images [N, H, W]
             batch_size: Batch size for prediction (defaults to safe heuristic based on config)
             sample: Whether to sample from latent distribution
             num_samples: Number of samples to draw (if sample=True)
             return_mixture: Return mixture-specific outputs (responsibilities, π)
-            
+            active_mask: Optional boolean mask [K] for active channels (curriculum).
+                         If provided, inactive channels are masked in routing.
+
         Returns:
             Standard: (latent, reconstruction, class_predictions, certainty)
             With mixture: (latent, reconstruction, class_predictions, certainty, q_c, π)
@@ -679,6 +700,7 @@ class SSVAE:
                 sample=sample,
                 num_samples=num_samples,
                 return_mixture=return_mixture,
+                active_mask=active_mask,
             )
         
         # Collect results from each batch
@@ -695,20 +717,24 @@ class SSVAE:
         for start in range(0, total, inferred_batch_size):
             end = min(start + inferred_batch_size, total)
             batch_data = data[start:end]
-            
+
             if return_mixture:
                 latent, recon, preds, cert, resp, pi = self.predict(
                     batch_data,
                     sample=sample,
                     num_samples=num_samples,
                     return_mixture=True,
+                    active_mask=active_mask,
                 )
                 resp_batches.append(resp)
                 if pi_value is None:
                     pi_value = pi  # π is constant across batches
             else:
                 latent, recon, preds, cert = self.predict(
-                    batch_data, sample=sample, num_samples=num_samples
+                    batch_data,
+                    sample=sample,
+                    num_samples=num_samples,
+                    active_mask=active_mask,
                 )
             
             latent_batches.append(latent)

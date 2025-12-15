@@ -9,14 +9,18 @@
 experiment:
   name: mnist_curriculum_test
   description: "Channel curriculum with decentralized 2D latents on MNIST"
+  tags: []
 
 data:
   dataset: mnist
-  train_ratio: 0.8
-  label_ratio: 0.1  # 10% of training data labeled
+  num_samples: 10000              # Total samples from dataset
+  num_labeled: 0                  # No labels for pure curriculum test
+  seed: 42                        # Random seed for data sampling
+  dataset_variant: mnist
 
 model:
   # Architecture
+  num_classes: 10                 # MNIST digits
   encoder_type: conv
   decoder_type: conv
   classifier_type: dense
@@ -24,11 +28,12 @@ model:
   # Latent space: 2D per channel for visualization
   latent_dim: 2
   latent_layout: decentralized
-  num_components: 10  # K_max
+  num_components: 10              # K_max
 
   # Prior configuration
   prior_type: mixture
-  decoder_conditioning: film  # Use FiLM for component-aware decoding
+  component_embedding_dim: 32
+  decoder_conditioning: film      # Use FiLM for component-aware decoding
 
   # Routing
   use_gumbel_softmax: true
@@ -55,6 +60,7 @@ model:
   patience: 30
   val_split: 0.1
   random_seed: 42
+  monitor_metric: loss            # Monitor total loss (not classification since label_weight=0)
 
   # Classification (disabled for curriculum test)
   label_weight: 0.0

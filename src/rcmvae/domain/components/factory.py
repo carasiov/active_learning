@@ -11,6 +11,7 @@ from rcmvae.domain.components.decoder_modules import (
     DenseBackbone,
     FiLMLayer,
     HeteroscedasticHead,
+    LogitsHead,
     NoopConditioner,
     StandardHead,
 )
@@ -110,6 +111,9 @@ def build_decoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = Non
         raise ValueError(f"Unknown decoder type: {config.decoder_type}")
 
     # Build output head
+    # - HeteroscedasticHead: for learned variance (outputs mean + sigma)
+    # - LogitsHead: for BCE loss (outputs raw logits, numerically stable)
+    # - StandardHead: for MSE loss (outputs sigmoid probabilities)
     use_heteroscedastic = config.use_heteroscedastic_decoder
     if use_heteroscedastic:
         output_head: nn.Module = HeteroscedasticHead(
@@ -117,7 +121,11 @@ def build_decoder(config: SSVAEConfig, *, input_hw: Tuple[int, int] | None = Non
             sigma_min=config.sigma_min,
             sigma_max=config.sigma_max,
         )
+    elif config.reconstruction_loss == "bce":
+        # BCE loss expects logits (applies sigmoid internally for numerical stability)
+        output_head = LogitsHead(output_hw=resolved_hw)
     else:
+        # MSE loss works with probabilities in [0, 1]
         output_head = StandardHead(output_hw=resolved_hw)
 
     # Compose decoder
