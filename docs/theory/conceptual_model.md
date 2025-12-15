@@ -4,6 +4,9 @@
 > It is built around the original project intent: an **interactive, semi-supervised, generative classifier** whose semantics live in latent space.  
 > For exact math and implementation details, see the [Mathematical Specification](mathematical_specification.md).
 
+**Active project specs (in-flight):**
+- Decentralized latents “pots” curriculum + active-set masking + logit-MoG: `docs/projects/decentralized_latents/channel_curriculum/README.md`
+
 ---
 
 ## 1. Overall Goal
@@ -43,7 +46,7 @@ In the **decentralized layout** [↗](mathematical_specification.md#31-latent-la
   - $Z = \{z_1, \dots, z_K\}$, each $z_k \in \mathbb{R}^d$.
 - During training, **all K latents are decoded**:
   - Each $z_k$ is passed through the decoder with embedding $e_k$ to produce reconstruction $\text{recon}_k$.
-  - The final reconstruction is a weighted combination: $\sum_k q(c{=}k\mid x) \cdot \text{recon}_k$.
+  - The final reconstruction is a weighted combination over channels, using either soft responsibilities $q(c{=}k\mid x)$ or a routing distribution derived from them (e.g., Gumbel-softmax / straight-through): $\sum_k s_k(x)\cdot \text{recon}_k$.
 
 Conceptually, the generative story is:
 
@@ -138,8 +141,9 @@ The decoder produces a **likelihood**:
 
 ## 4. Labels, Channels, and a Latent-Space Classifier
 
-We **never** attach a discriminative head.  
-Classification happens entirely through channels and responsibilities.
+In the conceptual target, classification happens through channels and responsibilities (τ-classifier), without needing a separate discriminative head.
+
+Implementation note: the current codebase also supports a standard classifier head, and uses it by default unless `use_tau_classifier=True`. See `docs/projects/decentralized_latents/channel_curriculum/README.md`.
 
 ### 4.1 Building soft label counts
 
@@ -184,6 +188,8 @@ A simple OOD score:
 
 $$s_{\text{OOD}}(x) \approx 1 - \max_c\bigl(q_\phi(c\mid x)\,\max_y \tau_{c,y}\bigr).$$ (See [`tau_classifier.py`](../../src/rcmvae/domain/components/tau_classifier.py#L207-L220) and [Mathematical Specification](mathematical_specification.md#6-ood-scoring).)
 
+Implementation note: this form depends on having a learned $\tau$ map (τ-classifier). When τ is disabled, responsibility entropy and reconstruction error remain useful uncertainty signals, but $\tau$-based OOD is not available.
+
 ---
 
 ## 6. Dynamic Labels and Free Channels
@@ -193,6 +199,8 @@ Channels start as unlabeled; labeled data shapes $\tau$.
 ### 6.1 Adding new labels
 
 Use free or weakly aligned channels (see [`tau_classifier.py`](../../src/rcmvae/domain/components/tau_classifier.py#L222-L251)), update counts, and assign them to the new label.
+
+Implementation note: the codebase provides “free channel” identification and τ bookkeeping primitives, but the full end-to-end active learning / dynamic label workflow is tracked as a project-level effort (see `docs/theory/implementation_roadmap.md` and `docs/projects/decentralized_latents/channel_curriculum/README.md`).
 
 ---
 
@@ -217,4 +225,3 @@ Optional contrastive losses help align channels and labels.
 ## 9. One-Sentence View
 
 RCM-VAE is an **interactive, semi-supervised mixture-VAE** where discrete latent channels are sparsely used semantic slots; they are bound to labels via responsibilities and a simple channel→label map, support new labels, and provide generative modeling, classification, uncertainty, OOD detection, and 2D exploration from one latent space.
-

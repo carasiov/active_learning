@@ -4,6 +4,9 @@
 >
 > **Note:** All math is written with `$...$` (inline) and `$$...$$` (display), which renders in standard Markdown viewers with KaTeX/MathJax support.
 
+**Active project specs (in-flight):**
+- Decentralized latents “pots” curriculum (active set + unlock + kick) and logit-MoG regularization: `docs/projects/decentralized_latents/channel_curriculum/README.md`
+
 ---
 
 ## 1. Abstract
@@ -110,6 +113,8 @@ $$
 $$
 In the decentralized layout, $q_\phi(z\mid x,c)$ refers specifically to the posterior of the active latent $z_c$, i.e., the $c$-th latent in the set $\{z_k\}$ produced by the encoder.
 
+**Alternative $c$ regularizer (logit-MoG).** Some experiments replace the categorical KL with a negative log prior penalty on encoder logits (a logistic-normal mixture prior in logit space) to encourage per-sample peakiness without simplex priors. This is specified at `docs/projects/decentralized_latents/channel_curriculum/logit_mog_regularizer.md`.
+
 **Latent KL ($\text{KL}_z$) depends on layout:**
 
 *   **Shared:** Weighted sum against component priors.
@@ -123,10 +128,11 @@ $$
 $$
 (See [`tau_classifier.py`](../../src/rcmvae/domain/components/tau_classifier.py)).
 
-**Channel-usage sparsity (EMA $\hat p$):**
+**Channel-usage regularizer (EMA $\hat p$):**
 $$
-\mathcal R_{\text{usage}}=\lambda_u\Big(-\sum_c \hat p(c)\log \hat p(c)\Big)\quad\text{(minimize entropy)}.
+\mathcal R_{\text{usage}} = w_u \cdot H(\hat p) \quad \text{where} \quad H(\hat p) = -\sum_c \hat p(c)\log \hat p(c).
 $$
+Minimizing with $w_u>0$ penalizes entropy (encourages global concentration / fewer active channels); $w_u<0$ rewards entropy (encourages global diversity). The codebase exposes this via a sign-controlled weight.
 
 **Decoder variance stability:** per-image scalar $\sigma(x)=\sigma_{\min}+\mathrm{softplus}(s_\theta(x))$, clamp $\sigma(x)\in[0.05,0.5]$; optional small penalty $\lambda_\sigma(\log\sigma(x)-\mu_\sigma)^2$ (default off).
 
@@ -173,15 +179,15 @@ $$
 
 1. **Encode** logits for $q_\phi(c\mid x)$ and per-channel $\mu_\phi(x,c),\log\sigma^2_\phi(x,c)$. Maintain EMA for $\hat p(c)$.
 
-2. **Reconstruction as expectation over channels** with **Top-$M$ gating** (default $M{=}5$). Compute $z$-KL on the same set; compute $c$-KL over **all $K$** if enabled.
+2. **Reconstruction as expectation over channels**. (Top-$M$ gating is a planned optimization; treat it as optional until implemented. See `docs/projects/decentralized_latents/channel_curriculum/implementation_mapping.md`.)
 
-3. **Anneal** the $z$-KL weight linearly 0→1 over the first ~10k steps; keep **$\beta_c{=}0$ by default**.
+3. **Anneal** the $z$-KL weight linearly 0→1 over the first ~10k steps. The channel regularization weight $\beta_c$ is configuration-dependent; many logit-MoG / curriculum-oriented runs set $\beta_c \approx 0$ for the categorical KL and rely on the logit-space regularizer instead.
 
-4. **Decode** with $[z; e_c]$. Optional short **soft-embedding warm-up**; at generation, sample a hard $c$.
+4. **Decode** with $[z; e_c]$. (Soft-embedding warm-up is planned/optional; treat it as optional until implemented. See `docs/projects/decentralized_latents/channel_curriculum/implementation_mapping.md`.)
 
 5. **Optimize** the total loss; consider mild repulsion between $e_c$ to avoid duplicate channels.
 
-6. **Dynamic labels.** **Free channel:** a channel is free if $\hat p(c){<}10^{-3}$ **or** $\max_y\tau_{c,y}{<}0.05$ (see [`tau_classifier.py`](../../src/rcmvae/domain/components/tau_classifier.py#L222-L251)). A new label claims **1–3** free channels chosen by highest responsibilities of its first labeled examples; initialize counts with those examples.
+6. **Dynamic labels.** **Free channel:** a channel is free if $\hat p(c){<}10^{-3}$ **or** $\max_y\tau_{c,y}{<}0.05$ (see [`tau_classifier.py`](../../src/rcmvae/domain/components/tau_classifier.py#L222-L251)). A new label claims **1–3** free channels chosen by highest responsibilities of its first labeled examples; initialize counts with those examples. (The end-to-end interactive workflow is tracked as a project-level effort; primitives exist in the τ-classifier subsystem.)
 
 
 ---

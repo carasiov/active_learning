@@ -12,6 +12,13 @@ The canonical “what we’re building now” specification lives in `docs/proje
 - `docs/projects/decentralized_latents/channel_curriculum/implementation_mapping.md` — how it maps onto the codebase + experiments.
 - `docs/projects/decentralized_latents/channel_curriculum/logit_mog_regularizer.md` — logit-MoG mechanism note (already implemented).
 
+## North Star Docs (Theory + Architecture)
+
+- Conceptual intent: `docs/theory/conceptual_model.md`
+- Mathematical contract: `docs/theory/mathematical_specification.md`
+- Current system architecture patterns: `docs/development/architecture.md`
+- Status snapshot: `docs/theory/implementation_roadmap.md`
+
 ## Glossary (Project Terms)
 
 - `component_logits`: encoder logits `y(x) ∈ R^{K_max}` (pre-softmax).

@@ -25,6 +25,15 @@ We’re building a mixture VAE with decentralized latent channels and a **channe
 2. `docs/projects/decentralized_latents/channel_curriculum/design_contract.md` — formal invariants + curriculum policy.
 3. `docs/projects/decentralized_latents/channel_curriculum/implementation_mapping.md` — how this maps onto the codebase and experiment workflow.
 
+## North Star References
+
+These documents are the stable “north star” for intent, math, and architectural conventions. The curriculum docs in this folder may temporarily be more specific than theory docs while the curriculum is being implemented/validated.
+
+- Conceptual intent: `docs/theory/conceptual_model.md`
+- Mathematical contract: `docs/theory/mathematical_specification.md`
+- Architecture patterns (hooks/registries): `docs/development/architecture.md`
+- Status snapshot: `docs/theory/implementation_roadmap.md`
+
 ## Related doc
 
 - `docs/projects/decentralized_latents/channel_curriculum/logit_mog_regularizer.md` — the existing logit-MoG regularizer (what’s already implemented).

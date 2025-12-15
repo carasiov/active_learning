@@ -17,6 +17,7 @@
 | Heteroscedastic decoder + weighted loss | ✅ needs tuning knobs only | `src/rcmvae/domain/components/decoders.py`, `src/rcmvae/application/services/loss_pipeline.py` |
 | VampPrior (pseudo-input learning, MC-KL) | ✅ shipping | `src/rcmvae/domain/priors/vamp.py`, network now caches pseudo stats & supports pseudo-LR scaling |
 | Geometric MoG (diagnostic/curriculum prior) | ✅ shipping | `src/rcmvae/domain/priors/geometric_mog.py` |
+| Channel curriculum (“pots”: active set + unlock + kick) | 📋 specified; not implemented | `docs/projects/decentralized_latents/channel_curriculum/README.md` (contract + mapping) |
 | OOD scoring via `r × τ` | 📋 ready once experiment wiring added |
 | Dynamic label addition / active learning loop | 📋 design ready; needs workflow + UX |
 
