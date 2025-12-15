@@ -139,7 +139,7 @@ Monitoring nuance: prefer using masked **responsibilities** (deterministic) for 
 ## 8) Notes / caveats to keep aligned with current code
 
 - `top_m_gating` and `soft_embedding_warmup_epochs` exist in config but are not implemented; do not rely on them for curriculum behavior without adding explicit code support (`src/rcmvae/domain/config.py:201`).
-- Visualization “Component Embedding” currently gates on the deprecated `use_component_aware_decoder` flag, not `decoder_conditioning`, so it will show as disabled in REPORTs even when `decoder_conditioning: "cin"` (`src/infrastructure/visualization/plotters.py:244`).
+- Visualization “Component Embedding” plotters run when `decoder_conditioning != "none"` (and are disabled for VampPrior because it has no component embeddings).
 
 ## 9) Experiment workflow implications (run_experiment.py + quick.yaml)
 
@@ -238,4 +238,4 @@ To validate curriculum behavior, add:
 
 - Any “active components” metric should be computed **within the active set**; otherwise it will be dominated by intentionally inactive channels.
 - Channel grids should ideally render only active channels (or visually mark inactive ones as “closed”).
-- “Component Embedding” plot gating currently uses deprecated `use_component_aware_decoder` and should be updated to key off `decoder_conditioning != "none"` (separate fix from curriculum) (`src/infrastructure/visualization/plotters.py:244`).
+- Component embedding / per-component reconstruction plots should continue to gate on `decoder_conditioning != "none"`; under curriculum, they may additionally want to visually mark inactive channels.

@@ -46,7 +46,7 @@ class TestTauClassifierValidation:
         """τ-classifier with geometric MoG should pass."""
         config = SSVAEConfig(
             prior_type="geometric_mog",
-            num_components=9,
+            num_components=16,
             geometric_arrangement="grid",
             use_tau_classifier=True
         )
@@ -54,12 +54,11 @@ class TestTauClassifierValidation:
 
     def test_tau_with_standard_prior_invalid(self):
         """τ-classifier with standard prior should fail."""
-        config = SSVAEConfig(
-            prior_type="standard",
-            use_tau_classifier=True
-        )
-        with pytest.raises(ConfigValidationError, match="τ-classifier.*requires mixture-based prior"):
-            _validate_tau_classifier(config)
+        with pytest.raises(ValueError, match="τ-classifier.*requires mixture-based"):
+            SSVAEConfig(
+                prior_type="standard",
+                use_tau_classifier=True,
+            )
 
     def test_tau_disabled_with_any_prior_valid(self):
         """Disabled τ-classifier should pass with any prior."""
@@ -394,12 +393,11 @@ class TestFullConfigValidation:
 
     def test_invalid_tau_with_standard_prior(self):
         """Config with τ-classifier + standard prior should fail validation."""
-        config = SSVAEConfig(
-            prior_type="standard",
-            use_tau_classifier=True
-        )
-        with pytest.raises(ConfigValidationError):
-            validate_config(config)
+        with pytest.raises(ValueError, match="τ-classifier.*requires mixture-based"):
+            SSVAEConfig(
+                prior_type="standard",
+                use_tau_classifier=True,
+            )
 
     def test_invalid_component_aware_with_standard_prior(self):
         """Config with component-aware + standard prior should fail."""

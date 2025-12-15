@@ -4,6 +4,8 @@
 
 The visualization module provides a comprehensive suite of diagnostic plots for VAE experiments, including loss curves, latent space analysis, and model-specific visualizations for mixture priors and semi-supervised learning.
 
+This package is intentionally placed under `src/infrastructure/` so it can be reused by both experiments and the dashboard.
+
 ## Architecture
 
 The module uses a **registry pattern** for dynamic plot discovery and execution based on model configuration. The implementation is organized into domain-specific modules:
@@ -59,8 +61,8 @@ Visualizations specific to mixture prior VAEs:
 - **Channel Latent Responsibility**: Per-component latent space with alpha-blended responsibilities
 - **Responsibility Histogram**: Distribution of max_c q(c|x) confidence
 - **Mixture Evolution**: π weights and component usage over training
-- **Component Embedding Divergence**: Pairwise distances between component embeddings
-- **Reconstruction by Component**: How each component reconstructs inputs
+- **Component Embedding Divergence**: Pairwise distances between component embeddings (only meaningful when `decoder_conditioning != "none"`)
+- **Reconstruction by Component**: How each component reconstructs inputs (only meaningful when `decoder_conditioning != "none"`)
 
 ### `tau/plots.py` - Semi-Supervised Diagnostics
 Visualizations for τ-classifier semi-supervised models:

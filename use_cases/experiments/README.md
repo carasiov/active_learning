@@ -8,6 +8,10 @@
 
 This guide covers the practical workflow: edit config → run experiment → interpret results.
 
+For a more “engineering loop” view (what signals we rely on, which plots matter, how to validate changes), see:
+- Stable contracts: `docs/development/experimentation_contracts.md`
+- Practical iteration: `use_cases/experiments/iteration_runbook.md`
+
 ---
 
 ## Run Directory Layout

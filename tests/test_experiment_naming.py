@@ -212,13 +212,13 @@ class TestFullArchitectureCode:
         """Geometric MoG for debugging."""
         config = SSVAEConfig(
             prior_type="geometric_mog",
-            num_components=8,
+            num_components=10,
             geometric_arrangement="circle",
             use_tau_classifier=True,
             use_component_aware_decoder=False,
             use_heteroscedastic_decoder=False
         )
-        assert generate_architecture_code(config) == "geo8-circle_tau_plain"
+        assert generate_architecture_code(config) == "geo10-circle_tau_plain"
 
     def test_mixture_without_tau(self):
         """Mixture prior with standard classifier head."""

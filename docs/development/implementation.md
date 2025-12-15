@@ -1009,6 +1009,7 @@ pytest tests/test_mixture_encoder.py tests/test_mixture_losses.py \
 
 - **[System Architecture](architecture.md)** - Design patterns and principles
 - **[Extending the System](extending.md)** - How-to tutorials
+- **[Experimentation Contracts](experimentation_contracts.md)** - Stable run/metric/plot contracts
 - **[Conceptual Model](../theory/conceptual_model.md)** - Theoretical foundation
 - **[Experiment Guide](../../use_cases/experiments/README.md)** - Primary experimentation workflow
 - **[Dashboard Guide](../../use_cases/dashboard/README.md)** - Interactive active learning interface

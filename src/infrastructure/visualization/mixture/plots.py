@@ -911,7 +911,7 @@ def plot_component_embedding_divergence(
 ):
     """Analyze and visualize component embedding divergence.
 
-    For component-aware decoders, checks if learned component embeddings e_c
+    For component-conditioned decoders, checks if learned component embeddings e_c
     actually diverge from each other (indicating functional specialization).
     Shows pairwise distances between component embeddings as a heatmap.
 
@@ -922,21 +922,22 @@ def plot_component_embedding_divergence(
     Output:
         Saves figure to: output_dir/mixture/component_embedding_divergence.png
     """
-    component_aware_models = {
+    component_conditioned_models = {
         name: model for name, model in models.items()
         if (
-            model.config.is_mixture_based_prior() and
-            hasattr(model.config, 'use_component_aware_decoder') and
-            model.config.use_component_aware_decoder)
+            model.config.is_mixture_based_prior()
+            and getattr(model.config, "prior_type", None) != "vamp"
+            and getattr(model.config, "decoder_conditioning", "none") != "none"
+        )
     }
 
-    if not component_aware_models:
+    if not component_conditioned_models:
         return
 
     import jax.numpy as jnp
     from scipy.spatial.distance import pdist, squareform
 
-    n_models = len(component_aware_models)
+    n_models = len(component_conditioned_models)
     n_cols = min(2, n_models)
     n_rows = (n_models + n_cols - 1) // n_cols
 
@@ -946,7 +947,7 @@ def plot_component_embedding_divergence(
     else:
         axes = axes.flatten() if n_models > 1 else [axes]
 
-    for idx, (model_name, model) in enumerate(component_aware_models.items()):
+    for idx, (model_name, model) in enumerate(component_conditioned_models.items()):
         ax = axes[idx]
 
         try:
@@ -1038,7 +1039,7 @@ def plot_reconstruction_by_component(
 ):
     """Visualize how each component reconstructs individual inputs.
 
-    For component-aware decoders, shows whether components specialize
+    For component-conditioned decoders, shows whether components specialize
     in different reconstruction strategies. For each input, displays:
     - Original image
     - Reconstructions from each of K components
@@ -1054,15 +1055,16 @@ def plot_reconstruction_by_component(
     Output:
         Saves figures to: output_dir/mixture/{model_name}_reconstruction_by_component.png
     """
-    component_aware_models = {
+    component_conditioned_models = {
         name: model for name, model in models.items()
         if (
-            model.config.is_mixture_based_prior() and
-            hasattr(model.config, 'use_component_aware_decoder') and
-            model.config.use_component_aware_decoder)
+            model.config.is_mixture_based_prior()
+            and getattr(model.config, "prior_type", None) != "vamp"
+            and getattr(model.config, "decoder_conditioning", "none") != "none"
+        )
     }
 
-    if not component_aware_models:
+    if not component_conditioned_models:
         return
 
     import jax
@@ -1073,7 +1075,7 @@ def plot_reconstruction_by_component(
     indices = np.sort(rng.choice(X_data.shape[0], size=num_samples, replace=False))
     samples = X_data[indices]
 
-    for model_name, model in component_aware_models.items():
+    for model_name, model in component_conditioned_models.items():
         try:
             K = model.config.num_components
             use_sigmoid = model.config.reconstruction_loss == "bce"

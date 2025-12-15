@@ -32,8 +32,10 @@ These documents are the stable “north star” for intent, math, and architectu
 - Conceptual intent: `docs/theory/conceptual_model.md`
 - Mathematical contract: `docs/theory/mathematical_specification.md`
 - Architecture patterns (hooks/registries): `docs/development/architecture.md`
+- Experiment/validation contracts: `docs/development/experimentation_contracts.md`
 - Status snapshot: `docs/theory/implementation_roadmap.md`
 
 ## Related doc
 
 - `docs/projects/decentralized_latents/channel_curriculum/logit_mog_regularizer.md` — the existing logit-MoG regularizer (what’s already implemented).
+- `docs/projects/decentralized_latents/channel_curriculum/validation_signals.md` — what to measure/plot to validate curriculum behavior.

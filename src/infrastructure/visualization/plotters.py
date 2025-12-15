@@ -231,8 +231,9 @@ def mixture_evolution_plotter(context: VisualizationContext) -> ComponentResult:
 def component_embedding_plotter(context: VisualizationContext) -> ComponentResult:
     """Generate component embedding and reconstruction-by-component visualizations.
 
-    Only applicable for mixture priors with component-aware decoders - shows
-    whether components learn distinct reconstruction strategies.
+    Only applicable for mixture priors with component-conditioned decoders
+    (`decoder_conditioning != "none"`) - shows whether components learn distinct
+    reconstruction strategies.
 
     Returns:
         ComponentResult with appropriate status
@@ -242,10 +243,14 @@ def component_embedding_plotter(context: VisualizationContext) -> ComponentResul
             reason="Requires mixture-based prior"
         )
 
-    if not getattr(context.config, "use_component_aware_decoder", False):
+    if getattr(context.config, "prior_type", None) == "vamp":
         return ComponentResult.disabled(
-            reason="Requires component-aware decoder"
+            reason="VampPrior has no component embeddings"
         )
+
+    decoder_conditioning = getattr(context.config, "decoder_conditioning", "none")
+    if decoder_conditioning == "none":
+        return ComponentResult.disabled(reason="Requires decoder_conditioning != 'none'")
 
     try:
         plot_component_embedding_divergence(_single_model_dict(context.model), context.figures_dir)

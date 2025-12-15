@@ -17,6 +17,7 @@ The canonical “what we’re building now” specification lives in `docs/proje
 - Conceptual intent: `docs/theory/conceptual_model.md`
 - Mathematical contract: `docs/theory/mathematical_specification.md`
 - Current system architecture patterns: `docs/development/architecture.md`
+- Experiment/validation contracts: `docs/development/experimentation_contracts.md`
 - Status snapshot: `docs/theory/implementation_roadmap.md`
 
 ## Glossary (Project Terms)
