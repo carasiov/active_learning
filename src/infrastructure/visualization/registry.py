@@ -19,14 +19,18 @@ PlotResult = Dict[str, Any]
 Plotter = Callable[["VisualizationContext"], Union[ComponentResult, Optional[PlotResult]]]
 
 
-@dataclass(slots=True)
+@dataclass
 class VisualizationContext:
+    """Context passed to visualization plotters."""
+
     model: Any
     config: Any
     history: Dict[str, List[float]]
     x_train: np.ndarray
     y_true: np.ndarray
     figures_dir: Path
+    # Curriculum fields (None if curriculum disabled)
+    curriculum_history: Optional[List[Dict[str, Any]]] = None
 
 
 _PLOTTERS: List[Plotter] = []
@@ -109,3 +113,4 @@ def render_all_plots(context: VisualizationContext) -> PlotResult:
 
 
 from . import plotters as _default_plotters  # noqa: F401,E402
+from . import curriculum as _curriculum_plotters  # noqa: F401,E402

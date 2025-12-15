@@ -162,8 +162,20 @@ class SSVAENetwork(nn.Module):
         *,
         training: bool,
         gumbel_temperature: float | None = None,
+        active_mask: jnp.ndarray | None = None,
     ) -> ForwardOutput:
-        """Forward pass returning latent statistics, reconstructions, and classifier logits."""
+        """Forward pass returning latent statistics, reconstructions, and classifier logits.
+
+        Args:
+            x: Input images [batch, H, W]
+            training: Whether in training mode (affects dropout, Gumbel noise)
+            gumbel_temperature: Optional temperature override for Gumbel-Softmax
+            active_mask: Optional boolean mask [K_max] indicating which channels are active.
+                        If None, all channels are active. Used for curriculum learning.
+
+        Returns:
+            ForwardOutput with latent stats, reconstructions, logits, and extras
+        """
         encoder_output = self.encoder(x, training=training)
         extras: Dict[str, jnp.ndarray] = {}
 
@@ -173,7 +185,21 @@ class SSVAENetwork(nn.Module):
             if self.prior_module is None:
                 raise ValueError(f"{self.config.prior_type} prior selected but prior_module was not initialized.")
 
-            responsibilities = softmax(component_logits, axis=-1)
+            # Store raw (finite) logits for logit-MoG computation (curriculum-safe)
+            raw_logits = component_logits
+
+            # Apply curriculum masking if active_mask is provided
+            # routing_logits: use -inf for inactive channels so they get 0 probability after softmax
+            if active_mask is not None:
+                # active_mask: [K_max] boolean or 0/1
+                # Expand to [1, K_max] for broadcasting with [batch, K_max]
+                mask = jnp.asarray(active_mask, dtype=jnp.bool_)
+                routing_logits = jnp.where(mask[None, :], component_logits, -jnp.inf)
+            else:
+                routing_logits = component_logits
+
+            # Responsibilities computed from routing_logits (masked for curriculum)
+            responsibilities = softmax(routing_logits, axis=-1)
             responsibilities = jnp.nan_to_num(responsibilities, nan=0.0, posinf=0.0, neginf=0.0)
             batch_size = z_raw.shape[0]
             num_components = self.config.num_components
@@ -181,33 +207,37 @@ class SSVAENetwork(nn.Module):
             use_decentralized = latent_layout == "decentralized" and self.config.prior_type != "vamp"
 
             def _component_selection():
-            # 1. Get component probabilities from encoder
-            # q_c_logits: [B, K]
-            
-            # Use provided temperature override or fall back to config
+                """Compute component selection distribution from routing_logits (curriculum-masked).
+
+                Uses routing_logits (which may have -inf for inactive channels under curriculum)
+                rather than raw component_logits. This ensures inactive channels get exactly 0
+                probability in the selection distribution.
+                """
+                # Use provided temperature override or fall back to config
                 if gumbel_temperature is not None:
                     temp = gumbel_temperature
                 else:
                     temp = self.config.gumbel_temperature
 
                 if self.config.use_gumbel_softmax:
-                    # Gumbel-Softmax sampling
+                    # Gumbel-Softmax sampling using routing_logits (masked for curriculum)
                     # If hard=True, returns one-hot, but gradients flow through soft sample
-                    # We'll use the straight-through estimator manually if needed, or just soft
-                    
+
                     # Sample Gumbel noise only during training
                     if training and self.has_rng("gumbel"):
                         gumbel_key = self.make_rng("gumbel")
-                        u = jax.random.uniform(gumbel_key, shape=component_logits.shape)
+                        u = jax.random.uniform(gumbel_key, shape=routing_logits.shape)
                         g = -jnp.log(-jnp.log(u + 1e-20) + 1e-20)
                     else:
                         # No noise during evaluation (or if no RNG provided)
                         g = 0.0
-                    
-                    # Softmax with temperature
-                    # y = softmax((logits + g) / temp)
-                    y_soft = nn.softmax((component_logits + g) / temp)
-                    
+
+                    # Softmax with temperature over routing_logits
+                    # Inactive channels have -inf logits -> 0 after softmax
+                    y_soft = nn.softmax((routing_logits + g) / temp)
+                    # Handle any NaN from -inf + noise edge cases
+                    y_soft = jnp.nan_to_num(y_soft, nan=0.0, posinf=0.0, neginf=0.0)
+
                     if self.config.use_straight_through_gumbel:
                         # Straight-through: forward is one-hot, backward is soft
                         index = jnp.argmax(y_soft, axis=-1)
@@ -218,12 +248,11 @@ class SSVAENetwork(nn.Module):
                     else:
                         return y_soft, False
                 else:
-                # Standard categorical sampling (non-differentiable for gradients to encoder)
-                # This path is likely not what we want for "decentralized" learning unless using REINFORCE
-                # For now, just return softmax probabilities or hard sample without gradients?
-                # Let's stick to Gumbel-Softmax as the primary path for this architecture.
-                # Fallback: just return nn.softmax(component_logits) (soft assignment)
-                    return nn.softmax(component_logits), False
+                    # Standard softmax over routing_logits (non-Gumbel path)
+                    # Inactive channels get 0 probability due to -inf masking
+                    y_soft = nn.softmax(routing_logits)
+                    y_soft = jnp.nan_to_num(y_soft, nan=0.0, posinf=0.0, neginf=0.0)
+                    return y_soft, False
 
             component_selection, selection_is_hard = _component_selection()
 
@@ -260,6 +289,10 @@ class SSVAENetwork(nn.Module):
                 recon = self.decoder(z)
                 extras["responsibilities"] = responsibilities
                 extras["component_selection"] = component_selection
+                # Curriculum support: store raw logits for logit-MoG (finite values)
+                extras["raw_logits"] = raw_logits
+                if active_mask is not None:
+                    extras["active_mask"] = jnp.asarray(active_mask)
             else:
                 # Mixture or Geometric MoG: Get embeddings and pi
                 embeddings, pi_logits = self.prior_module()
@@ -305,7 +338,11 @@ class SSVAENetwork(nn.Module):
                         "pi_logits": pi_logits,
                         "pi": pi,
                         "component_embeddings": embeddings,
+                        # Curriculum support: raw logits for logit-MoG (finite values)
+                        "raw_logits": raw_logits,
                     }
+                    if active_mask is not None:
+                        extras["active_mask"] = jnp.asarray(active_mask)
                 else:
                     # Standard decoder
                     recon_per_component = decoder_output_flat.reshape(
@@ -324,7 +361,11 @@ class SSVAENetwork(nn.Module):
                         "pi_logits": pi_logits,
                         "pi": pi,
                         "component_embeddings": embeddings,
+                        # Curriculum support: raw logits for logit-MoG (finite values)
+                        "raw_logits": raw_logits,
                     }
+                    if active_mask is not None:
+                        extras["active_mask"] = jnp.asarray(active_mask)
 
                 if z_mean_per_component is not None:
                     extras["z_mean_per_component"] = z_mean_per_component

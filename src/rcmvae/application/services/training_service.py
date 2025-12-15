@@ -20,11 +20,20 @@ SaveFn = Callable[[SSVAETrainState, str], None]
 
 @dataclass
 class TrainerLoopHooks:
-    """Optional extension points for the training loop."""
+    """Optional extension points for the training loop.
+
+    Attributes:
+        batch_context_fn: Called before each batch to inject context (e.g., active_mask)
+        post_batch_fn: Called after each batch for side effects
+        eval_context_fn: Called before evaluation to inject context
+        on_epoch_end_fn: Called after each epoch with epoch index and metrics.
+                         Receives (epoch: int, metrics: Dict[str, float]) -> None
+    """
 
     batch_context_fn: Callable[[SSVAETrainState, jnp.ndarray, jnp.ndarray], Dict[str, jnp.ndarray] | None] | None = None
     post_batch_fn: Callable[[SSVAETrainState, jnp.ndarray, jnp.ndarray, MetricsDict], None] | None = None
     eval_context_fn: Callable[[], Dict[str, jnp.ndarray] | None] | None = None
+    on_epoch_end_fn: Callable[[int, Dict[str, float]], None] | None = None
 
 
 @dataclass(frozen=True)
@@ -239,6 +248,13 @@ class Trainer:
             metrics_bundle = {"train": train_metrics, "val": val_metrics}
             self._run_callbacks(callback_list, "on_epoch_end", epoch, metrics_bundle, history, self)
 
+            # Call loop hooks on_epoch_end_fn if present (e.g., curriculum controller)
+            if loop_hooks and loop_hooks.on_epoch_end_fn is not None:
+                # Flatten val_metrics for curriculum controller
+                flat_metrics = {f"val_{k}": float(v) for k, v in val_metrics.items()}
+                flat_metrics.update({k: float(v) for k, v in train_metrics.items()})
+                loop_hooks.on_epoch_end_fn(epoch, flat_metrics)
+
             current_val = float(val_metrics[setup.monitor_metric])
             should_stop = tracker.update(
                 current_val,
@@ -414,9 +430,19 @@ class Trainer:
             context = loop_hooks.batch_context_fn(state, batch_x, batch_y) or {}
             batch_kwargs.update(context)
 
+        # Curriculum hooks may override gumbel_temperature during kick windows
+        # If hook provides gumbel_temperature, use it; otherwise use the scheduled value
+        effective_temperature = batch_kwargs.pop("gumbel_temperature", None)
+        if effective_temperature is None:
+            effective_temperature = gumbel_temperature
+
         state_rng, raw_key = jax.random.split(state_rng)
         batch_key = jax.random.fold_in(raw_key, int(state.step))
-        state, batch_metrics = train_step_fn(state, batch_x, batch_y, batch_key, kl_c_scale, gumbel_temperature=gumbel_temperature, **batch_kwargs)
+        state, batch_metrics = train_step_fn(
+            state, batch_x, batch_y, batch_key, kl_c_scale,
+            gumbel_temperature=effective_temperature,
+            **batch_kwargs,
+        )
 
         if loop_hooks and loop_hooks.post_batch_fn is not None:
             loop_hooks.post_batch_fn(state, batch_x, batch_y, batch_metrics)

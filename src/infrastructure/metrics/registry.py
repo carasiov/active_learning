@@ -21,7 +21,7 @@ MetricProvider = Callable[["MetricContext"], Union[ComponentResult, Optional[Met
 logger = logging.getLogger("experiment.metrics")
 
 
-@dataclass(slots=True)
+@dataclass
 class MetricContext:
     """Shared information passed to every metric provider."""
 
@@ -39,6 +39,9 @@ class MetricContext:
     pi_values: Optional[np.ndarray]
     train_time: float
     diagnostics_dir: Optional[Path]
+    # Curriculum fields (None if curriculum disabled)
+    curriculum_summary: Optional[Dict[str, Any]] = None
+    curriculum_history: Optional[List[Dict[str, Any]]] = None
 
 
 _REGISTRY: List[MetricProvider] = []

@@ -292,6 +292,7 @@ class SSVAE:
         weights_path: str,
         *,
         export_history: bool = True,
+        external_hooks: TrainerLoopHooks | None = None,
     ) -> dict:
         """Train model with semi-supervised labels (NaN = unlabeled).
 
@@ -300,10 +301,14 @@ class SSVAE:
             labels: Labels [N] (use np.nan for unlabeled samples)
             weights_path: Path to save best checkpoint
             export_history: Whether to export history CSV and plots
+            external_hooks: Optional external TrainerLoopHooks (e.g., from curriculum).
+                           These will be merged with internal τ hooks if present.
 
         Returns:
             Dictionary with training history metrics
         """
+        from rcmvae.application.curriculum.hooks import merge_hooks
+
         data = np.asarray(data, dtype=np.float32)
         labels = np.asarray(labels, dtype=np.float32).reshape((-1,))
 
@@ -318,7 +323,10 @@ class SSVAE:
             export_history=export_history,
         )
 
-        loop_hooks = self._build_tau_loop_hooks() if self._tau_classifier else None
+        # Build and merge hooks: tau hooks (internal) + external hooks (curriculum)
+        tau_hooks = self._build_tau_loop_hooks() if self._tau_classifier else None
+        loop_hooks = merge_hooks([tau_hooks, external_hooks])
+
         self._runtime, history = self._trainer.train(
             self._runtime,
             data=data,

@@ -104,20 +104,58 @@ class MixtureGaussianPrior:
             kl_c = jnp.array(0.0, dtype=responsibilities.dtype)
 
         # Logistic-normal mixture regularizer on logits
+        # IMPORTANT: Uses raw (finite) logits, NOT masked routing_logits
+        # Under curriculum, restricts mixture sum to active components only
         if c_regularizer in {"logit_mog", "both"}:
-            component_logits = encoder_output.component_logits
-            if component_logits is None:
+            # Prefer raw_logits (curriculum-safe, always finite)
+            # Fall back to component_logits for backward compatibility
+            raw_logits = encoder_output.extras.get("raw_logits") if encoder_output.extras else None
+            if raw_logits is None:
+                raw_logits = encoder_output.component_logits
+
+            if raw_logits is None:
                 kl_c_logit_mog = jnp.array(0.0, dtype=kl_z.dtype)
             else:
-                k = component_logits.shape[-1]
-                means = jnp.eye(k) * config.c_logit_prior_mean  # [K, K]
+                k_max = raw_logits.shape[-1]
+
+                # Get active_mask from extras if available (curriculum)
+                active_mask = encoder_output.extras.get("active_mask") if encoder_output.extras else None
+
+                if active_mask is not None:
+                    # Curriculum mode: only sum over active components
+                    active_mask = jnp.asarray(active_mask, dtype=jnp.bool_)
+                    k_active = jnp.sum(active_mask.astype(jnp.float32))
+                    # Create active indices for computing log probabilities
+                    # We'll compute all K log probs but mask out inactive ones
+                else:
+                    # No curriculum: all components active
+                    active_mask = jnp.ones(k_max, dtype=jnp.bool_)
+                    k_active = jnp.array(k_max, dtype=jnp.float32)
+
+                # Means at +M*e_k for each component k
+                means = jnp.eye(k_max) * config.c_logit_prior_mean  # [K_max, K_max]
                 sigma_sq = config.c_logit_prior_sigma ** 2
+
                 # Log prob under each Gaussian component
-                centered = component_logits[:, None, :] - means[None, :, :]
-                quad = jnp.sum(jnp.square(centered) / sigma_sq, axis=-1)
-                log_norm = -0.5 * (k * jnp.log(2 * jnp.pi * sigma_sq))
-                log_prob = log_norm - 0.5 * quad  # [B, K]
-                log_mix = logsumexp(log_prob - jnp.log(k), axis=1)  # uniform mixture
+                # raw_logits: [B, K_max], means: [K_max, K_max]
+                # centered: [B, K_max, K_max] (for each sample, each component, distance in each dim)
+                centered = raw_logits[:, None, :] - means[None, :, :]  # [B, K_max, K_max]
+                quad = jnp.sum(jnp.square(centered) / sigma_sq, axis=-1)  # [B, K_max]
+                log_norm = -0.5 * (k_max * jnp.log(2 * jnp.pi * sigma_sq))
+                log_prob = log_norm - 0.5 * quad  # [B, K_max]
+
+                # Mask inactive components by setting their log_prob to -inf
+                # This ensures they contribute 0 to the mixture sum
+                log_prob_masked = jnp.where(active_mask[None, :], log_prob, -jnp.inf)
+
+                # Mixture probability: logsumexp over active components with uniform mixture weight 1/|A_t|
+                # log p_mix(y) = logsumexp_k∈A [log p_k(y)] + log(1/|A_t|)
+                #              = logsumexp_k∈A [log p_k(y)] - log(|A_t|)
+                log_mix = logsumexp(log_prob_masked, axis=1) - jnp.log(k_active)  # [B]
+
+                # Handle edge case where k_active could be 0 (though shouldn't happen)
+                log_mix = jnp.where(jnp.isfinite(log_mix), log_mix, jnp.array(-100.0))
+
                 nll = -jnp.mean(log_mix)
                 kl_c_logit_mog = config.c_logit_prior_weight * nll
         else:

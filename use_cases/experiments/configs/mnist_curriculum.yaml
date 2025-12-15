@@ -1,0 +1,78 @@
+# Channel Curriculum ("Pots") Configuration for MNIST
+# Validates the curriculum learning implementation with decentralized latents
+#
+# Key features:
+# - Starts with 1 active channel, unlocks more on plateau
+# - 2D latents per channel for visualization
+# - Gumbel-Softmax routing with kick temperature after unlock
+
+experiment:
+  name: mnist_curriculum_test
+  description: "Channel curriculum with decentralized 2D latents on MNIST"
+
+data:
+  dataset: mnist
+  train_ratio: 0.8
+  label_ratio: 0.1  # 10% of training data labeled
+
+model:
+  # Architecture
+  encoder_type: conv
+  decoder_type: conv
+  classifier_type: dense
+
+  # Latent space: 2D per channel for visualization
+  latent_dim: 2
+  latent_layout: decentralized
+  num_components: 10  # K_max
+
+  # Prior configuration
+  prior_type: mixture
+  decoder_conditioning: film  # Use FiLM for component-aware decoding
+
+  # Routing
+  use_gumbel_softmax: true
+  gumbel_temperature: 1.0
+  use_straight_through_gumbel: true
+
+  # Regularization
+  c_regularizer: logit_mog
+  c_logit_prior_weight: 0.1
+  c_logit_prior_mean: 5.0
+  c_logit_prior_sigma: 1.0
+  kl_c_weight: 0.5
+  kl_c_anneal_epochs: 20
+
+  # Reconstruction
+  reconstruction_loss: bce
+  recon_weight: 1.0
+  kl_weight: 1.0
+
+  # Training
+  learning_rate: 0.001
+  batch_size: 256
+  max_epochs: 100
+  patience: 30
+  val_split: 0.1
+  random_seed: 42
+
+  # Classification (disabled for curriculum test)
+  label_weight: 0.0
+  use_tau_classifier: false
+
+# Curriculum configuration (NOT forwarded to SSVAEConfig)
+curriculum:
+  enabled: true
+  k_active_init: 1  # Start with 1 channel
+
+  unlock:
+    policy: plateau
+    monitor: val_loss
+    patience_epochs: 10
+    min_delta: 0.001
+    cooldown_epochs: 3
+
+  kick:
+    enabled: true
+    epochs: 5
+    gumbel_temperature: 5.0

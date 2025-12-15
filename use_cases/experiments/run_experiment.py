@@ -206,12 +206,16 @@ def run_with_config(config_path: Path, *, validate_only: bool) -> int:
     print(header)
     print(format_training_section_header())
 
+    # Extract curriculum config (NOT forwarded to SSVAEConfig)
+    curriculum_config = experiment_config.get("curriculum")
+
     model, history, summary, viz_meta = run_training_pipeline(
         model_config,
         x_train,
         y_semi,
         y_true,
         run_paths,
+        curriculum_config=curriculum_config,
     )
 
     summary["metadata"] = {

@@ -28,8 +28,21 @@ def run_training_pipeline(
     y_train: np.ndarray,
     y_true: np.ndarray,
     run_paths: RunPaths,
+    curriculum_config: Dict[str, Any] | None = None,
 ) -> Tuple[SSVAE, Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
-    """Train the model, collect experiment metrics, and render plots."""
+    """Train the model, collect experiment metrics, and render plots.
+
+    Args:
+        model_config: Model configuration dictionary
+        x_train: Training images
+        y_train: Semi-supervised labels (NaN for unlabeled)
+        y_true: True labels for evaluation
+        run_paths: Output paths for artifacts
+        curriculum_config: Optional curriculum configuration from YAML
+
+    Returns:
+        Tuple of (model, history, summary, visualization_meta)
+    """
     model_config = _maybe_tuple_hidden_dims(model_config)
     config = SSVAEConfig(**model_config)
 
@@ -39,6 +52,7 @@ def run_training_pipeline(
         x_train=x_train,
         y_train=y_train,
         weights_path=run_paths.artifacts / "checkpoint.ckpt",
+        curriculum_config=curriculum_config,
     )
     model = artifacts.model
 
@@ -57,8 +71,14 @@ def run_training_pipeline(
         pi_values=artifacts.pi_values,
         train_time=artifacts.train_time,
         diagnostics_dir=Path(artifacts.diagnostics_dir) if artifacts.diagnostics_dir else None,
+        curriculum_summary=artifacts.curriculum_summary,
+        curriculum_history=artifacts.curriculum_history,
     )
     summary = collect_metrics(metric_context)
+
+    # Add curriculum summary to top-level summary
+    if artifacts.curriculum_summary:
+        summary["curriculum"] = artifacts.curriculum_summary
 
     viz_context = VisualizationContext(
         model=model,
@@ -67,6 +87,7 @@ def run_training_pipeline(
         x_train=x_train,
         y_true=y_true,
         figures_dir=run_paths.figures,
+        curriculum_history=artifacts.curriculum_history,
     )
     visualization_meta = render_all_plots(viz_context)
 
