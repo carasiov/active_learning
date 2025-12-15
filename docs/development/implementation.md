@@ -150,7 +150,7 @@ class MixturePriorParameters(nn.Module):
 ```
 
 Creates two learnable parameter arrays:
-- `component_embeddings`: Component-specific embeddings `[K, latent_dim]`
+- `component_embeddings`: Component-specific embeddings `[K, embed_dim]`
 - `pi_logits`: Mixture weights before softmax `[K]`
 
 **`SSVAENetwork` (nn.Module)**
@@ -196,9 +196,10 @@ def __call__(self, x: jnp.ndarray, *, training: bool) -> ForwardOutput:
 3. Compute responsibilities: `q(c|x) = softmax(component_logits)`
 4. Decoder with components:
    - Tile z for each component: `[batch, K, latent_dim]`
-   - Concatenate with embeddings: `[batch, K, latent_dim + embed_dim]`
-   - Decode per-component: `recon_per_component [batch, K, H, W]`
-   - Weight by responsibilities: `recon = Σ_k q(c_k|x) * recon_k`
+   - Decode per-component via conditioning: `recon_k = decoder(z_k, embedding_k)`
+   - Form the expected reconstruction using `component_selection`:
+     - deterministic softmax if `use_gumbel_softmax=false`
+     - (straight-through) Gumbel-softmax sample if enabled
 5. Classifier: `z → class_logits`
 
 **Utility Functions:**
@@ -399,17 +400,10 @@ train_step = runtime.train_step_fn
 - Composition pattern: `conditioner + backbone + output_head`
 - Implementations: `ModularConvDecoder`, `ModularDenseDecoder`
 - Modules live in `src/rcmvae/domain/components/decoder_modules/{conditioning,backbones,outputs}.py`
-  - Conditioners: `FiLMLayer`, `ConcatConditioner`, `NoopConditioner`
+  - Conditioners: `ConditionalInstanceNorm`, `FiLMLayer`, `ConcatConditioner`, `NoopConditioner`
   - Backbones: `ConvBackbone`, `DenseBackbone`
   - Output heads: `StandardHead`, `HeteroscedasticHead`
-- Factory mapping (mirrors priority): FiLM → Concat → Noop (mixture/geometric priors), heteroscedastic if enabled else standard. See `src/rcmvae/domain/components/factory.py::build_decoder`.
-
-**Legacy decoders (deprecated, kept for compatibility)**
-- `DenseDecoder`, `ConvDecoder`
-- `Heteroscedastic*Decoder`
-- `ComponentAware*Decoder`
-- `FiLM*Decoder`
-Migration: use modular decoders with the equivalent conditioner/output head; factory already routes configs accordingly.
+- Conditioning selection is controlled by `config.decoder_conditioning ∈ {"cin","film","concat","none"}`; VampPrior and standard prior force `"none"`. See `src/rcmvae/domain/components/factory.py::build_decoder`.
 
 **Implementing a new decoder module**
 1) Choose concern:
@@ -417,7 +411,7 @@ Migration: use modular decoders with the equivalent conditioner/output head; fac
    - New backbone: latent → intermediate features (no conditioning/output logic).
    - New output head: features → mean or `(mean, sigma)` (apply clamping if variance).
 2) Place in `decoder_modules/`, export in `__init__.py`.
-3) Tests: add shape + gradient flow checks (see `tests/test_decoder_conditioning_modules.py`, `tests/test_decoder_backbones.py`, `tests/test_decoder_outputs.py`).
+3) Tests: add shape + gradient flow checks following existing mixture patterns (`tests/test_mixture_losses.py`, `tests/test_mixture_integration.py`).
 4) Wire into factory if it should be selectable via config.
 
 ---
@@ -426,17 +420,18 @@ Migration: use modular decoders with the equivalent conditioner/output head; fac
 
 **Purpose:** Map latent vectors to class predictions.
 
-**Class: `DenseClassifier(nn.Module)`**
+**Class: `Classifier(nn.Module)`**
 
 **Parameters:**
 ```python
-num_classes: int        # Number of output classes
-hidden_dim: int = 64    # Intermediate layer size
+hidden_dims: Tuple[int, ...]   # Hidden MLP layers
+num_classes: int               # Number of output classes
+dropout_rate: float = 0.0      # Optional dropout in hidden layers
 ```
 
 **Output:**
 ```python
-logits = classifier(z)  # Shape: (batch_size, num_classes)
+logits = classifier(z, training=training)  # Shape: (batch_size, num_classes)
 ```
 
 **Note:** In the RCM-VAE architecture, this will be replaced by latent-only classification via the $\tau$ map.
@@ -1017,3 +1012,4 @@ pytest tests/test_mixture_encoder.py tests/test_mixture_losses.py \
 - **[Conceptual Model](../theory/conceptual_model.md)** - Theoretical foundation
 - **[Experiment Guide](../../use_cases/experiments/README.md)** - Primary experimentation workflow
 - **[Dashboard Guide](../../use_cases/dashboard/README.md)** - Interactive active learning interface
+- Active project spec (decentralized latents): `docs/projects/decentralized_latents/channel_curriculum/README.md`

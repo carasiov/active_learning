@@ -7,7 +7,7 @@
 ## Table of Contents
 
 - [Tutorial 1 · Adding a New Prior](#tutorial-1--adding-a-new-prior)
-- [Tutorial 2 · Component-Aware Decoder Variants](#tutorial-2--component-aware-decoder-variants)
+- [Tutorial 2 · Modular Decoder Variants](#tutorial-2--modular-decoder-variants)
 - [Tutorial 3 · τ-Classifier & Trainer Hooks](#tutorial-3--τ-classifier--trainer-hooks)
 - [Tutorial 4 · Adding Custom Loss Terms](#tutorial-4--adding-custom-loss-terms)
 - [General Extension Checklist](#general-extension-checklist)
@@ -19,6 +19,9 @@ The codebase relies on three pillars:
 3. **Factory orchestration** (`ModelFactoryService` wires components, optimizers, and loss plumbing)
 
 Each tutorial below mirrors that structure: define the abstraction, register it, expose config, then cover testing/documentation.
+
+Active project specs that affect extension work:
+- Decentralized latents channel curriculum (logit-MoG + “pots”): `docs/projects/decentralized_latents/channel_curriculum/README.md`
 
 ---
 
@@ -76,19 +79,38 @@ Add regression coverage under `tests/` (see `tests/test_vamp_prior.py` and `test
 
 ---
 
-## Tutorial 2 · Component-Aware Decoder Variants
+## Tutorial 2 · Modular Decoder Variants
 
-Component-aware decoding is already implemented for dense + conv stacks (and for heteroscedastic heads). To add or modify a variant:
+Decoding for mixture-style priors is implemented via a **modular decoder composition**:
 
-1. **Decoder module** — extend `src/rcmvae/domain/components/decoders.py`. Follow the existing `ComponentAwareDenseDecoder` shape: separate `z` and `component_embedding` streams, optional heteroscedastic branch (`mean`, `sigma`), and JAX-friendly reshaping for `[batch, K, ...]` tensors.
-2. **Decoder builder** — update `build_decoder()` in `src/rcmvae/domain/components/factory.py`. Component awareness is toggled by `config.use_component_aware_decoder`; heteroscedastic support comes from `config.use_heteroscedastic_decoder`.
-3. **Config knobs** — common parameters already exist:
-   - `component_embedding_dim`
-   - `top_m_gating` (0 = use all responsibilities)
-   - `soft_embedding_warmup_epochs`
-   - Conv variants keep **symmetric channel capacity** in the `z` and `e_c` pathways (currently 64/64 before fusion) to match the Section 3.3 contract; mirror that balance when you extend the architecture.
-4. **Network integration** — `SSVAENetwork.__call__()` handles responsibility-weighted reconstructions (including `(mean, sigma)` tuples). When you introduce a new decoder output shape, make sure `extras["recon_per_component"]` stays consistent because losses and diagnostics depend on it.
-5. **Testing** — reuse the coverage style from `tests/test_mixture_encoder.py`, `tests/test_mixture_losses.py`, and the heteroscedastic decoder session summary noted in the roadmap. Focus on shape invariants and on ensuring gradients flow through both the embedding path and the latent path.
+`Decoder = Conditioner + Backbone + OutputHead`
+
+This supports component-conditional specialization without hard-coding “component-aware” decoder subclasses.
+
+To add or modify a decoder variant:
+
+1. **Choose the layer you’re extending**
+   - **Conditioner** (recommended): `src/rcmvae/domain/components/decoder_modules/conditioning.py` (e.g., CIN / FiLM / concat / noop).
+   - **Backbone**: `src/rcmvae/domain/components/decoder_modules/backbones.py` (dense/conv feature stacks).
+   - **Output head**: `src/rcmvae/domain/components/decoder_modules/outputs.py` (`StandardHead` or `HeteroscedasticHead`-style).
+
+2. **Wire it into the decoder factory**
+   - Update `src/rcmvae/domain/components/factory.py::build_decoder`.
+   - Conditioning selection is controlled by `config.decoder_conditioning ∈ {"cin","film","concat","none"}`.
+   - Heteroscedastic outputs are controlled by `config.use_heteroscedastic_decoder` (plus `sigma_min`/`sigma_max`).
+   - The component embedding size is `config.component_embedding_dim`.
+
+3. **Keep “planned but not implemented” knobs in mind**
+   - `config.top_m_gating` and `config.soft_embedding_warmup_epochs` exist in `SSVAEConfig`, but are not currently implemented in the network/loss pipeline. Don’t rely on them without adding explicit code support.
+
+4. **Network integration contract**
+   - `SSVAENetwork.__call__()` decodes **all** components, then forms the expected reconstruction using `component_selection` (softmax or Gumbel-softmax depending on config).
+   - If `use_gumbel_softmax` is disabled, `component_selection` falls back to the deterministic softmax distribution.
+   - For heteroscedastic decoders, recon is `(mean, sigma)` and `extras["recon_per_component"]` becomes `(mean_per_component, sigma_per_component)`.
+   - If you change output shapes, ensure the `extras` keys stay consistent; losses, diagnostics, and plots depend on them.
+
+5. **Testing**
+   - Follow existing mixture tests (`tests/test_mixture_encoder.py`, `tests/test_mixture_losses.py`, `tests/test_mixture_integration.py`): focus on shape invariants, NaN-safety, and gradient flow through both the latent path and the conditioning path.
 
 ---
 

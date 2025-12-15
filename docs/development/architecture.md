@@ -246,7 +246,7 @@ runtime = ModelFactoryService.build_runtime(
 
 ### Encoders
 
-**Location:** `src/rcmvae/domain/components/encoders/`
+**Location:** `src/rcmvae/domain/components/encoders.py`
 
 **Types:**
 - `DenseEncoder`: Fully connected layers
@@ -258,20 +258,19 @@ class Encoder(nn.Module):
     latent_dim: int
     hidden_dims: Tuple[int, ...]
 
-    def __call__(self, x, deterministic=True):
-        # Returns: z_mean, z_logvar, [component_logits]
+    def __call__(self, x, *, training: bool):
+        # Returns: (z_mean, z_log_var, z) or (component_logits, z_mean, z_log_var, z)
         ...
 ```
 
 **Design:**
-- Encoders produce distribution parameters, not samples
-- Separate mean and log-variance outputs
-- Mixture encoder adds component logits output
-- Dropout support via `deterministic` flag
+- Encoders produce distribution parameters (mean/log-variance) and a reparameterized sample `z`
+- Mixture encoders additionally emit `component_logits`
+- The `training` flag is used for API consistency (and for any stochastic layers, if added)
 
 ### Decoders
 
-**Location:** `src/rcmvae/domain/components/decoders/`
+**Location:** `src/rcmvae/domain/components/decoders.py` (composition modules in `src/rcmvae/domain/components/decoder_modules/`)
 
 **Modular Decoder Architecture**
 
@@ -305,28 +304,21 @@ VampPrior doesn't use component embeddings, so conditioning is forced to `"none"
 
 Construction handled by factory (`build_decoder`). Config validation enforces compatibility.
 
-**Legacy decoders (deprecated, kept for backward-compatibility)**
-- `DenseDecoder`, `ConvDecoder`
-- `Heteroscedastic*Decoder`
-- `ComponentAware*Decoder`
-- `FiLM*Decoder`
-
-Migration: use `Modular*Decoder` with the equivalent conditioner/output head combination.
-
 ### Classifiers
 
-**Location:** `src/rcmvae/domain/components/classifiers/`
+**Location:** `src/rcmvae/domain/components/classifier.py`
 
 **Current Implementation:**
-- `DenseClassifier`: Simple MLP with softmax output
+- `Classifier`: Simple MLP producing class logits (downstream applies softmax where probabilities are needed)
 
 **Interface:**
 ```python
 class Classifier(nn.Module):
+    hidden_dims: Tuple[int, ...]
     num_classes: int
-    hidden_dim: int
+    dropout_rate: float
 
-    def __call__(self, z):
+    def __call__(self, z, *, training: bool):
         # Returns: class logits
         ...
 ```
@@ -515,3 +507,4 @@ end-to-end workflows (training loops, checkpoints, experiment runner, dashboard)
 - **[Implementation Guide](implementation.md)** - Module-by-module reference
 - **[Extending the System](extending.md)** - Step-by-step tutorials for adding features
 - **[Implementation Roadmap](../theory/implementation_roadmap.md)** - Path to full RCM-VAE system
+- Active project spec (decentralized latents): `docs/projects/decentralized_latents/channel_curriculum/README.md`
