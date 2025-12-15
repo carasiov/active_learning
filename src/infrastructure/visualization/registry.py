@@ -31,6 +31,8 @@ class VisualizationContext:
     figures_dir: Path
     # Curriculum fields (None if curriculum disabled)
     curriculum_history: Optional[List[Dict[str, Any]]] = None
+    # Final active mask for curriculum (None if curriculum disabled)
+    final_active_mask: Optional[np.ndarray] = None
 
 
 _PLOTTERS: List[Plotter] = []

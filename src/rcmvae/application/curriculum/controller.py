@@ -46,7 +46,7 @@ class CurriculumConfig:
 
     # Unlock policy
     unlock_policy: str = "plateau"
-    unlock_monitor: str = "val_loss"
+    unlock_monitor: str = "val_reconstruction_loss"  # Use recon-only to avoid KL offsets
     unlock_patience_epochs: int = 10
     unlock_min_delta: float = 0.001
     unlock_cooldown_epochs: int = 3
@@ -70,7 +70,7 @@ class CurriculumConfig:
             k_active_init=d.get("k_active_init", 1),
             k_active_max=d.get("k_active_max"),
             unlock_policy=unlock.get("policy", "plateau"),
-            unlock_monitor=unlock.get("monitor", "val_loss"),
+            unlock_monitor=unlock.get("monitor", "val_reconstruction_loss"),
             unlock_patience_epochs=unlock.get("patience_epochs", 10),
             unlock_min_delta=unlock.get("min_delta", 0.001),
             unlock_cooldown_epochs=unlock.get("cooldown_epochs", 3),
@@ -185,6 +185,14 @@ class CurriculumController:
         mask = np.zeros(self._k_max, dtype=bool)
         mask[:self._state.k_active] = True
         return mask
+
+    def is_in_kick(self) -> bool:
+        """Return True if currently in a kick window.
+
+        During kick window, soft routing (non-ST Gumbel) is recommended
+        to allow temperature to actually affect the routing distribution.
+        """
+        return self.config.kick_enabled and self._state.is_in_kick
 
     def get_gumbel_temperature_override(self) -> Optional[float]:
         """Return temperature override during kick, or None if not in kick."""

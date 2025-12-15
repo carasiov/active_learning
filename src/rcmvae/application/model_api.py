@@ -293,6 +293,7 @@ class SSVAE:
         *,
         export_history: bool = True,
         external_hooks: TrainerLoopHooks | None = None,
+        final_active_mask: np.ndarray | None = None,
     ) -> dict:
         """Train model with semi-supervised labels (NaN = unlabeled).
 
@@ -303,6 +304,9 @@ class SSVAE:
             export_history: Whether to export history CSV and plots
             external_hooks: Optional external TrainerLoopHooks (e.g., from curriculum).
                            These will be merged with internal τ hooks if present.
+            final_active_mask: Optional active mask [K] for curriculum-consistent diagnostics.
+                              If provided, diagnostics will use this mask for inference.
+                              Typically set by the caller after training completes.
 
         Returns:
             Dictionary with training history metrics
@@ -327,6 +331,9 @@ class SSVAE:
         tau_hooks = self._build_tau_loop_hooks() if self._tau_classifier else None
         loop_hooks = merge_hooks([tau_hooks, external_hooks])
 
+        # Store active_mask for diagnostics (can be updated after training via external caller)
+        self._final_active_mask = final_active_mask
+
         self._runtime, history = self._trainer.train(
             self._runtime,
             data=data,
@@ -345,7 +352,10 @@ class SSVAE:
             self.config.prior_type in COMPONENT_PRIORS
             and self._trainer.latest_splits is not None
         ):
-            self._save_mixture_diagnostics(self._trainer.latest_splits)
+            self._save_mixture_diagnostics(
+                self._trainer.latest_splits,
+                active_mask=self._final_active_mask,
+            )
 
         return history
 
@@ -814,8 +824,17 @@ class SSVAE:
         """Helper for adapters that expect a bound save function."""
         self._checkpoint_mgr.save(state, path)
 
-    def _save_mixture_diagnostics(self, splits: Trainer.DataSplits) -> None:
-        """Generate and save component-prior diagnostics (mixture/vamp/geometric)."""
+    def _save_mixture_diagnostics(
+        self,
+        splits: Trainer.DataSplits,
+        active_mask: np.ndarray | None = None,
+    ) -> None:
+        """Generate and save component-prior diagnostics (mixture/vamp/geometric).
+
+        Args:
+            splits: Training/validation data splits
+            active_mask: Optional curriculum active mask for consistent diagnostics
+        """
         if self.config.prior_type not in COMPONENT_PRIORS or splits is None:
             return
 
@@ -843,7 +862,23 @@ class SSVAE:
             labels=val_y,
             output_dir=diag_dir,
             batch_size=min(self.config.batch_size, 1024),
+            active_mask=active_mask,
         )
+
+    def regenerate_diagnostics(self, active_mask: np.ndarray | None = None) -> None:
+        """Re-generate mixture diagnostics with optional active mask.
+
+        Useful for curriculum learning where the final active_mask is only
+        known after training completes. This overwrites previous diagnostics.
+
+        Args:
+            active_mask: Optional curriculum active mask for consistent diagnostics
+        """
+        if self._trainer.latest_splits is not None:
+            self._save_mixture_diagnostics(
+                self._trainer.latest_splits,
+                active_mask=active_mask,
+            )
 
     @property
     def last_diagnostics_dir(self) -> Path | None:

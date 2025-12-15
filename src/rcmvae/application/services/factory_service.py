@@ -307,6 +307,7 @@ class ModelFactoryService:
             key: jax.Array | None,
             gumbel_temperature: float | None = None,
             active_mask: jnp.ndarray | None = None,
+            straight_through_gumbel: bool | None = None,
         ):
             if key is None:
                 return _apply_fn_wrapper(
@@ -314,6 +315,7 @@ class ModelFactoryService:
                     training=training,
                     gumbel_temperature=gumbel_temperature,
                     active_mask=active_mask,
+                    straight_through_gumbel=straight_through_gumbel,
                 )
             reparam_key, dropout_key, gumbel_key = random.split(key, 3)
             return _apply_fn_wrapper(
@@ -323,6 +325,7 @@ class ModelFactoryService:
                 rngs={"reparam": reparam_key, "dropout": dropout_key, "gumbel": gumbel_key},
                 gumbel_temperature=gumbel_temperature,
                 active_mask=active_mask,
+                straight_through_gumbel=straight_through_gumbel,
             )
 
         def _loss_and_metrics(
@@ -335,6 +338,7 @@ class ModelFactoryService:
             tau: jnp.ndarray | None = None,
             gumbel_temperature: float | None = None,
             active_mask: jnp.ndarray | None = None,
+            straight_through_gumbel: bool | None = None,
         ):
             rng = key if training else None
             return compute_loss_and_metrics_v2(
@@ -350,10 +354,11 @@ class ModelFactoryService:
                 tau=tau,
                 gumbel_temperature=gumbel_temperature,
                 active_mask=active_mask,
+                straight_through_gumbel=straight_through_gumbel,
             )
 
         train_loss_and_grad = jax.value_and_grad(
-            lambda p, x, y, k, scale, t, temp, mask: _loss_and_metrics(p, x, y, k, True, scale, t, temp, mask),
+            lambda p, x, y, k, scale, t, temp, mask, st: _loss_and_metrics(p, x, y, k, True, scale, t, temp, mask, st),
             argnums=0,
             has_aux=True,
         )
@@ -368,9 +373,10 @@ class ModelFactoryService:
             tau: jnp.ndarray | None = None,
             gumbel_temperature: float | None = None,
             active_mask: jnp.ndarray | None = None,
+            straight_through_gumbel: bool | None = None,
         ):
             (loss, metrics), grads = train_loss_and_grad(
-                state.params, batch_x, batch_y, key, kl_c_scale, tau, gumbel_temperature, active_mask
+                state.params, batch_x, batch_y, key, kl_c_scale, tau, gumbel_temperature, active_mask, straight_through_gumbel
             )
             if config.prior_type == "vamp":
                 grads = _scale_vamp_pseudo_gradients(grads, config.vamp_pseudo_lr_scale)

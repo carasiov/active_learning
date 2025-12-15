@@ -256,7 +256,10 @@ def curriculum_latent_grid_plotter(context: VisualizationContext) -> ComponentRe
 
     try:
         # Get per-component latents and responsibilities
-        result = model.predict_batched(x_subset, return_mixture=True)
+        # Use final_active_mask for curriculum-consistent predictions
+        result = model.predict_batched(
+            x_subset, return_mixture=True, active_mask=context.final_active_mask
+        )
         if len(result) >= 6:
             latent, _, _, _, responsibilities, _ = result[:6]
         else:
@@ -388,7 +391,10 @@ def curriculum_channel_label_heatmap_plotter(context: VisualizationContext) -> C
     y_true = context.y_true
 
     try:
-        result = model.predict_batched(x_train, return_mixture=True)
+        # Use final_active_mask for curriculum-consistent predictions
+        result = model.predict_batched(
+            x_train, return_mixture=True, active_mask=context.final_active_mask
+        )
         if len(result) >= 6:
             _, _, _, _, responsibilities, _ = result[:6]
         else:

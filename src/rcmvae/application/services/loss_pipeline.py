@@ -364,6 +364,7 @@ def compute_loss_and_metrics_v2(
     tau: jnp.ndarray | None = None,  # Optional τ matrix for latent-only classification
     gumbel_temperature: float | None = None,  # Optional temperature override
     active_mask: jnp.ndarray | None = None,  # Optional curriculum active channel mask
+    straight_through_gumbel: bool | None = None,  # Optional ST override for kick window
 ) -> Tuple[jnp.ndarray, Dict[str, jnp.ndarray]]:
     """Compute loss and metrics using PriorMode abstraction.
 
@@ -386,6 +387,8 @@ def compute_loss_and_metrics_v2(
         gumbel_temperature: Optional temperature override for Gumbel-Softmax.
         active_mask: Optional boolean mask [K_max] for curriculum learning.
                      If provided, inactive channels are masked in routing.
+        straight_through_gumbel: Optional override for ST Gumbel behavior.
+                     Set to False during kick window to enable soft routing.
 
     Returns:
         Tuple of (total_loss, metrics_dict)
@@ -401,6 +404,7 @@ def compute_loss_and_metrics_v2(
         key=use_key,
         gumbel_temperature=gumbel_temperature,
         active_mask=active_mask,
+        straight_through_gumbel=straight_through_gumbel,
     )
 
     # Unpack forward output

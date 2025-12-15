@@ -46,10 +46,16 @@ def build_curriculum_hooks(
             "active_mask": jnp.array(controller.get_active_mask()),
         }
 
-        # Add temperature override if in kick window
-        temp_override = controller.get_gumbel_temperature_override()
-        if temp_override is not None:
-            context["gumbel_temperature"] = jnp.array(temp_override)
+        # During kick window: use soft routing (disable ST) + high temperature
+        # This allows the newly unlocked channel to receive responsibility mass
+        # Under ST Gumbel, argmax is invariant to temperature, so we need soft routing
+        if controller.is_in_kick():
+            temp_override = controller.get_gumbel_temperature_override()
+            if temp_override is not None:
+                context["gumbel_temperature"] = jnp.array(temp_override)
+            # Disable straight-through during kick: use soft routing
+            # so temperature actually affects the routing distribution
+            context["straight_through_gumbel"] = False
 
         return context
 

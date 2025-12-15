@@ -163,6 +163,7 @@ class SSVAENetwork(nn.Module):
         training: bool,
         gumbel_temperature: float | None = None,
         active_mask: jnp.ndarray | None = None,
+        straight_through_gumbel: bool | None = None,
     ) -> ForwardOutput:
         """Forward pass returning latent statistics, reconstructions, and classifier logits.
 
@@ -172,6 +173,9 @@ class SSVAENetwork(nn.Module):
             gumbel_temperature: Optional temperature override for Gumbel-Softmax
             active_mask: Optional boolean mask [K_max] indicating which channels are active.
                         If None, all channels are active. Used for curriculum learning.
+            straight_through_gumbel: Optional override for ST Gumbel behavior.
+                        If None, uses config.use_straight_through_gumbel.
+                        Set to False during kick window to allow soft routing.
 
         Returns:
             ForwardOutput with latent stats, reconstructions, logits, and extras
@@ -219,6 +223,13 @@ class SSVAENetwork(nn.Module):
                 else:
                     temp = self.config.gumbel_temperature
 
+                # Determine ST behavior: use runtime override if provided, else config default
+                use_st = (
+                    straight_through_gumbel
+                    if straight_through_gumbel is not None
+                    else self.config.use_straight_through_gumbel
+                )
+
                 if self.config.use_gumbel_softmax:
                     # Gumbel-Softmax sampling using routing_logits (masked for curriculum)
                     # If hard=True, returns one-hot, but gradients flow through soft sample
@@ -238,7 +249,7 @@ class SSVAENetwork(nn.Module):
                     # Handle any NaN from -inf + noise edge cases
                     y_soft = jnp.nan_to_num(y_soft, nan=0.0, posinf=0.0, neginf=0.0)
 
-                    if self.config.use_straight_through_gumbel:
+                    if use_st:
                         # Straight-through: forward is one-hot, backward is soft
                         index = jnp.argmax(y_soft, axis=-1)
                         y_hard = jax.nn.one_hot(index, self.config.num_components)

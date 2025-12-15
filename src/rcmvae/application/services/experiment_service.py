@@ -32,6 +32,7 @@ class TrainingArtifacts:
     # Curriculum outputs (None if curriculum disabled)
     curriculum_summary: Optional[Dict[str, Any]] = None
     curriculum_history: Optional[List[Dict[str, Any]]] = None
+    final_active_mask: Optional[np.ndarray] = None
 
 
 class ExperimentService:
@@ -98,13 +99,22 @@ class ExperimentService:
         # Get curriculum summary if enabled
         curriculum_summary = None
         curriculum_history = None
+        final_active_mask = None
         if curriculum_ctrl is not None:
             curriculum_summary = curriculum_ctrl.get_summary()
             curriculum_history = curriculum_ctrl.get_epoch_history()
+            final_active_mask = curriculum_ctrl.get_active_mask()
             print(f"[Curriculum] Final: k_active={curriculum_summary['final_k_active']}, "
                   f"unlocks={curriculum_summary['unlock_count']}")
 
-        latent, recon, predictions, certainty = model.predict_batched(x_train)
+            # Re-generate diagnostics with final active_mask for consistent artifacts
+            # This ensures inactive channels show ~0 usage in diagnostics
+            model.regenerate_diagnostics(active_mask=final_active_mask)
+
+        # Pass active_mask to predictions for curriculum-consistent artifacts
+        latent, recon, predictions, certainty = model.predict_batched(
+            x_train, active_mask=final_active_mask
+        )
 
         responsibilities = None
         pi_values = None
@@ -117,7 +127,9 @@ class ExperimentService:
                     _,
                     responsibilities,
                     pi_values,
-                ) = model.predict_batched(x_train, return_mixture=True)
+                ) = model.predict_batched(
+                    x_train, return_mixture=True, active_mask=final_active_mask
+                )
             except TypeError:
                 responsibilities = None
                 pi_values = None
@@ -137,4 +149,5 @@ class ExperimentService:
             diagnostics_dir=diagnostics_dir,
             curriculum_summary=curriculum_summary,
             curriculum_history=curriculum_history,
+            final_active_mask=final_active_mask,
         )

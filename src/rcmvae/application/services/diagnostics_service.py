@@ -49,6 +49,7 @@ class DiagnosticsCollector:
         output_dir: Path,
         *,
         batch_size: int = 1024,
+        active_mask: np.ndarray | None = None,
     ) -> Dict[str, float]:
         """Collect and save diagnostics for any component-based prior.
 
@@ -59,6 +60,8 @@ class DiagnosticsCollector:
             labels: Labels for data
             output_dir: Directory to save diagnostics
             batch_size: Batch size for processing
+            active_mask: Optional boolean mask [K_max] for curriculum learning.
+                        If provided, inactive channels are masked in routing.
 
         Returns:
             Dictionary with computed metrics:
@@ -98,8 +101,10 @@ class DiagnosticsCollector:
             end = min(start + batch_size, total)
             batch_inputs = jnp.asarray(data[start:end])
 
-            # Forward pass
-            forward_output = apply_fn(params, batch_inputs, training=False)
+            # Forward pass (with optional curriculum active mask)
+            forward_output = apply_fn(
+                params, batch_inputs, training=False, active_mask=active_mask
+            )
             component_logits, z_mean, _, _, _, _, extras = forward_output
 
             # Extract mixture-specific outputs

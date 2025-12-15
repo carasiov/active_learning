@@ -88,6 +88,7 @@ def run_training_pipeline(
         y_true=y_true,
         figures_dir=run_paths.figures,
         curriculum_history=artifacts.curriculum_history,
+        final_active_mask=artifacts.final_active_mask,
     )
     visualization_meta = render_all_plots(viz_context)
 
