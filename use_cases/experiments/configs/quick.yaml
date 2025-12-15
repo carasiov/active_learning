@@ -56,7 +56,7 @@ model:
                                     # - "mixture": Learned mixture of Gaussians 
                                     # - "geometric_mog": Fixed geometric arrangement
                                     # - "vamp": Spatial clustering via pseudo-inputs
-  num_components: 10                # Number of mixture components (K)
+  num_components: 20                # Number of mixture components (K)
                                     # Should be >= num_classes for multimodal support
   # Component conditioning (mixture/geometric_mog only)
   component_embedding_dim: 32       # Embedding size for component conditioning
@@ -69,7 +69,7 @@ model:
   # Component prior/regularizer on q(c|x)
   c_regularizer: "logit_mog"        # "categorical" (KL to π) or "logit_mog" (Gaussian mixture on logits)
   c_logit_prior_weight: 1.0         # Strength of the logit mixture penalty
-  c_logit_prior_mean: 5.0           # Mean magnitude M for axis-aligned Gaussian components
+  c_logit_prior_mean: 7.0           # Mean magnitude M for axis-aligned Gaussian components
   c_logit_prior_sigma: 1.0          # Isotropic sigma for Gaussian components
   # Discrete routing controls (mixture / geometric)
   use_gumbel_softmax: true         # If true, sample c via Gumbel-Softmax for decentralization experiments
@@ -93,7 +93,7 @@ model:
   kl_c_weight: 0.00                  # Component assignment KL weight (set to 0 when using logit_mog)
   kl_c_anneal_epochs: 100            # Anneal kl_c_weight from 0→1 over N epochs
                                     # (0 = no annealing, start at full weight)
-  component_diversity_weight: -3.00 # Entropy reward for diverse component usage
+  component_diversity_weight: -10.00 # Entropy reward for diverse component usage
                                     # NEGATIVE = encourage diversity (prevents collapse)
                                     # POSITIVE = discourage diversity (not recommended)
   learnable_pi: false

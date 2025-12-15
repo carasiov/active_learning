@@ -16,7 +16,9 @@ Let `component_logits = y(x)` be the deterministic encoder outputs (pre-Gumbel, 
 L_c_logit_mog = - λ · E_x [ log p_mix(y(x)) ]
 ```
 
-where `p_mix(y) = (1/K) Σ_k N(y; μ_k, σ²I)` with `μ_k = M · e_k`. Equivalently, treating `q(y|x)` as a Dirac delta at `y(x)` makes this the KL between `q(y|x)` and `p_mix`. This penalty is applied before any Gumbel noise is added; downstream routing (soft responsibilities vs. straight-through Gumbel) is orthogonal.
+where `p_mix(y) = (1/|A|) Σ_{k∈A} N(y; μ_k, σ²I)` with `μ_k = M · e_k`, and `A` is the set of **active** channels (for the curriculum setting; when there is no active-set curriculum, take `A={1,…,K}`).
+
+This can be viewed as a KL to the prior if we model `q(y|x)` as a Dirac delta at `y(x)`. In practice it’s implemented as a negative log prior penalty evaluated at the deterministic logits. This penalty is applied before any Gumbel noise is added; downstream routing (soft responsibilities vs. straight-through Gumbel) is orthogonal.
 
 Implementation detail: `log p_mix` is evaluated with a numerically stable `logsumexp` of the per-component log densities.
 
@@ -36,7 +38,7 @@ Implementation detail: `log p_mix` is evaluated with a numerically stable `logsu
 - `use_cases/experiments/configs/quick.yaml` now opts into the new behaviour:
   - `c_regularizer: "logit_mog"`
   - `kl_c_weight: 0.00` (categorical KL disabled, but annealing still scales the logit penalty via `kl_c_scale`)
-  - Tunable knobs for mean/sigma/weight (currently 1.0 / 1.0 / 1.0 — placeholders; in practice, peaky behaviour often needs larger `M/σ`).
+  - Tunable knobs for mean/sigma/weight (in `quick.yaml` today: mean=7.0, sigma=1.0, weight=1.0; in practice, peaky behaviour often needs larger `M/σ`).
     - Peakiness strength is governed by `M / σ`; increasing `c_logit_prior_mean` or decreasing `c_logit_prior_sigma` pushes responsibilities closer to one-hot.
 - Gumbel-Softmax routing remains enabled (`use_gumbel_softmax: true`, straight-through) to support decentralised decoder selection; the regularizer operates on the logits before any Gumbel perturbation.
 - Reminder: Supervisor expects **only** the logit mixture term (set `kl_c_weight≈0`). The `"both"` mode is available for experiments that want local peakiness **plus** global alignment to π, but weights may need tuning since the objectives can compete. Despite the `kl_` prefix, the `kl_c_logit_mog` metric is a negative log prior under the mixture applied to deterministic logits.
