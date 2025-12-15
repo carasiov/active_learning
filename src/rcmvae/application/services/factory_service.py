@@ -405,6 +405,7 @@ class ModelFactoryService:
             key: jax.Array | None,
             gumbel_temperature: float | None = None,
             active_mask: jnp.ndarray | None = None,
+            straight_through_gumbel: bool | None = None,
         ):
             if key is None:
                 return _apply_fn_wrapper(
@@ -412,6 +413,7 @@ class ModelFactoryService:
                     training=training,
                     gumbel_temperature=gumbel_temperature,
                     active_mask=active_mask,
+                    straight_through_gumbel=straight_through_gumbel,
                 )
             reparam_key, dropout_key, gumbel_key = random.split(key, 3)
             return _apply_fn_wrapper(
@@ -421,6 +423,7 @@ class ModelFactoryService:
                 rngs={"reparam": reparam_key, "dropout": dropout_key, "gumbel": gumbel_key},
                 gumbel_temperature=gumbel_temperature,
                 active_mask=active_mask,
+                straight_through_gumbel=straight_through_gumbel,
             )
 
         def _eval_metrics(
@@ -429,6 +432,7 @@ class ModelFactoryService:
             batch_y: jnp.ndarray,
             tau: jnp.ndarray | None = None,
             active_mask: jnp.ndarray | None = None,
+            straight_through_gumbel: bool | None = None,
         ):
             _, metrics = compute_loss_and_metrics_v2(
                 params,
@@ -442,6 +446,7 @@ class ModelFactoryService:
                 kl_c_scale=1.0,
                 tau=tau,
                 active_mask=active_mask,
+                straight_through_gumbel=straight_through_gumbel,
             )
             return metrics
 
