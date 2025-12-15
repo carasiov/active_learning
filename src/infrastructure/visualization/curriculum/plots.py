@@ -50,17 +50,22 @@ def curriculum_k_active_plotter(context: VisualizationContext) -> ComponentResul
     # Shade kick windows
     in_kick = False
     kick_start = None
+    first_kick_labeled = False
     for i, (e, k) in enumerate(zip(epochs, kick_active)):
         if k and not in_kick:
             kick_start = e
             in_kick = True
         elif not k and in_kick:
+            # Only label the first kick window to avoid legend clutter
+            label = "Kick window" if not first_kick_labeled else ""
             ax.axvspan(kick_start, epochs[i-1] if i > 0 else e,
-                      alpha=0.2, color="orange", label="Kick window" if kick_start == unlock_epochs[0] if unlock_epochs else True else "")
+                      alpha=0.2, color="orange", label=label)
+            first_kick_labeled = True
             in_kick = False
     # Close final kick if still active
     if in_kick and kick_start is not None:
-        ax.axvspan(kick_start, epochs[-1], alpha=0.2, color="orange")
+        label = "Kick window" if not first_kick_labeled else ""
+        ax.axvspan(kick_start, epochs[-1], alpha=0.2, color="orange", label=label)
 
     ax.legend(loc="best")
     ax.grid(True, alpha=0.3)
