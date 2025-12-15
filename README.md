@@ -13,7 +13,7 @@ The long-term goal is a [web application](use_cases/dashboard/app.py) that conne
 
 ## Active Learning Loop
 
-Our working proposal is to treat training as a sequence of deliberately staged regimes: first a reconstruction-focused warm-up (freeze KL terms, let the component-aware decoder find its footing), then a KL anneal phase where we gently pull the posteriors toward their priors, followed by a label-refinement window where τ supervision sharpens channel↔class alignment, and finally the full active-learning loop that injects human feedback. The human-in-the-loop workflow mirrors those phases—diagnose latent/component behavior, intervene with new labels or curricula, retrain with the adjusted objective mix, and re-visualize—so the experience feels like moving through acts of the same story rather than toggling isolated knobs. This sequencing is how we expect to keep channels class-aligned even as the decoder becomes more expressive, and it anchors the future dashboard UX (each phase gets its own “mode” in the app).
+Our working proposal is to treat training as a sequence of deliberately staged regimes (some are aspirational and tracked in the roadmap): first a reconstruction-focused warm-up (freeze KL terms, let the decoder’s conditioning/routing “find its footing”), then a KL anneal phase where we gently pull the posteriors toward their priors, followed by a label-refinement window where τ supervision sharpens channel↔class alignment, and finally the full active-learning loop that injects human feedback. The human-in-the-loop workflow mirrors those phases—diagnose latent/component behavior, intervene with new labels or curricula, retrain with the adjusted objective mix, and re-visualize—so the experience feels like moving through acts of the same story rather than toggling isolated knobs. This sequencing is how we expect to keep channels class-aligned even as the decoder becomes more expressive, and it anchors the future dashboard UX (each phase gets its own “mode” in the app).
 
 
 ### End-user experience (target)
@@ -78,7 +78,7 @@ active_learning_showcase/
 │
 ├── use_cases/                   # Product-facing workflows
 │   ├── experiments/             # 🔬 Experimentation Workflow
-│   │   ├── src/                 #    Implementation (CLI, pipeline, metrics, viz, IO)
+│   │   ├── src/                 #    Implementation (config/data/validation/reporting/run pipeline)
 │   │   ├── configs/             #    Experiment configurations
 │   │   ├── data/                #    Dataset loaders (MNIST)
 │   │   ├── results/             #    Experiment outputs (timestamped)
@@ -141,7 +141,12 @@ This project has a layered documentation structure (see [AGENTS.md](AGENTS.md) f
 
 **Usage Layer** (Workflows):
 - [Experiment Guide](use_cases/experiments/README.md) - Primary workflow (configuration → execution → interpretation) with modular CLI/pipeline/registry structure
+- [Experimentation Contracts](docs/development/experimentation_contracts.md) - Stable run/metric/plot contracts
+- [Iteration Runbook](use_cases/experiments/iteration_runbook.md) - Practical, change-friendly workflow notes
 - [Dashboard Guide](use_cases/dashboard/README.md) - Interactive interface (future primary)
+
+**Active Project Specs**:
+- Decentralized latents channel curriculum: `docs/projects/decentralized_latents/channel_curriculum/README.md`
 
 ---
 
@@ -153,7 +158,7 @@ This project has a layered documentation structure (see [AGENTS.md](AGENTS.md) f
 
 2. **Factory wiring**  
    - `build_encoder/decoder/classifier` in `src/rcmvae/domain/components/factory.py` consumes the config and instantiates the right modules.  
-   - Mixture-aware runs select `Mixture{Dense,Conv}Encoder` (`src/rcmvae/domain/components/encoders.py`) so the encoder emits component logits in addition to latent stats, while decoder selection toggles between dense/conv, component-aware, and heteroscedastic variants (`src/rcmvae/domain/components/decoders.py`).
+   - Mixture-aware runs select `Mixture{Dense,Conv}Encoder` (`src/rcmvae/domain/components/encoders.py`) so the encoder emits component logits in addition to latent stats. Decoder selection is modular (conditioning method via `decoder_conditioning`, and output head via `use_heteroscedastic_decoder`) and is composed in `src/rcmvae/domain/components/factory.py` and `src/rcmvae/domain/components/decoders.py`.
 
 3. **Prior + loss pipeline**  
    - Prior implementations in `src/rcmvae/domain/priors/` (mixture, Vamp, geometric) take the encoder outputs/extras and compute KL terms, usage sparsity penalties, Dirichlet regularizers, and weighted reconstructions.  

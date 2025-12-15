@@ -58,8 +58,14 @@ README.md (entry point)
 - **Design patterns & abstractions**: `docs/development/architecture.md`
 - **Module-by-module reference**: `docs/development/implementation.md`  
 - **Extension tutorials**: `docs/development/extending.md`
-- **Experiment extension points**: `use_cases/experiments/src/{pipeline,metrics,visualization,io}`
+- **Experiment extension points**:
+  - CLI/workflow glue: `use_cases/experiments/src/` and `use_cases/experiments/run_experiment.py`
+  - Training pipeline adapter: `src/rcmvae/adapters/experiments/runner.py`
+  - Metrics/visualization registries: `src/infrastructure/metrics/` and `src/infrastructure/visualization/`
 - **Experiment workflow**: `use_cases/experiments/README.md`
+- **Experimentation contracts vs practice**:
+  - Stable contracts: `docs/development/experimentation_contracts.md`
+  - Practical runbook: `use_cases/experiments/iteration_runbook.md`
 
 **These explain mechanics** - How to extend, where files live, how to run experiments.
 
@@ -74,15 +80,12 @@ README.md (entry point)
 
 **Location**: `docs/projects/` - Self-contained specifications for major features in progress.
 
-**Structure**: Each project has:
-- `README.md` - Navigation and overview
-- `design_context.md` - High-level architectural vision  
-- `implementation_spec.md` - Complete implementation instructions
+**Structure**: Each project has a `README.md` entry point plus one or more supporting documents (design, mapping, validation signals). Project docs are intentionally allowed to be more current and task-specific than `/docs/theory`.
 
 **Currently Active**:
 - **Decentralized Latents** (`docs/projects/decentralized_latents/`)
   - Transition from shared-latent to decentralized mixture-of-VAEs
-  - Includes modular decoder refactor as infrastructure
+  - Current spec stack: `docs/projects/decentralized_latents/channel_curriculum/`
 
 **When to use**: Starting implementation of a major feature that has a dedicated project spec.
 
@@ -114,10 +117,10 @@ README.md (entry point)
 | In conceptual_model.md | Core design principle (stable) |
 | In math_specification.md | Precise formulation (stable) |
 | In architecture.md | Established pattern (stable) |
-| In roadmap.md §Status table | Implementation status (check marks = done, empty = planned) |
-| In roadmap.md §Recent completions | Just landed, under validation |
+| In `docs/theory/implementation_roadmap.md` §Status table | Implementation status (check marks = done, empty = planned) |
+| In `docs/theory/implementation_roadmap.md` §Recent completions | Just landed, under validation |
 
-**Example**: τ-classifier shows in roadmap §Status with ✅ but also in §Recent-Completions → Implemented but still validating.
+**Example**: τ-classifier shows in `docs/theory/implementation_roadmap.md` §Status with ✅ but also in §Recent-Completions → Implemented but still validating.
 
 ### 3C. Unique Codebase Patterns
 
@@ -134,14 +137,14 @@ README.md (entry point)
 - Gotcha: RNG must be threaded explicitly (`rng, subkey = jax.random.split(rng)`)
 
 **Hook-based training extensions**:
-- Explained: `extending.md` §Tutorial-3, real example in `roadmap.md` §τ-Classifier
+- Explained: `extending.md` §Tutorial-3, real example in `docs/theory/implementation_roadmap.md` §τ-Classifier
 - Pattern: `TrainerLoopHooks` provide touch points outside JIT boundaries
 - Use case: τ-classifier updates Python-side state after each batch
 
 **Registry-driven experiment toolkit**:
-- Source: `use_cases/experiments/src/infrastructure/metrics/registry.py`, `use_cases/experiments/src/infrastructure/visualization/registry.py`
+- Source: `src/infrastructure/metrics/registry.py`, `src/infrastructure/visualization/registry.py`
 - Why: Keeps CLI thin and lets agents add metrics/plots by registering new providers
-- Gotcha: Outputs are routed through `io/structure.py`, so follow that schema when emitting artifacts
+- Gotcha: Outputs are routed through the RunPaths schema (`src/infrastructure/runpaths/structure.py` and `use_cases/experiments/src/structure.py`), so follow that structure when emitting artifacts
 
 **Understanding these patterns is critical** - They're architectural choices that influence all extensions.
 
@@ -156,22 +159,22 @@ Where to learn about them:
 
 **Historical naming gotchas:**
 - `component_diversity_weight` negative = entropy *reward* (misnomer)
-- Explained in: `roadmap.md` §Entropy-Reward-Configuration
+- Explained in: `docs/theory/implementation_roadmap.md` §Entropy-Reward-Configuration
 
 **When in doubt about parameter interactions:**
 1. Check `config.py` docstrings
 2. Look at example configs in `use_cases/experiments/configs/`
-3. Check roadmap.md for known interaction patterns
+3. Check `docs/theory/implementation_roadmap.md` for known interaction patterns
 
 ### 3E. Known Issues & Current Limitations
 
 **Where to check**:
 - Active project specs in `docs/projects/` document known issues during refactors
-- `roadmap.md` for known behaviors and limitations
+- `docs/theory/implementation_roadmap.md` for known behaviors and limitations
 
-**Current known issues** (see `docs/projects/decentralized_latents/implementation_spec.md` §Current-State-Audit):
-- Silent overrides in decoder factory (FiLM disabled when heteroscedastic enabled)
-- Configuration validation gaps (some incompatible flags allowed without warning)
+**Current known issues**:
+- Decentralized latents curriculum work: `docs/projects/decentralized_latents/channel_curriculum/implementation_mapping.md`
+- Repo-wide status/notes: `docs/theory/implementation_roadmap.md`
 
 **When uncertain**: Test configurations on small scale before full experiments.
 
@@ -183,7 +186,7 @@ Where to learn about them:
 
 **Goal: Understand design space and constraints**
 
-1. **Check current state**: `roadmap.md` §Status-at-a-Glance
+1. **Check current state**: `docs/theory/implementation_roadmap.md` §Status-at-a-Glance
    - What's done? What's validated? What's planned?
 
 2. **Understand design rationale**: `conceptual_model.md`
@@ -240,7 +243,7 @@ Where to learn about them:
 **τ-classifier** (example of complete cross-referencing):
 - Theory: `conceptual_model.md` §How-We-Classify
 - Math: `mathematical_specification.md` §5
-- Status: `roadmap.md` §τ-Classifier-Completed
+- Status: `docs/theory/implementation_roadmap.md` §τ-Classifier-Completed
 - Implementation: `implementation.md` §tau_classifier.py
 - Tutorial: `extending.md` §Tutorial-3
 - Code: `src/rcmvae/domain/components/tau_classifier.py`
@@ -283,7 +286,7 @@ Where to learn about them:
 **Before proposing changes:**
 - [ ] Check `docs/projects/` for active project specifications
 - [ ] Read `conceptual_model.md` to understand design vision
-- [ ] Check `roadmap.md` §Status to see current state
+- [ ] Check `docs/theory/implementation_roadmap.md` §Status to see current state
 - [ ] Verify in `architecture.md` that pattern exists or understand why new pattern needed
 - [ ] Look in `extending.md` for similar tutorials
 
@@ -304,7 +307,7 @@ Where to learn about them:
 
 ### Entry Points by Intent
 - Understand design vision → `conceptual_model.md`
-- Understand current state → `roadmap.md` §Status-at-a-Glance
+- Understand current state → `docs/theory/implementation_roadmap.md` §Status-at-a-Glance
 - Understand architecture → `architecture.md`
 - Add new feature → `extending.md` + relevant architecture section
 - Run experiments → `use_cases/experiments/README.md` §Quick-Start
@@ -321,17 +324,18 @@ JAX_PLATFORMS=cpu poetry run python use_cases/experiments/run_experiment.py --co
 poetry run python use_cases/experiments/run_experiment.py --config use_cases/experiments/configs/mixture_example.yaml
 
 # Run tests  
-pytest tests/
+poetry run pytest tests/
 ```
 
 ### Critical Files for Reference
 - Configuration: `src/rcmvae/domain/config.py::SSVAEConfig`
-- Loss computation: `src/rcmvae/application/loss_pipeline.py::compute_loss_and_metrics_v2()`
-- Training loop: `src/rcmvae/application/training_service.py::Trainer`
+- Loss computation: `src/rcmvae/application/services/loss_pipeline.py::compute_loss_and_metrics_v2()`
+- Training loop: `src/rcmvae/application/services/training_service.py::Trainer`
 - Example configs: `use_cases/experiments/configs/*.yaml`
-- Experiment pipeline: `use_cases/experiments/src/pipeline/train.py`
-- Metrics registry: `use_cases/experiments/src/infrastructure/metrics/registry.py`
-- Visualization registry: `use_cases/experiments/src/infrastructure/visualization/registry.py`
+- Experiment runner: `use_cases/experiments/run_experiment.py`
+- Training pipeline adapter: `src/rcmvae/adapters/experiments/runner.py`
+- Metrics registry: `src/infrastructure/metrics/registry.py`
+- Visualization registry: `src/infrastructure/visualization/registry.py`
 
 ---
 
