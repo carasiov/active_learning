@@ -224,11 +224,13 @@ class SSVAENetwork(nn.Module):
                     temp = self.config.gumbel_temperature
 
                 # Determine ST behavior: use runtime override if provided, else config default
+                # Convert to JAX array for traced-safe conditional (supports both Python bool and traced values)
                 use_st = (
                     straight_through_gumbel
                     if straight_through_gumbel is not None
                     else self.config.use_straight_through_gumbel
                 )
+                use_st_arr = jnp.asarray(use_st, dtype=jnp.bool_)
 
                 if self.config.use_gumbel_softmax:
                     # Gumbel-Softmax sampling using routing_logits (masked for curriculum)
@@ -249,21 +251,26 @@ class SSVAENetwork(nn.Module):
                     # Handle any NaN from -inf + noise edge cases
                     y_soft = jnp.nan_to_num(y_soft, nan=0.0, posinf=0.0, neginf=0.0)
 
-                    if use_st:
+                    # Use jax.lax.cond for traced-safe branching (use_st may be traced during JIT)
+                    def _st_branch(ys):
                         # Straight-through: forward is one-hot, backward is soft
-                        index = jnp.argmax(y_soft, axis=-1)
-                        y_hard = jax.nn.one_hot(index, self.config.num_components)
+                        idx = jnp.argmax(ys, axis=-1)
+                        y_hard = jax.nn.one_hot(idx, self.config.num_components)
                         # ST trick: y_hard - y_soft.stop_gradient + y_soft
-                        y = y_hard - jax.lax.stop_gradient(y_soft) + y_soft
-                        return y, True
-                    else:
-                        return y_soft, False
+                        return y_hard - jax.lax.stop_gradient(ys) + ys
+
+                    def _soft_branch(ys):
+                        return ys
+
+                    y = jax.lax.cond(use_st_arr, _st_branch, _soft_branch, y_soft)
+                    return y, use_st_arr
                 else:
                     # Standard softmax over routing_logits (non-Gumbel path)
                     # Inactive channels get 0 probability due to -inf masking
                     y_soft = nn.softmax(routing_logits)
                     y_soft = jnp.nan_to_num(y_soft, nan=0.0, posinf=0.0, neginf=0.0)
-                    return y_soft, False
+                    # Return JAX array False for consistency with Gumbel path
+                    return y_soft, jnp.asarray(False, dtype=jnp.bool_)
 
             component_selection, selection_is_hard = _component_selection()
 
