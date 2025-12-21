@@ -4,7 +4,10 @@
       "Bash(lsof:*)",
       "Bash(netstat:*)",
       "Bash(ss:*)",
-      "Bash(kill:*)"
+      "Bash(kill:*)",
+      "Bash(find:*)",
+      "Bash(wc:*)",
+      "Bash(cloc:*)"
     ],
     "deny": [],
     "ask": []
