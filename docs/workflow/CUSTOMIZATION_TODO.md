@@ -71,18 +71,86 @@ The packet must include:
 
 ---
 
-## Task 2: Create `/session-capture` Slash Command (Defer)
+## Task 2: Create `/session-capture` Slash Command
 
-**Status:** Implement after Task 1 works.
+**Status:** Ready to implement (Task 1 complete).
 
-**Purpose:** Generate SESSION_*.md file before /clear.
+**Location:** `.claude/commands/session-capture.md`
 
-**Behavior:**
-1. Summarize what was accomplished this session
-2. List decisions made
-3. List files modified
-4. State current priorities / next steps
-5. Write to `docs/workflow/SESSION_<date>.md`
+**Purpose:** Generate SESSION_*.md file before /clear, capturing session state for future bootstrap.
+
+**When to use:** End of session, before running /clear, when you want to preserve context.
+
+**Reference:** See `docs/workflow/SESSION_2025-12-22.md` for example format.
+
+**Command behavior:**
+1. Ask user (or accept as argument): "What was the main focus this session?"
+2. Use git to find files modified this session (git status, git diff --name-only)
+3. Generate structured SESSION file with:
+   - What was accomplished (user input + inferred from changes)
+   - Key decisions made
+   - Files modified/created
+   - Current state
+   - Next steps / priorities
+   - Restart command for next session
+4. Write to `docs/workflow/SESSION_<YYYY-MM-DD>.md`
+5. If file exists for today, append session number (SESSION_2025-12-22_2.md)
+
+**Output format:**
+```markdown
+# Session Summary: YYYY-MM-DD
+
+> **Purpose:** Capture session state for "Document & Clear" restart.
+> **Delete after:** Next session successfully bootstraps from this.
+
+---
+
+## What Was Accomplished
+
+[Bullet points of accomplishments]
+
+## Key Decisions Made
+
+[Numbered list of decisions]
+
+## Files Modified This Session
+
+```
+Created:
+  [list]
+
+Modified:
+  [list]
+```
+
+## Current State
+
+[Brief description of where things stand]
+
+## Next Steps
+
+[Ordered priorities for next session]
+
+---
+
+## Restart Command
+
+After `/clear`, tell the new session:
+
+```
+Read these files to bootstrap:
+1. docs/workflow/README.md (your role)
+2. docs/workflow/SESSION_<date>.md (what happened)
+3. [current project CONTEXT.md if applicable]
+```
+```
+
+**Acceptance criteria:**
+- [ ] Command exists at `.claude/commands/session-capture.md`
+- [ ] Running `/session-capture` produces SESSION file
+- [ ] File is written to `docs/workflow/`
+- [ ] Format matches the template above
+- [ ] Git changes are detected and listed
 
 ---
 
