@@ -21,9 +21,10 @@ We’re building a mixture VAE with decentralized latent channels and a **channe
 
 ## What to read first
 
-1. `docs/projects/decentralized_latents/channel_curriculum/high_level_context.md` — intuition and rationale.
-2. `docs/projects/decentralized_latents/channel_curriculum/design_contract.md` — formal invariants + curriculum policy.
-3. `docs/projects/decentralized_latents/channel_curriculum/implementation_mapping.md` — how this maps onto the codebase and experiment workflow.
+1. `CONTEXT.md` — **comprehensive project briefing** (supervisor decisions, math characterization, priorities, gotchas)
+2. `high_level_context.md` — intuition and rationale
+3. `design_contract.md` — formal invariants + curriculum policy
+4. `implementation_mapping.md` — how this maps onto the codebase and experiment workflow
 
 ## North Star References
 
@@ -35,7 +36,9 @@ These documents are the stable “north star” for intent, math, and architectu
 - Experiment/validation contracts: `docs/development/experimentation_contracts.md`
 - Status snapshot: `docs/theory/implementation_roadmap.md`
 
-## Related doc
+## Related docs
 
-- `docs/projects/decentralized_latents/channel_curriculum/logit_mog_regularizer.md` — the existing logit-MoG regularizer (what’s already implemented).
-- `docs/projects/decentralized_latents/channel_curriculum/validation_signals.md` — what to measure/plot to validate curriculum behavior.
+- `CONTEXT.md` — comprehensive project briefing for agents
+- `DELEGATION_V2.md` — current implementation task spec
+- `logit_mog_regularizer.md` — the existing logit-MoG regularizer (what's already implemented)
+- `validation_signals.md` — what to measure/plot to validate curriculum behavior

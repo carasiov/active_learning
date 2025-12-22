@@ -76,6 +76,11 @@ README.md (entry point)
 
 **Code is authoritative** - When docs and code conflict, code is correct.
 
+### Agent Workflow (Multi-Agent Coordination)
+
+- **Three-tier agent model**: `docs/workflow/README.md`
+- **Project context docs**: `docs/projects/*/CONTEXT.md` (per-project briefings)
+
 ### Active Project Specifications
 
 **Location**: `docs/projects/` - Self-contained specifications for major features in progress.

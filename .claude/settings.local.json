@@ -1,15 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "Bash(lsof:*)",
-      "Bash(netstat:*)",
-      "Bash(ss:*)",
-      "Bash(kill:*)",
-      "Bash(find:*)",
-      "Bash(wc:*)",
-      "Bash(cloc:*)"
+      "Bash"
     ],
     "deny": [],
     "ask": []
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "/root/.claude/statusline-command.sh"
   }
 }
