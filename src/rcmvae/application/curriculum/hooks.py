@@ -46,7 +46,7 @@ def build_curriculum_hooks(
             "active_mask": jnp.array(controller.get_active_mask()),
         }
 
-        # During kick window: use soft routing (disable ST) + high temperature
+        # During kick window: use soft routing (disable ST) + high temperature + logit bias
         # This allows the newly unlocked channel to receive responsibility mass
         # Under ST Gumbel, argmax is invariant to temperature, so we need soft routing
         if controller.is_in_kick():
@@ -56,6 +56,14 @@ def build_curriculum_hooks(
             # Disable straight-through during kick: use soft routing
             # so temperature actually affects the routing distribution
             context["straight_through_gumbel"] = False
+
+            # Add logit bias for the newly unlocked channel
+            newly_unlocked_idx = controller.get_newly_unlocked_index()
+            if newly_unlocked_idx is not None:
+                k_max = len(controller.get_active_mask())
+                bias = jnp.zeros(k_max, dtype=jnp.float32)
+                bias = bias.at[newly_unlocked_idx].set(controller.get_kick_logit_bias())
+                context["routing_logit_bias"] = bias
 
         return context
 

@@ -164,6 +164,7 @@ class SSVAENetwork(nn.Module):
         gumbel_temperature: float | None = None,
         active_mask: jnp.ndarray | None = None,
         straight_through_gumbel: bool | None = None,
+        routing_logit_bias: jnp.ndarray | None = None,
     ) -> ForwardOutput:
         """Forward pass returning latent statistics, reconstructions, and classifier logits.
 
@@ -176,6 +177,8 @@ class SSVAENetwork(nn.Module):
             straight_through_gumbel: Optional override for ST Gumbel behavior.
                         If None, uses config.use_straight_through_gumbel.
                         Set to False during kick window to allow soft routing.
+            routing_logit_bias: Optional bias vector [K_max] added to routing logits.
+                        Used during kick window to boost newly unlocked channel.
 
         Returns:
             ForwardOutput with latent stats, reconstructions, logits, and extras
@@ -201,6 +204,12 @@ class SSVAENetwork(nn.Module):
                 routing_logits = jnp.where(mask[None, :], component_logits, -jnp.inf)
             else:
                 routing_logits = component_logits
+
+            # Apply routing logit bias if provided (during kick window)
+            # Bias is added after masking, so -inf + bias = -inf for inactive channels (safe)
+            if routing_logit_bias is not None:
+                bias = jnp.asarray(routing_logit_bias, dtype=jnp.float32)
+                routing_logits = routing_logits + bias[None, :]
 
             # Responsibilities computed from routing_logits (masked for curriculum)
             responsibilities = softmax(routing_logits, axis=-1)

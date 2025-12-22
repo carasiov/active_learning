@@ -53,6 +53,9 @@ model:
   recon_weight: 1.0
   kl_weight: 1.0
 
+  # Diversity: negative weight rewards batch-usage entropy (prevents single-channel collapse)
+  component_diversity_weight: -0.05
+
   # Training
   learning_rate: 0.001
   batch_size: 256
@@ -80,5 +83,6 @@ curriculum:
 
   kick:
     enabled: true
-    epochs: 5
+    epochs: 15                        # Extended kick window for cold channels
     gumbel_temperature: 5.0
+    logit_bias: 5.0                   # Boost newly unlocked channel during kick

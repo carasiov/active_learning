@@ -117,6 +117,7 @@ class Trainer:
         self.config = config
         self._latest_splits: DataSplits | None = None
         self._current_state: SSVAETrainState | None = None  # For callback access during training
+        self._last_eval_context: Dict | None = None  # For curriculum-aware callbacks
 
     @staticmethod
     def _init_history() -> HistoryDict:
@@ -233,6 +234,8 @@ class Trainer:
             self._latest_splits = splits
 
             eval_context = loop_hooks.eval_context_fn() if loop_hooks and loop_hooks.eval_context_fn else None
+            # Store eval context for callbacks to access (e.g., curriculum-aware mixture tracking)
+            self._last_eval_context = eval_context
             train_metrics, val_metrics = self._evaluate_both_splits(
                 state.params,
                 splits,
@@ -276,8 +279,9 @@ class Trainer:
         updated_runtime = runtime.replace(state=state, shuffle_rng=shuffle_rng)
         self._run_callbacks(callback_list, "on_train_end", history, self)
 
-        # Clear state reference after training
+        # Clear state references after training
         self._current_state = None
+        self._last_eval_context = None
 
         return updated_runtime, history
 

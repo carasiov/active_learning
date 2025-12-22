@@ -55,6 +55,7 @@ class CurriculumConfig:
     kick_enabled: bool = True
     kick_epochs: int = 5
     kick_gumbel_temperature: float = 5.0
+    kick_logit_bias: float = 5.0  # Logit bias added to newly unlocked channel during kick
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> CurriculumConfig:
@@ -77,6 +78,7 @@ class CurriculumConfig:
             kick_enabled=kick.get("enabled", True),
             kick_epochs=kick.get("epochs", 5),
             kick_gumbel_temperature=kick.get("gumbel_temperature", 5.0),
+            kick_logit_bias=kick.get("logit_bias", 5.0),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -96,6 +98,7 @@ class CurriculumConfig:
                 "enabled": self.kick_enabled,
                 "epochs": self.kick_epochs,
                 "gumbel_temperature": self.kick_gumbel_temperature,
+                "logit_bias": self.kick_logit_bias,
             },
         }
 
@@ -112,6 +115,9 @@ class CurriculumState:
     # Plateau tracking
     best_metric: float = float("inf")
     patience_counter: int = 0
+
+    # Kick tracking
+    newly_unlocked_index: Optional[int] = None  # Index of channel unlocked this kick window
 
     # History
     unlock_events: List[UnlockEvent] = field(default_factory=list)
@@ -202,6 +208,16 @@ class CurriculumController:
             return self.config.kick_gumbel_temperature
         return None
 
+    def get_newly_unlocked_index(self) -> Optional[int]:
+        """Return the index of the newly unlocked channel during kick, or None if not in kick."""
+        if self.is_in_kick() and self._state.newly_unlocked_index is not None:
+            return self._state.newly_unlocked_index
+        return None
+
+    def get_kick_logit_bias(self) -> float:
+        """Return the logit bias value to apply during kick."""
+        return self.config.kick_logit_bias
+
     def on_epoch_end(self, epoch: int, metrics: Dict[str, float]) -> Dict[str, Any]:
         """Process end of epoch: check for unlock, update state.
 
@@ -224,6 +240,9 @@ class CurriculumController:
         # Decrement counters
         if self._state.kick_remaining > 0:
             self._state.kick_remaining -= 1
+            # Clear newly_unlocked_index when kick window ends
+            if self._state.kick_remaining == 0:
+                self._state.newly_unlocked_index = None
         if self._state.cooldown_remaining > 0:
             self._state.cooldown_remaining -= 1
 
@@ -264,6 +283,8 @@ class CurriculumController:
             return False
 
         k_before = self._state.k_active
+        # Track which channel is being unlocked (0-indexed, so k_active is the new channel index)
+        self._state.newly_unlocked_index = self._state.k_active
         self._state.k_active += 1
         k_after = self._state.k_active
 

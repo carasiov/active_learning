@@ -308,6 +308,7 @@ class ModelFactoryService:
             gumbel_temperature: float | None = None,
             active_mask: jnp.ndarray | None = None,
             straight_through_gumbel: bool | None = None,
+            routing_logit_bias: jnp.ndarray | None = None,
         ):
             if key is None:
                 return _apply_fn_wrapper(
@@ -316,6 +317,7 @@ class ModelFactoryService:
                     gumbel_temperature=gumbel_temperature,
                     active_mask=active_mask,
                     straight_through_gumbel=straight_through_gumbel,
+                    routing_logit_bias=routing_logit_bias,
                 )
             reparam_key, dropout_key, gumbel_key = random.split(key, 3)
             return _apply_fn_wrapper(
@@ -326,6 +328,7 @@ class ModelFactoryService:
                 gumbel_temperature=gumbel_temperature,
                 active_mask=active_mask,
                 straight_through_gumbel=straight_through_gumbel,
+                routing_logit_bias=routing_logit_bias,
             )
 
         def _loss_and_metrics(
@@ -339,6 +342,7 @@ class ModelFactoryService:
             gumbel_temperature: float | None = None,
             active_mask: jnp.ndarray | None = None,
             straight_through_gumbel: bool | None = None,
+            routing_logit_bias: jnp.ndarray | None = None,
         ):
             rng = key if training else None
             return compute_loss_and_metrics_v2(
@@ -355,10 +359,11 @@ class ModelFactoryService:
                 gumbel_temperature=gumbel_temperature,
                 active_mask=active_mask,
                 straight_through_gumbel=straight_through_gumbel,
+                routing_logit_bias=routing_logit_bias,
             )
 
         train_loss_and_grad = jax.value_and_grad(
-            lambda p, x, y, k, scale, t, temp, mask, st: _loss_and_metrics(p, x, y, k, True, scale, t, temp, mask, st),
+            lambda p, x, y, k, scale, t, temp, mask, st, bias: _loss_and_metrics(p, x, y, k, True, scale, t, temp, mask, st, bias),
             argnums=0,
             has_aux=True,
         )
@@ -374,9 +379,10 @@ class ModelFactoryService:
             gumbel_temperature: float | None = None,
             active_mask: jnp.ndarray | None = None,
             straight_through_gumbel: bool | None = None,
+            routing_logit_bias: jnp.ndarray | None = None,
         ):
             (loss, metrics), grads = train_loss_and_grad(
-                state.params, batch_x, batch_y, key, kl_c_scale, tau, gumbel_temperature, active_mask, straight_through_gumbel
+                state.params, batch_x, batch_y, key, kl_c_scale, tau, gumbel_temperature, active_mask, straight_through_gumbel, routing_logit_bias
             )
             if config.prior_type == "vamp":
                 grads = _scale_vamp_pseudo_gradients(grads, config.vamp_pseudo_lr_scale)
@@ -406,6 +412,7 @@ class ModelFactoryService:
             gumbel_temperature: float | None = None,
             active_mask: jnp.ndarray | None = None,
             straight_through_gumbel: bool | None = None,
+            routing_logit_bias: jnp.ndarray | None = None,
         ):
             if key is None:
                 return _apply_fn_wrapper(
@@ -414,6 +421,7 @@ class ModelFactoryService:
                     gumbel_temperature=gumbel_temperature,
                     active_mask=active_mask,
                     straight_through_gumbel=straight_through_gumbel,
+                    routing_logit_bias=routing_logit_bias,
                 )
             reparam_key, dropout_key, gumbel_key = random.split(key, 3)
             return _apply_fn_wrapper(
@@ -424,6 +432,7 @@ class ModelFactoryService:
                 gumbel_temperature=gumbel_temperature,
                 active_mask=active_mask,
                 straight_through_gumbel=straight_through_gumbel,
+                routing_logit_bias=routing_logit_bias,
             )
 
         def _eval_metrics(
@@ -434,6 +443,7 @@ class ModelFactoryService:
             active_mask: jnp.ndarray | None = None,
             straight_through_gumbel: bool | None = None,
         ):
+            # Note: routing_logit_bias not passed to eval - only used during training kick
             _, metrics = compute_loss_and_metrics_v2(
                 params,
                 batch_x,

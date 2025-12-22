@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Dict
 
+import jax
 import jax.numpy as jnp
 from jax.scipy.special import logsumexp
 
@@ -132,31 +133,46 @@ class MixtureGaussianPrior:
                     active_mask = jnp.ones(k_max, dtype=jnp.bool_)
                     k_active = jnp.array(k_max, dtype=jnp.float32)
 
-                # Means at +M*e_k for each component k
-                means = jnp.eye(k_max) * config.c_logit_prior_mean  # [K_max, K_max]
-                sigma_sq = config.c_logit_prior_sigma ** 2
+                # Gate logit-MoG when k_active <= 1 to prevent early lock-in
+                # When only one channel is active, logit-MoG would just pull toward that channel
+                # which bakes in "channel 0 forever" before other channels have a chance
+                def _compute_logit_mog():
+                    # Means at +M*e_k for each component k
+                    means = jnp.eye(k_max) * config.c_logit_prior_mean  # [K_max, K_max]
+                    sigma_sq = config.c_logit_prior_sigma ** 2
 
-                # Log prob under each Gaussian component
-                # raw_logits: [B, K_max], means: [K_max, K_max]
-                # centered: [B, K_max, K_max] (for each sample, each component, distance in each dim)
-                centered = raw_logits[:, None, :] - means[None, :, :]  # [B, K_max, K_max]
-                quad = jnp.sum(jnp.square(centered) / sigma_sq, axis=-1)  # [B, K_max]
-                log_norm = -0.5 * (k_max * jnp.log(2 * jnp.pi * sigma_sq))
-                log_prob = log_norm - 0.5 * quad  # [B, K_max]
+                    # Log prob under each Gaussian component
+                    # raw_logits: [B, K_max], means: [K_max, K_max]
+                    # centered: [B, K_max, K_max] (for each sample, each component, distance in each dim)
+                    centered = raw_logits[:, None, :] - means[None, :, :]  # [B, K_max, K_max]
+                    quad = jnp.sum(jnp.square(centered) / sigma_sq, axis=-1)  # [B, K_max]
+                    log_norm = -0.5 * (k_max * jnp.log(2 * jnp.pi * sigma_sq))
+                    log_prob = log_norm - 0.5 * quad  # [B, K_max]
 
-                # Mask inactive components by setting their log_prob to -inf
-                # This ensures they contribute 0 to the mixture sum
-                log_prob_masked = jnp.where(active_mask[None, :], log_prob, -jnp.inf)
+                    # Mask inactive components by setting their log_prob to -inf
+                    # This ensures they contribute 0 to the mixture sum
+                    log_prob_masked = jnp.where(active_mask[None, :], log_prob, -jnp.inf)
 
-                # Mixture probability: logsumexp over active components with uniform mixture weight 1/|A_t|
-                # log p_mix(y) = logsumexp_k∈A [log p_k(y)] + log(1/|A_t|)
-                #              = logsumexp_k∈A [log p_k(y)] - log(|A_t|)
-                log_mix = logsumexp(log_prob_masked, axis=1) - jnp.log(k_active)  # [B]
+                    # Mixture probability: logsumexp over active components with uniform mixture weight 1/|A_t|
+                    # log p_mix(y) = logsumexp_k∈A [log p_k(y)] + log(1/|A_t|)
+                    #              = logsumexp_k∈A [log p_k(y)] - log(|A_t|)
+                    log_mix = logsumexp(log_prob_masked, axis=1) - jnp.log(k_active)  # [B]
 
-                # Handle edge case where k_active could be 0 (though shouldn't happen)
-                log_mix = jnp.where(jnp.isfinite(log_mix), log_mix, jnp.array(-100.0))
+                    # Handle edge case where k_active could be 0 (though shouldn't happen)
+                    log_mix = jnp.where(jnp.isfinite(log_mix), log_mix, jnp.array(-100.0))
 
-                nll = -jnp.mean(log_mix)
+                    return -jnp.mean(log_mix)
+
+                def _skip_logit_mog():
+                    return jnp.array(0.0, dtype=kl_z.dtype)
+
+                # Only compute logit-MoG when more than 1 channel is active
+                # Use jax.lax.cond for traced-safe conditional (k_active is a JAX array)
+                nll = jax.lax.cond(
+                    k_active > 1.0,
+                    _compute_logit_mog,
+                    _skip_logit_mog,
+                )
                 kl_c_logit_mog = config.c_logit_prior_weight * nll
         else:
             kl_c_logit_mog = jnp.array(0.0, dtype=kl_z.dtype)
