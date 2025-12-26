@@ -1,0 +1,72 @@
+# Diagnostic: Force early unlock to test kick mechanism
+# Expected behavior: unlock at ~epoch 15, kick window epochs 15-30
+# Success: component_usage[1] > 0.02 by epoch 35
+
+experiment:
+  name: mnist_curriculum_kick_diagnostic
+  description: "Kick mechanism diagnostic - forced early unlock"
+  tags: [diagnostic]
+
+data:
+  dataset: mnist
+  num_samples: 10000
+  num_labeled: 0
+  seed: 42
+  dataset_variant: mnist
+
+model:
+  num_classes: 10
+  encoder_type: conv
+  decoder_type: conv
+  classifier_type: dense
+  latent_dim: 2
+  latent_layout: decentralized
+  num_components: 10
+
+  prior_type: mixture
+  component_embedding_dim: 32
+  decoder_conditioning: film
+
+  use_gumbel_softmax: true
+  gumbel_temperature: 1.0
+  use_straight_through_gumbel: true
+
+  c_regularizer: logit_mog
+  c_logit_prior_weight: 0.1
+  c_logit_prior_mean: 5.0
+  c_logit_prior_sigma: 1.0
+  kl_c_weight: 0.5
+  kl_c_anneal_epochs: 20
+
+  reconstruction_loss: bce
+  recon_weight: 1.0
+  kl_weight: 1.0
+  component_diversity_weight: -0.05
+
+  learning_rate: 0.001
+  batch_size: 256
+  max_epochs: 50                    # Shorter run for diagnostic
+  patience: 50                      # Disable early stopping
+  val_split: 0.1
+  random_seed: 42
+  monitor_metric: loss
+
+  label_weight: 0.0
+  use_tau_classifier: false
+
+curriculum:
+  enabled: true
+  k_active_init: 1
+
+  unlock:
+    policy: plateau
+    monitor: val_reconstruction_loss
+    patience_epochs: 5              # Aggressive: trigger after 5 flat epochs
+    min_delta: 2.0                  # Aggressive: 2.0 improvement required
+    cooldown_epochs: 1
+
+  kick:
+    enabled: true
+    epochs: 15
+    gumbel_temperature: 5.0
+    logit_bias: 5.0

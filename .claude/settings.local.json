@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash",
-      "Skill(relay-highlevel)"
+      "Skill(relay-highlevel)",
+      "WebSearch",
+      "WebFetch(domain:diataxis.fr)",
+      "Skill(session-capture)"
     ],
     "deny": [],
     "ask": []

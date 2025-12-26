@@ -1,6 +1,16 @@
 # Delegation: Channel Curriculum V2 (Kick Adoption + Observability)
 
-This document is self-contained and intended for the next agent implementing fixes to the **channel curriculum (“pots”)** for decentralized latent channels.
+> **STATUS: COMPLETED (2025-12-22)**
+>
+> V2 implementation is complete. The kick mechanism (logit bias + temperature) successfully breaks single-channel monopoly but revealed a **new failure mode**: stable 2-channel coalition that defends against subsequent unlocks.
+>
+> **For current state, see:** `experimental_findings_2025-12-23.md`
+>
+> This document is retained as historical reference for the V2 implementation.
+
+---
+
+This document is self-contained and intended for the next agent implementing fixes to the **channel curriculum ("pots")** for decentralized latent channels.
 
 ## Canonical project docs (read first)
 

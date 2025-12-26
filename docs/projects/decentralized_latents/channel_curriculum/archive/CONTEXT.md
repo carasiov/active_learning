@@ -1,7 +1,10 @@
 # Channel Curriculum ("Pots") — Project Context
 
 > **Purpose:** Comprehensive briefing for any agent working on the channel curriculum.
-> **Last updated:** 2025-12-22
+> **Last updated:** 2025-12-23
+
+**Recent updates:**
+- 2025-12-23: Added §11 (Experimental Findings), §12 (Supervisor Meeting Dec 3), updated §6 (Priorities)
 
 ---
 
@@ -124,22 +127,32 @@ The "pots" curriculum is the stabilization mechanism:
 
 ## 6. Priorities (ordered)
 
-1. **Make unlocking cause new channels to be used** (highest priority)
-   - Current evidence: unlock occurs but usage stays on channel 0
-   - Implement v2 kick: disable ST during kick, optional logit bias for newly unlocked channel
-   - See `DELEGATION_V2.md` for detailed spec
+> **Status update (2025-12-23):** V2 kick mechanism implemented and tested. New failure mode discovered: 2-channel coalition. See §11 for experimental findings.
 
-2. **Ensure curriculum invariants apply to evaluation + artifacts**
-   - Pass final active_mask into post-training prediction/plotting paths
+1. ~~**Make unlocking cause new channels to be used**~~ **PARTIALLY SOLVED**
+   - V2 kick (logit bias + temperature) successfully breaks single-channel monopoly
+   - **New issue:** Stable 2-channel coalition forms; channels 3+ cannot compete
+   - See `experimental_findings_2025-12-23.md` for details
 
-3. **Use better unlock monitor metric**
-   - Prefer reconstruction-only validation loss so unlock decisions aren't distorted
+2. **Test simultaneous training baseline** (NEW - highest priority)
+   - Supervisor recommended: K=20-30, L1 sparsity, no curriculum
+   - Purpose: Establish what unsupervised specialization is achievable
+   - See §12 for supervisor guidance on L1
 
-4. **Add targeted tests for curriculum masking + logit-MoG stability**
-   - Confirm zero routing mass on inactive channels
-   - Confirm logit-MoG remains finite
+3. **Implement perturbation at unlock** (if baseline shows specialization)
+   - Supervisor predicted local minimum risk; suggested perturbation
+   - Options: noise to incumbent weights, incumbent LR decay, reconstruction-based routing
 
-5. **Only after (1)-(4):** consider small within-active-set global usage term if collapse persists
+4. **Consider hybrid approach**
+   - Simultaneous training for initial specialization
+   - Curriculum only for capacity expansion after specialization achieved
+
+5. ~~**Ensure curriculum invariants apply to evaluation + artifacts**~~ **DONE**
+   - Implemented in V2
+
+6. **Add L1 sparsity term** (supervisor recommendation)
+   - `λ · Σ|w_c|` on channel weights
+   - May replace or complement current entropy-based diversity term
 
 ---
 
@@ -199,5 +212,72 @@ When verifying curriculum behavior, check:
 - `high_level_context.md` — intuition and rationale
 - `design_contract.md` — formal invariants and curriculum policy
 - `implementation_mapping.md` — code locations and wiring
-- `DELEGATION_V2.md` — current implementation task spec
+- `DELEGATION_V2.md` — **HISTORICAL** (V2 implemented; see §11 for current state)
 - `validation_signals.md` — what to measure/plot
+- `experimental_findings_2025-12-23.md` — **NEW** experimental results and analysis
+
+---
+
+## 11. Experimental Findings (2025-12-23)
+
+> **Full details:** See `experimental_findings_2025-12-23.md`
+
+### Summary
+
+V2 kick mechanism (logit bias + temperature) was implemented and tested. Key findings:
+
+| Experiment | Unlocks | Final K_eff | Result |
+|------------|---------|-------------|--------|
+| Kick diagnostic | 2 | 2.12 | **Kick works** — broke single-channel monopoly |
+| Multi-unlock (all 10) | 9 | 2.04 | **Coalition stable** — channels 3-9 collapsed |
+
+### The 2-Channel Coalition Phenomenon
+
+1. First unlock (epoch 33): C_0 drops from 100% → 50%, C_1 rises to 50%
+2. Subsequent unlocks: Each new channel briefly spikes, then **immediately collapses to 0%**
+3. Final state: C_0 (55%) + C_1 (45%) share all 10 digit classes; K_eff ≈ 2
+
+### Root Cause Hypothesis
+
+Curriculum creates asymmetric competition where incumbents have insurmountable advantage:
+- First-mover advantage: C_0 + C_1 already offer good reconstruction everywhere
+- Gradient asymmetry: ST-Gumbel gives incumbents all forward samples; newcomers only get soft gradients
+- Diversity saturation: `-0.05 * entropy` is satisfied at K_eff ≈ 2
+
+### Implication
+
+**Curriculum ≠ simultaneous training** for inducing specialization. Curriculum may be better suited for capacity expansion of an already-specialized model.
+
+---
+
+## 12. Supervisor Meeting Notes (2025-12-03)
+
+> **Source:** MS Teams meeting, ~33 min. Supervisor provides conceptual guidance without codebase access.
+
+### Key Concepts from Supervisor
+
+| Concept | Description |
+|---------|-------------|
+| **Structural primitives** | Channels = mid-level structures (circle, stroke, loop); latents = fine detail (thickness, slant) |
+| **Bucket analogy** | Start with one bucket; open new empty bucket; move structurally distinct subsets; iterate until buckets are "normal filled" |
+| **L1 sparsity** | `λ · Σ\|w_c\|` on channel weights — push many toward zero; try before Dirichlet |
+| **Perturbation at unlock** | "May require controlled perturbation of network parameters when adding channels so the model actually uses the new capacity" |
+| **Local minimum risk** | "Changing the model/prior can trap training in a local minimum" |
+
+### Supervisor's Recommended Experiment
+
+"Fast experiment: increase channels (20-30), increase sparsity strength, observe if channels specialize" — this is **simultaneous training**, not curriculum.
+
+### Translation Gaps
+
+| Supervisor Concept | Implementation Question |
+|--------------------|------------------------|
+| L1 on channel weights | With ST-Gumbel one-hot forward pass, does L1 on soft q(c\|x) translate? |
+| Perturbation | What form? Noise to weights? Reset encoder? Freeze incumbents? |
+| Structural primitives | Are FiLM-conditioned channels capable of this? |
+
+### What Supervisor Hasn't Seen
+
+- The 2-channel coalition phenomenon (discovered 2025-12-23)
+- ST-Gumbel gradient asymmetry specifics
+- Our specific logit-MoG parameterization

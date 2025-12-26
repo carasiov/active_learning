@@ -1,0 +1,86 @@
+# Simultaneous training baseline: All K=20 channels from epoch 0
+# Purpose: Determine if 2-channel coalition is curriculum-specific or architectural
+# Compare with: mnist_curriculum_multi_unlock.yaml (curriculum version)
+
+experiment:
+  name: "simultaneous_k20_baseline"
+  description: "All 20 channels active from start - no curriculum"
+  tags: ["baseline", "simultaneous", "k20"]
+
+data:
+  dataset: "mnist"
+  num_samples: 3000                  # Full MNIST training set
+  num_labeled: 0
+  seed: 42
+  dataset_variant: "mnist"
+
+model:
+  # Architecture (same as curriculum experiments)
+  num_classes: 10
+  latent_dim: 2
+  latent_layout: "decentralized"
+  encoder_type: "conv"
+  decoder_type: "conv"
+  classifier_type: "dense"
+  hidden_dims: [256, 128, 64]
+
+  # Loss (same as curriculum)
+  reconstruction_loss: "bce"
+  recon_weight: 1.0
+  kl_weight: 1.0
+  label_weight: 1.0
+
+  # Training (extended for comparison)
+  learning_rate: 0.001
+  batch_size: 128
+  max_epochs: 100                     # Match curriculum experiment length
+  patience: 10
+  val_split: 0.1
+  random_seed: 42
+  grad_clip_norm: 5.0
+  weight_decay: 0.0001
+  l1_weight: 0.0001
+  dropout_rate: 0.2
+  monitor_metric: "loss"
+
+  # Prior: Mixture with Logit-MoG (identical to curriculum)
+  prior_type: "mixture"
+  num_components: 10
+  component_embedding_dim: 32
+  decoder_conditioning: "cin"
+
+  # Logit-MoG regularization (same as curriculum)
+  c_regularizer: "logit_mog"
+  c_logit_prior_weight: 1.0
+  c_logit_prior_mean: 7.0
+  c_logit_prior_sigma: 1.0
+
+  # Routing (same as curriculum)
+  use_gumbel_softmax: true
+  use_straight_through_gumbel: true
+  gumbel_temperature: 2.0
+  gumbel_temperature_min: 0.5
+  gumbel_temperature_anneal_epochs: 100
+
+  # Diversity: entropy reward on batch usage
+  kl_c_weight: 0.0                    # Disabled (using logit_mog instead)
+  kl_c_anneal_epochs: 0
+  component_diversity_weight: -10.0   # Strong entropy reward for global diversity
+  learnable_pi: false
+  dirichlet_alpha: null
+
+  # Classification
+  use_tau_classifier: false
+  tau_smoothing_alpha: 1.0
+
+  # Uncertainty
+  use_heteroscedastic_decoder: true
+  sigma_min: 0.05
+  sigma_max: 0.5
+
+  # Advanced
+  top_m_gating: 0
+  soft_embedding_warmup_epochs: 10
+  mixture_history_log_every: 1
+
+# NO CURRICULUM SECTION - all channels active from start

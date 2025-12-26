@@ -1,11 +1,20 @@
 # Curriculum for Decentralized Latent Channels — Implementation Mapping
 
-This appendix maps the “Design Contract” (`docs/projects/decentralized_latents/channel_curriculum/design_contract.md:1`) onto the current codebase, and identifies the concrete insertion points needed to implement active-channel masking + unlocking (“pots”).
+This appendix maps the "Design Contract" (`docs/projects/decentralized_latents/channel_curriculum/design_contract.md:1`) onto the current codebase, and identifies the concrete insertion points needed to implement active-channel masking + unlocking ("pots").
 
 ## 0) Current state (what exists today)
 
-- There is **no** runtime notion of “inactive / not-yet-unlocked” channels; all `K=num_components` always compete in routing (`src/rcmvae/domain/network.py:171`).
-- Curriculum unlocking (“pots”) is not implemented yet; this appendix documents the insertion points and minimal plumbing needed to add it.
+> **UPDATE 2025-12-23:** Curriculum IS now implemented. The description below is **historical** (pre-implementation state). See `DELEGATION_V2.md` for implementation details and `experimental_findings_2025-12-23.md` for current experimental results.
+
+~~- There is **no** runtime notion of "inactive / not-yet-unlocked" channels; all `K=num_components` always compete in routing (`src/rcmvae/domain/network.py:171`).~~
+~~- Curriculum unlocking ("pots") is not implemented yet; this appendix documents the insertion points and minimal plumbing needed to add it.~~
+
+**Current state (2025-12-23):**
+- Curriculum controller implemented: `src/rcmvae/application/curriculum/controller.py`
+- Curriculum hooks implemented: `src/rcmvae/application/curriculum/hooks.py`
+- Active masking works; kick mechanism (logit bias + temperature) implemented
+- **Known issue:** 2-channel coalition phenomenon — see `experimental_findings_2025-12-23.md`
+
 - `logit_mog` exists and applies to raw logits (`src/rcmvae/domain/priors/mixture.py:107`) and is surfaced in experiment outputs (`src/infrastructure/metrics/schema.py:50`).
 
 ## 1) Where the active mask is stored / updated

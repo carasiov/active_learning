@@ -1,0 +1,72 @@
+# Multi-unlock experiment: Test if more channels → specialization
+# Goal: Unlock 6-8 channels to give model capacity for class separation
+# Hypothesis: With K_active approaching 10, channels may specialize by class
+
+experiment:
+  name: mnist_curriculum_multi_unlock
+  description: "Extended curriculum to unlock multiple channels - test specialization"
+  tags: [curriculum, multi-unlock]
+
+data:
+  dataset: mnist
+  num_samples: 10000
+  num_labeled: 0
+  seed: 42
+  dataset_variant: mnist
+
+model:
+  num_classes: 10
+  encoder_type: conv
+  decoder_type: conv
+  classifier_type: dense
+  latent_dim: 2
+  latent_layout: decentralized
+  num_components: 10
+
+  prior_type: mixture
+  component_embedding_dim: 32
+  decoder_conditioning: film
+
+  use_gumbel_softmax: true
+  gumbel_temperature: 1.0
+  use_straight_through_gumbel: true
+
+  c_regularizer: logit_mog
+  c_logit_prior_weight: 0.1
+  c_logit_prior_mean: 5.0
+  c_logit_prior_sigma: 1.0
+  kl_c_weight: 0.5
+  kl_c_anneal_epochs: 20
+
+  reconstruction_loss: bce
+  recon_weight: 1.0
+  kl_weight: 1.0
+  component_diversity_weight: -0.05
+
+  learning_rate: 0.001
+  batch_size: 256
+  max_epochs: 250                   # Extended for multiple unlocks
+  patience: 250                     # Disable early stopping
+  val_split: 0.1
+  random_seed: 42
+  monitor_metric: loss
+
+  label_weight: 0.0
+  use_tau_classifier: false
+
+curriculum:
+  enabled: true
+  k_active_init: 1
+
+  unlock:
+    policy: plateau
+    monitor: val_reconstruction_loss
+    patience_epochs: 5              # Quick plateau detection
+    min_delta: 1.5                  # Moderate improvement threshold
+    cooldown_epochs: 2              # Brief cooldown between unlocks
+
+  kick:
+    enabled: true
+    epochs: 12                      # Slightly shorter to allow more unlocks
+    gumbel_temperature: 5.0
+    logit_bias: 5.0

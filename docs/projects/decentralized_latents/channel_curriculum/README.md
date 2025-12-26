@@ -1,44 +1,77 @@
-# Channel Curriculum (“Pots”)
+---
+status: current
+updated: 2025-12-26
+---
 
-Short entry point for the decentralized-latents curriculum work (“pots”).
+# Channel Curriculum ("Pots")
 
-## Overview
+Curriculum-based channel unlocking for decentralized latent VAE.
 
-We’re building a mixture VAE with decentralized latent channels and a **channel-unlocking curriculum**:
+## Quick Start
 
-- **Per-sample sparsity**: each datapoint should route to ~one channel.
-- **Controlled growth (“pots”)**: start with one active channel; unlock more only when needed.
-- **Logit-mixture regularization**: encourage peaky `q(c|x)` via a Gaussian mixture prior on encoder logits (logit-MoG).
+```bash
+# Run curriculum experiment
+poetry run python use_cases/experiments/run_experiment.py \
+  --config use_cases/experiments/configs/mnist_curriculum_multi_unlock.yaml
+
+# Results in: use_cases/experiments/results/<run_id>/
+```
+
+## Current Status (2025-12-26)
+
+**V2 kick mechanism implemented.** Successfully breaks single-channel monopoly.
+
+**Known issue:** Stable 2-channel coalition forms; channels 3+ cannot compete.
+
+**Clarification (2025-12-26):** Supervisor's "L1 sparsity" = Logit-MoG (already implemented).
+- Logit-MoG: per-sample peakiness (each r(x) → one-hot)
+- Entropy reward: global diversity (spread usage across channels)
+- These are **complementary**, not alternatives.
+
+**Next step:** Run simultaneous training baseline to determine if 2-channel coalition is curriculum-specific.
+
+See `FINDINGS.md` for details.
+
+---
+
+## Documents
+
+| File | Purpose |
+|------|---------|
+| `SPEC.md` | Mathematical specification, supervisor decisions, invariants |
+| `IMPLEMENTATION.md` | Code locations, config structure, data flow |
+| `FINDINGS.md` | Experimental results and analysis |
+| `archive/` | Historical documents (completed delegations, superseded docs) |
+
+---
 
 ## Glossary
 
-- `component_logits`: encoder outputs `y(x) ∈ R^{K_max}` (pre-softmax).
-- Responsibilities: `r(x) = softmax(y(x))` (diagnostics / usage statistics; deterministic).
-- Routing / selection: `s(x)` used to weight reconstructions (softmax or Gumbel-softmax; can be straight-through).
-- Active channels / pots: the subset `A_t ⊆ {1..K_max}` that is “open” during curriculum stage `t`.
-- `K_max`: the architectural maximum number of channels (fixed).
-- `K_active`: how many channels are currently open (runtime state; `|A_t|`).
+| Term | Definition |
+|------|------------|
+| `component_logits` | Encoder outputs y(x) ∈ R^K (pre-softmax) |
+| Responsibilities | r(x) = softmax(y(x)) — deterministic soft assignment |
+| Routing | s(x) — distribution used for decoder weighting (softmax or Gumbel) |
+| Active channels | A_t ⊆ {1..K_max} — channels "open" at curriculum stage t |
+| K_max | Architectural maximum channels (fixed) |
+| K_active | Currently open channels (runtime state, \|A_t\|) |
+| Kick | Exploration window after unlock (logit bias + temperature) |
 
-## What to read first
+---
 
-1. `CONTEXT.md` — **comprehensive project briefing** (supervisor decisions, math characterization, priorities, gotchas)
-2. `high_level_context.md` — intuition and rationale
-3. `design_contract.md` — formal invariants + curriculum policy
-4. `implementation_mapping.md` — how this maps onto the codebase and experiment workflow
+## Key Configs
+
+| Config | Purpose |
+|--------|---------|
+| `mnist_curriculum.yaml` | Standard curriculum (plateau unlock) |
+| `mnist_curriculum_kick_diag.yaml` | Diagnostic: forced early unlock |
+| `mnist_curriculum_multi_unlock.yaml` | Extended: 250 epochs, all channels |
+| `mnist_simultaneous_k20.yaml` | **Baseline:** All K=20 from start, no curriculum |
+
+---
 
 ## North Star References
 
-These documents are the stable “north star” for intent, math, and architectural conventions. The curriculum docs in this folder may temporarily be more specific than theory docs while the curriculum is being implemented/validated.
-
 - Conceptual intent: `docs/theory/conceptual_model.md`
 - Mathematical contract: `docs/theory/mathematical_specification.md`
-- Architecture patterns (hooks/registries): `docs/development/architecture.md`
-- Experiment/validation contracts: `docs/development/experimentation_contracts.md`
-- Status snapshot: `docs/theory/implementation_roadmap.md`
-
-## Related docs
-
-- `CONTEXT.md` — comprehensive project briefing for agents
-- `DELEGATION_V2.md` — current implementation task spec
-- `logit_mog_regularizer.md` — the existing logit-MoG regularizer (what's already implemented)
-- `validation_signals.md` — what to measure/plot to validate curriculum behavior
+- Architecture patterns: `docs/development/architecture.md`
